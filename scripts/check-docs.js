@@ -224,7 +224,7 @@ if (uniqueMissing.length) {
 // catches a section added, removed or moved without caring how it was worded,
 // which is the only part of a translation a machine has any business judging.
 
-const README_LOCALES = ['fr', 'es', 'id', 'zh-CN'];
+const README_LOCALES = ['fr', 'es', 'id', 'zh-CN', 'pt-BR'];
 const readmeFile = (loc) => (loc === 'en' ? 'README.md' : `README.${loc}.md`);
 const ALL_READMES = ['en', ...README_LOCALES];
 

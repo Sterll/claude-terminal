@@ -1,0 +1,59 @@
+{
+  "discord": {
+    "bot": "Bot",
+    "startBot": "Iniciar bot",
+    "stopBot": "Parar bot",
+    "online": "Online",
+    "offline": "Offline",
+    "starting": "Iniciando...",
+    "console": "Console",
+    "commands": "Comandos",
+    "events": "Eventos",
+    "guilds": "servidores",
+    "library": "Biblioteca",
+    "botName": "Nome do bot",
+    "noCommands": "Nenhum comando detectado. Clique em 'Escanear' para buscar nos seus arquivos-fonte.",
+    "scanCommands": "Escanear comandos",
+    "scanning": "Escaneando arquivos-fonte...",
+    "searchCommands": "Buscar comandos...",
+    "clearEvents": "Limpar",
+    "noEvents": "Nenhum evento ainda. Inicie o bot para ver a atividade.",
+    "startCommand": "Comando de inicialização",
+    "startCommandHint": "Deixe vazio para detecção automática (node bot.js, python bot.py etc.)",
+    "devServer": "Bot",
+    "devCommandHint": "Comando para iniciar o bot (ex.: node bot.js, python bot.py)",
+    "embedBuilder": "Construtor de embeds",
+    "componentBuilder": "Componentes",
+    "builderPreview": "Pré-visualização",
+    "builderAuthor": "Autor",
+    "builderAuthorName": "Nome do autor",
+    "builderAuthorIcon": "URL do ícone do autor",
+    "builderAuthorUrl": "URL do autor",
+    "builderTitle": "Título",
+    "builderTitleHint": "Título do embed",
+    "builderTitleUrl": "URL do título",
+    "builderDescription": "Descrição",
+    "builderDescHint": "Descrição do embed (suporta **negrito**, *itálico*, `code`)",
+    "builderColor": "Cor",
+    "builderTimestamp": "Data e hora",
+    "builderTimestampNow": "Horário atual",
+    "builderFields": "Campos",
+    "builderImages": "Imagens",
+    "builderThumbnail": "URL da miniatura (pequena, canto superior direito)",
+    "builderImage": "URL da imagem (grande, embaixo)",
+    "builderFooter": "Rodapé",
+    "builderFooterText": "Texto do rodapé",
+    "builderFooterIcon": "URL do ícone do rodapé",
+    "builderActionRows": "Linhas de ação",
+    "builderAddRow": "Adicionar linha de ação"
+  },
+  "newProject": {
+    "types": {
+      "discord": "Bot do Discord",
+      "discordDesc": "Bot do Discord com gerenciamento de ciclo de vida e varredura de comandos"
+    },
+    "categories": {
+      "bots": "Bots"
+    }
+  }
+}

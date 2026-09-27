@@ -134,7 +134,7 @@ function createExternalType(manifest, opts = {}) {
   // somewhere else is a validator that eventually stops running.
   const icon = validateIcon(manifest.icon) || DEFAULT_ICON;
   const styles = buildStyles(typeId, manifest.color);
-  const locales = opts.locales || ['en', 'fr', 'es', 'id', 'zh-CN'];
+  const locales = opts.locales || ['en', 'fr', 'es', 'id', 'zh-CN', 'pt-BR'];
   const translations = buildTranslations(manifest, locales);
 
   const badge = isPlainText(manifest.badge, LIMITS.badge) ? manifest.badge : null;

@@ -1,0 +1,93 @@
+{
+  "webapp": {
+    "devServer": "Servidor de dev",
+    "startServer": "Iniciar servidor de dev",
+    "stopServer": "Parar servidor de dev",
+    "openBrowser": "Abrir no navegador",
+    "stopped": "Parado",
+    "starting": "Iniciando...",
+    "running": "Em execução",
+    "online": "Online",
+    "console": "Console",
+    "serverInfo": "Informações",
+    "framework": "Framework",
+    "port": "Porta",
+    "url": "URL",
+    "devCommand": "Comando de dev",
+    "packageManager": "Gerenciador de pacotes",
+    "noPortDetected": "Nenhuma porta detectada ainda",
+    "detecting": "Detectando...",
+    "serverRunningAt": "Servidor em execução em {url}",
+    "reload": "Recarregar",
+    "preview": "Pré-visualização",
+    "devCommandHint": "Deixe vazio para detectar automaticamente a partir do package.json",
+    "inspect": "Feedback visual",
+    "feedbackPlaceholder": "O que você gostaria de mudar?",
+    "pinPlaceholder": "O que mudar aqui?",
+    "sendToClaude": "Enviar ao Claude",
+    "sendAll": "Enviar todos ({count})",
+    "deletePin": "Excluir",
+    "responsive": {
+      "full": "Largura total",
+      "mobile": "Celular",
+      "tablet": "Tablet",
+      "laptop": "Notebook",
+      "desktop": "Desktop"
+    },
+    "scan": {
+      "title": "Procurar problemas visuais",
+      "scanning": "Escaneando...",
+      "noIssues": "Nenhum problema encontrado",
+      "issuesFound": "{count} problema(s) encontrado(s)",
+      "dismiss": "Dispensar",
+      "customInstruction": "Personalize a instrução de correção...",
+      "types": {
+        "overflow": "Overflow",
+        "contrast": "Contraste",
+        "brokenImage": "Imagem quebrada",
+        "zIndex": "Z-Index",
+        "aria": "ARIA",
+        "altText": "Texto alternativo",
+        "keyboard": "Teclado",
+        "structure": "Estrutura",
+        "a11y": "Acessibilidade"
+      }
+    },
+    "ruler": {
+      "title": "Medir espaçamento",
+      "pinPlaceholder": "Qual espaçamento mudar?",
+      "margin": "Margin",
+      "border": "Border",
+      "padding": "Padding",
+      "content": "Conteúdo"
+    },
+    "settings": {
+      "previewEnabled": "Pré-visualização no app",
+      "previewEnabledDesc": "Incorpora uma pré-visualização ao vivo do servidor de dev diretamente no app (usa mais memória)"
+    },
+    "noServerRunning": "Nenhum servidor em execução",
+    "startingUp": "Iniciando",
+    "waitingPort": "Aguardando a detecção da porta…",
+    "startDevServerHint": "Inicie o servidor de dev para ver uma pré-visualização ao vivo aqui",
+    "devServerNotRunning": "O servidor de dev não está em execução",
+    "launchingServer": "Iniciando o servidor de dev…",
+    "serverActive": "Servidor ativo",
+    "commandLabel": "Comando",
+    "localUrlLabel": "URL local",
+    "openBtn": "Abrir",
+    "statusStarting": "Iniciando",
+    "statusRunning": "Em execução",
+    "statusStopped": "Parado"
+  },
+  "newProject": {
+    "types": {
+      "webapp": "Web App",
+      "webappDesc": "Projeto web com servidor de dev integrado"
+    },
+    "devCommand": "Comando de dev",
+    "devCommandPlaceholder": "npm run dev"
+  },
+  "dashboard": {
+    "webApp": "Web App"
+  }
+}
