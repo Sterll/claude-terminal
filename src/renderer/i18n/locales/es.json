@@ -4035,7 +4035,10 @@
     "usageLoading": "Leyendo el uso…",
     "usageUnavailable": "Uso no disponible: ejecuta «claude /login» en esta cuenta",
     "usageStale": "La API no pudo confirmar estas cifras",
-    "usageRefresh": "Actualizar el uso"
+    "usageRefresh": "Actualizar el uso",
+    "limitedUntil": "Disponible de nuevo en {time}",
+    "allLimited": "Todas las cuentas guardadas han alcanzado un límite.",
+    "allLimitedUntil": "Todas las cuentas guardadas han alcanzado un límite. La primera vuelve a estar disponible en {time}."
   },
   "usage": {
     "staleRetry": "Datos de uso posiblemente desactualizados - la última actualización falló. Próximo intento a las {time}; haz clic para reintentar ahora. {error}",
