@@ -52,7 +52,7 @@ function getToolDisplayInfo(toolName, input) {
 const MODEL_OPTIONS = [
   { value: 'claude-opus-5-5', displayName: 'Opus 5.5' },
   { value: 'claude-fable-5-1', displayName: 'Fable 5.1' },
-  { value: 'claude-sonnet-5', displayName: 'Sonnet 5' },
+  { value: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
   { value: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
 ];
 
@@ -79,7 +79,7 @@ const state = {
   // Defaults a NEW conversation starts from, mirroring the desktop's stored
   // chatModel / effortLevel. A pick made inside a conversation is recorded on
   // that session, never here — see _selectModel().
-  defaultModel: 'claude-sonnet-5',
+  defaultModel: 'claude-sonnet-5-5',
   defaultEffort: 'high',
   // Replaced by `models:catalog` once the desktop answers.
   modelCatalog: { primary: MODEL_OPTIONS, legacy: [] },
