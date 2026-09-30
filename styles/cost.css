@@ -243,7 +243,50 @@
   border-top: 1px solid var(--border-color);
 }
 
-.cost-quota-main {
+.cost-quota-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cost-quota-used {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.cost-quota-bar {
+  display: flex;
+  height: 8px;
+  margin: 2px 0;
+}
+
+.cost-quota-bar .cost-bar-fill {
+  border-radius: 0;
+}
+
+/* Everyone else's share: hatched, so it never reads as another account. */
+.cost-bar-others,
+.cost-dot-others {
+  background: repeating-linear-gradient(135deg, var(--text-muted) 0 3px, var(--bg-hover) 3px 6px);
+}
+
+.cost-quota-split {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.cost-quota-split > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cost-quota-price {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;

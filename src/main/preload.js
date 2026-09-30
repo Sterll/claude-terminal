@@ -547,6 +547,7 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== COST ====================
   cost: {
     getReport: (range) => ipcRenderer.invoke('cost-get-report', range),
+    getQuota: (args) => ipcRenderer.invoke('cost-get-quota', args),
   },
 
   // ==================== TELEMETRY ====================

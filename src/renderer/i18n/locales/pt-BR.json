@@ -2308,7 +2308,7 @@
     },
     "sections": {
       "accounts": "Por conta",
-      "quota": "Quanto vale 1% do limite semanal",
+      "quota": "Quem está consumindo o limite semanal",
       "daily": "Por dia",
       "projects": "Por projeto",
       "models": "Por modelo"
@@ -2321,12 +2321,17 @@
       "tokens": "Tokens"
     },
     "quota": {
-      "perPercent": "1% ≈ {value}",
-      "fullWeek": "semana cheia ≈ {value}",
-      "detail": "{percent}% usado desde {date}, {cost} disso nesta máquina",
-      "notEnough": "Ainda não há uso suficiente nesta semana",
+      "used": "{percent}% usado desde {date}",
+      "thisMachine": "Esta máquina: no máximo {percent}% ({cost})",
+      "others": "Outros: no mínimo {percent}%",
+      "perPercent": "1% vale no mínimo {value}",
+      "fullWeek": "semana cheia ≥ {value}",
+      "spentOnly": "Esta máquina: {cost} desde o reset",
+      "calibrating": "Ainda não há leituras de uso suficientes para separar a sua parte da dos outros. O app registra o uso a cada atualização, então a estimativa se refina sozinha.",
+      "samples": "Baseado em {count} leituras de uso",
+      "notEnough": "Nada usado nesta semana ainda",
       "none": "Ainda não há números de uso semanal.",
-      "note": "Conta apenas esta máquina. Se outras pessoas ou máquinas usam a mesma conta, 1% vale mais do que o mostrado."
+      "note": "A porcentagem conta todos que usam a conta; esta máquina só vê o próprio gasto. A parte dela é portanto um máximo e a dos outros um mínimo, nunca um palpite."
     },
     "note": {
       "listPrice": "Os valores são preços de tabela da API para os tokens usados. Uma assinatura não os cobra: eles medem quanto do limite do plano o trabalho consumiu.",

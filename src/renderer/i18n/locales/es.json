@@ -2305,7 +2305,7 @@
     },
     "sections": {
       "accounts": "Por cuenta",
-      "quota": "Lo que vale el 1 % del límite semanal",
+      "quota": "Quién consume el límite semanal",
       "daily": "Por día",
       "projects": "Por proyecto",
       "models": "Por modelo"
@@ -2318,12 +2318,17 @@
       "tokens": "Tokens"
     },
     "quota": {
-      "perPercent": "1 % ≈ {value}",
-      "fullWeek": "semana completa ≈ {value}",
-      "detail": "{percent} % usado desde el {date}, {cost} de ello en esta máquina",
-      "notEnough": "Todavía no hay suficiente uso esta semana",
+      "used": "{percent} % usado desde el {date}",
+      "thisMachine": "Esta máquina: como máximo {percent} % ({cost})",
+      "others": "Otros: como mínimo {percent} %",
+      "perPercent": "El 1 % vale como mínimo {value}",
+      "fullWeek": "semana completa ≥ {value}",
+      "spentOnly": "Esta máquina: {cost} desde el reinicio",
+      "calibrating": "Aún no hay suficientes lecturas de uso para separar tu parte de la de los demás. La app registra el uso en cada actualización, así que la estimación se afina sola.",
+      "samples": "Basado en {count} lecturas de uso",
+      "notEnough": "Nada consumido esta semana todavía",
       "none": "Aún no hay cifras de uso semanal.",
-      "note": "Solo cuenta esta máquina. Si otras personas o máquinas usan la misma cuenta, el 1 % vale más de lo que se muestra."
+      "note": "El porcentaje cuenta a todos los que usan la cuenta; esta máquina solo ve su propio gasto. Su parte es por tanto un máximo y la de los demás un mínimo, nunca una suposición."
     },
     "note": {
       "listPrice": "Las cifras son precios de lista de la API para los tokens usados. Una suscripción no los cobra: miden cuánto del límite del plan consumió el trabajo.",

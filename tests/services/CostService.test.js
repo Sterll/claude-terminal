@@ -186,6 +186,64 @@ describe('CostService', () => {
     expect(report.unpricedModels).toEqual(['mystery-model']);
   });
 
+  describe('weekly quota share', () => {
+    const DAY = 24 * HOUR;
+    const weekly = (utilization, resetsAt) => ({ buckets: [{ type: 'weekly', utilization, resetsAt: new Date(resetsAt).toISOString() }] });
+
+    test('with one reading it cannot tell this machine from the others', async () => {
+      const now = Date.now();
+      writeTranscript('/code/job', 's2', [assistantLine({ id: 'a', sessionId: 's2', t: now - 2 * DAY, output: 4e6 })]);
+      const estimate = await CostService.getQuotaEstimate({
+        accountId: WORK, utilization: 20, resetsAt: new Date(now + 2 * DAY).toISOString(),
+      });
+      expect(estimate.calibrated).toBe(false);
+      expect(estimate.spent).toBeCloseTo(100);
+      expect(estimate.thisMachineMax).toBe(20);
+      expect(estimate.othersMin).toBe(0);
+    });
+
+    test('a stretch where only this machine worked bounds everyone else from below', async () => {
+      const now = Date.now();
+      const resetsAt = now + 2 * DAY;
+      // Someone else took the account from 0% to 10% while this machine spent $10;
+      // then this machine alone spent $100 while it went from 10% to 20%.
+      writeTranscript('/code/job', 's2', [
+        assistantLine({ id: 'early', sessionId: 's2', t: now - 4 * DAY, output: 0.4e6 }),
+        assistantLine({ id: 'late', sessionId: 's2', t: now - 2 * DAY, output: 4e6 }),
+      ]);
+      CostService.noteUsageSample(WORK, weekly(10, resetsAt), now - 3 * DAY);
+      CostService.noteUsageSample(WORK, weekly(20, resetsAt), now - 1 * DAY);
+
+      const estimate = await CostService.getQuotaEstimate({ accountId: WORK });
+      expect(estimate.calibrated).toBe(true);
+      // $100 over a 10-point rise, widened by one point for rounding.
+      expect(estimate.pricePerPercentFloor).toBeCloseTo(100 / 11);
+      expect(estimate.thisMachineMax).toBeCloseTo(110 / (100 / 11));
+      expect(estimate.othersMin).toBeCloseTo(20 - 110 / (100 / 11));
+      expect(estimate.samples).toBe(2);
+    });
+
+    test('ignores rises too small to be more than rounding', async () => {
+      const now = Date.now();
+      const resetsAt = now + 2 * DAY;
+      writeTranscript('/code/job', 's2', [assistantLine({ id: 'x', sessionId: 's2', t: now - 2 * DAY, output: 4e6 })]);
+      CostService.noteUsageSample(WORK, weekly(10, resetsAt), now - 3 * DAY);
+      CostService.noteUsageSample(WORK, weekly(12, resetsAt), now - 1 * DAY);
+
+      const estimate = await CostService.getQuotaEstimate({ accountId: WORK });
+      // Only the window-opening pairs qualify, and the best of those runs to
+      // the latest reading, which cannot separate anyone.
+      expect(estimate.pricePerPercentFloor).toBeCloseTo(100 / 13);
+      expect(estimate.calibrated).toBe(false);
+    });
+
+    test('a reading of the machine-wide login is filed under the live account', () => {
+      CostService.noteUsageSample(null, weekly(5, Date.now() + DAY));
+      const saved = JSON.parse(fs.readFileSync(path.join(DATA, 'cost', 'usage-samples.json'), 'utf8'));
+      expect(Object.keys(saved.accounts)).toEqual([PERSONAL]);
+    });
+  });
+
   test('never overwrites an unreadable timeline', async () => {
     const file = path.join(DATA, 'cost', 'account-timeline.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });

@@ -519,6 +519,13 @@ async function fetchUsage(accountId, force = false) {
         console.log('[Usage] Fetched via API');
         mirrorToDisk(entry);
         if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
+        for (const cb of _sampleListeners) {
+          try {
+            cb(data, entry.accountId);
+          } catch (err) {
+            console.warn('[Usage] sample listener failed:', err.message);
+          }
+        }
         _maybeNotifyLimit(entry, data);
         return data;
       } catch (apiErr) {
@@ -743,6 +750,17 @@ function onWindowShow() {
   }
 }
 
+const _sampleListeners = [];
+
+/**
+ * Be handed every successful fetch, for every account. Unlike onUpdate, which
+ * has a single owner (the renderer push), any number of listeners may register.
+ * @param {(data: Object, accountId: string|null) => void} cb
+ */
+function onSample(cb) {
+  _sampleListeners.push(cb);
+}
+
 /**
  * Register a callback to receive usage data updates (push model)
  * @param {Function} cb - Called with usage data object
@@ -947,5 +965,6 @@ module.exports = {
   getFocusedAccount,
   onWindowShow,
   onUpdate,
+  onSample,
   onLimit
 };

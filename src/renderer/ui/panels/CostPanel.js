@@ -185,12 +185,12 @@ async function _load() {
 }
 
 /**
- * For every account with a weekly figure: what this machine spent since the
- * weekly window opened, against the percentage the usage API reports.
+ * For every account with a weekly figure: this machine's share of it. The
+ * estimate lives in main, which keeps every weekly reading it has seen.
  */
 async function _loadQuota(seq) {
   const api = window.electron_api;
-  if (!api?.cost || !_report) return;
+  if (!api?.cost?.getQuota || !_report) return;
   const accounts = _report.accounts || [];
   const targets = [];
 
@@ -213,12 +213,13 @@ async function _loadQuota(seq) {
   for (const target of targets) {
     const weekly = target.usage?.buckets?.find(b => b.type === 'weekly');
     if (!weekly?.resetsAt || typeof weekly.utilization !== 'number') continue;
-    const windowStart = Date.parse(weekly.resetsAt) - WEEK_MS;
-    if (!Number.isFinite(windowStart)) continue;
     try {
-      const report = await api.cost.getReport({ from: windowStart, accountId: target.accountId });
-      const spent = report?.totals?.cost || 0;
-      rows.push({ accountId: target.accountId, utilization: weekly.utilization, windowStart, spent });
+      const estimate = await api.cost.getQuota({
+        accountId: target.accountId,
+        utilization: weekly.utilization,
+        resetsAt: weekly.resetsAt,
+      });
+      if (estimate) rows.push(estimate);
     } catch {
       // One account failing leaves the others to show.
     }
@@ -227,6 +228,7 @@ async function _loadQuota(seq) {
   _quota = rows;
   _render();
 }
+
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
@@ -349,29 +351,59 @@ function _renderAccounts() {
     </section>`;
 }
 
+function _pct(value) {
+  const n = Number(value) || 0;
+  return new Intl.NumberFormat(_locale(), { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n);
+}
+
+function _renderQuotaRow(q) {
+  const info = _accountInfo(q.accountId);
+  const header = `
+    <div class="cost-quota-head">
+      <div class="cost-account-name"><span class="cost-dot" style="background:${info.color}"></span>${escapeHtml(info.name)}</div>
+      <div class="cost-quota-used">${escapeHtml(t('cost.quota.used', { percent: _pct(q.utilization), date: _shortDate(q.windowStart) }))}</div>
+    </div>`;
+
+  if (!(q.utilization > 0)) {
+    return `<div class="cost-quota-row">${header}<div class="cost-muted">${escapeHtml(t('cost.quota.notEnough'))}</div></div>`;
+  }
+
+  if (!q.calibrated || q.pricePerPercentFloor === null) {
+    return `
+      <div class="cost-quota-row">
+        ${header}
+        <div class="cost-bar cost-quota-bar"><div class="cost-bar-fill" style="width:${Math.min(100, q.utilization)}%;background:${info.color}"></div></div>
+        <div class="cost-quota-split"><span>${escapeHtml(t('cost.quota.spentOnly', { cost: _money(q.spent) }))}</span></div>
+        <div class="cost-muted">${escapeHtml(t('cost.quota.calibrating'))}</div>
+      </div>`;
+  }
+
+  const mine = q.thisMachineMax;
+  const others = q.othersMin;
+  return `
+    <div class="cost-quota-row">
+      ${header}
+      <div class="cost-bar cost-quota-bar">
+        <div class="cost-bar-fill" style="width:${Math.min(100, mine)}%;background:${info.color}"></div>
+        <div class="cost-bar-fill cost-bar-others" style="width:${Math.min(100, others)}%"></div>
+      </div>
+      <div class="cost-quota-split">
+        <span><span class="cost-dot" style="background:${info.color}"></span>${escapeHtml(t('cost.quota.thisMachine', { percent: _pct(mine), cost: _money(q.spent) }))}</span>
+        <span><span class="cost-dot cost-dot-others"></span>${escapeHtml(t('cost.quota.others', { percent: _pct(others) }))}</span>
+      </div>
+      <div class="cost-quota-price">
+        <span class="cost-quota-value">${escapeHtml(t('cost.quota.perPercent', { value: _money(q.pricePerPercentFloor) }))}</span>
+        <span class="cost-quota-week">${escapeHtml(t('cost.quota.fullWeek', { value: _money(q.pricePerPercentFloor * 100) }))}</span>
+      </div>
+      <div class="cost-quota-detail">${escapeHtml(t('cost.quota.samples', { count: q.samples }))}</div>
+    </div>`;
+}
+
 function _renderQuota() {
   const rows = _quota
     .filter(q => _accountFilter === 'all' || q.accountId === _accountFilter)
-    .map(q => {
-      const info = _accountInfo(q.accountId);
-      const perPercent = q.utilization > 0 ? q.spent / q.utilization : null;
-      return `
-        <div class="cost-quota-row">
-          <div class="cost-account-name"><span class="cost-dot" style="background:${info.color}"></span>${escapeHtml(info.name)}</div>
-          <div class="cost-quota-main">
-            ${perPercent === null
-    ? `<span class="cost-quota-value">${escapeHtml(t('cost.quota.notEnough'))}</span>`
-    : `<span class="cost-quota-value">${escapeHtml(t('cost.quota.perPercent', { value: _money(perPercent) }))}</span>
-               <span class="cost-quota-week">${escapeHtml(t('cost.quota.fullWeek', { value: _money(perPercent * 100) }))}</span>`}
-          </div>
-          <div class="cost-quota-detail">${escapeHtml(t('cost.quota.detail', {
-    percent: Math.round(q.utilization),
-    date: _shortDate(q.windowStart),
-    cost: _money(q.spent),
-  }))}</div>
-          ${_bar(q.utilization, info.color)}
-        </div>`;
-    }).join('');
+    .map(_renderQuotaRow)
+    .join('');
   return `
     <section class="cost-card">
       <h3>${escapeHtml(t('cost.sections.quota'))}</h3>
@@ -379,6 +411,7 @@ function _renderQuota() {
       ${rows ? `<p class="cost-muted cost-note">${escapeHtml(t('cost.quota.note'))}</p>` : ''}
     </section>`;
 }
+
 
 function _renderDaily() {
   const range = periodRange(_period);

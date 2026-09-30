@@ -70,24 +70,45 @@ describe('CostPanel rendering', () => {
     expect(root.textContent).toContain('Job <script>');
   });
 
-  test('turns the weekly percentage into dollars per percent', async () => {
+  test('splits the weekly percentage between this machine and everyone else', async () => {
+    const resetsAt = new Date(Date.now() + 2 * 86400e3).toISOString();
     window.electron_api.accounts.usage.mockResolvedValue({
       success: true,
-      data: {
-        a2: { data: { buckets: [{ type: 'weekly', utilization: 20, resetsAt: new Date(Date.now() + 2 * 86400e3).toISOString() }] } },
-      },
+      data: { a2: { data: { buckets: [{ type: 'weekly', utilization: 20, resetsAt }] } } },
+    });
+    window.electron_api.cost.getQuota = jest.fn().mockResolvedValue({
+      accountId: 'a2', utilization: 20, windowStart: Date.now() - 5 * 86400e3, spent: 110,
+      samples: 12, calibrated: true, pricePerPercentFloor: 10, thisMachineMax: 11, othersMin: 9,
     });
     const root = document.createElement('div');
     CostPanel.loadPanel(root);
     for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0));
 
-    // The mocked report says 75 dollars since the reset, against 20%.
-    const card = [...root.querySelectorAll('.cost-quota-row')];
-    expect(card).toHaveLength(1);
-    // Decimal separator follows the UI language.
-    expect(card[0].textContent).toMatch(/3[.,]75/);
-    const since = window.electron_api.cost.getReport.mock.calls.find(([arg]) => arg.accountId === 'a2')[0];
-    expect(since.from).toBeCloseTo(Date.now() - 5 * 86400e3, -5);
+    // The current reading travels with the request, so main records it.
+    expect(window.electron_api.cost.getQuota).toHaveBeenCalledWith({ accountId: 'a2', utilization: 20, resetsAt });
+    const rows = [...root.querySelectorAll('.cost-quota-row')];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelectorAll('.cost-quota-bar .cost-bar-fill')).toHaveLength(2);
+    expect(rows[0].querySelector('.cost-bar-others').style.width).toBe('9%');
+    expect(rows[0].textContent).toMatch(/11/);
+  });
+
+  test('says so when it cannot separate the shares yet', async () => {
+    window.electron_api.accounts.usage.mockResolvedValue({
+      success: true,
+      data: { a1: { data: { buckets: [{ type: 'weekly', utilization: 16, resetsAt: new Date(Date.now() + 86400e3).toISOString() }] } } },
+    });
+    window.electron_api.cost.getQuota = jest.fn().mockResolvedValue({
+      accountId: 'a1', utilization: 16, windowStart: Date.now() - 6 * 86400e3, spent: 60,
+      samples: 1, calibrated: false, pricePerPercentFloor: 3.5, thisMachineMax: 16, othersMin: 0,
+    });
+    const root = document.createElement('div');
+    CostPanel.loadPanel(root);
+    for (let i = 0; i < 5; i++) await new Promise(resolve => setTimeout(resolve, 0));
+
+    const row = root.querySelector('.cost-quota-row');
+    expect(row.querySelector('.cost-bar-others')).toBeNull();
+    expect(row.textContent).toContain(require('../../src/renderer/i18n').t('cost.quota.calibrating'));
   });
 
   test('asks the service again for the chosen account', async () => {
