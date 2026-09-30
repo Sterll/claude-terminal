@@ -13,6 +13,8 @@ const {
   resolveModelSelection,
   uncataloguedModelLabel,
   dedupeLegacy,
+  splitSuperseded,
+  legacyTier,
   hasOneMContext,
   normalizeModelRow,
   orderPrimary,
@@ -282,6 +284,152 @@ describe('orderPrimary', () => {
   });
 });
 
+// What CLI 0.3.284 returned on this account when it served its published
+// catalog (flag `tengu_delegated_quail`) instead of the compiled list: the
+// current lineup, then every older model it still accepts, with nothing in a
+// row to tell the two apart.
+const SERVED_CLI_MODELS = [
+  { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)', description: 'Opus 5.5 · Best for everyday, complex tasks' },
+  { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5', description: 'For complex work and everyday tasks' },
+  { value: 'claude-fable-5-1', resolvedModel: 'claude-fable-5-1', displayName: 'Fable 5.1', description: 'For your toughest challenges' },
+  { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5', description: 'Most efficient for simpler tasks' },
+  { value: 'haiku', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5', description: 'Fastest for quick answers' },
+  { value: 'claude-sonnet-5', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet 5', description: 'Efficient for routine tasks' },
+  { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5', description: 'Most capable for your hardest and longest-running tasks' },
+  { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-opus-4-7', resolvedModel: 'claude-opus-4-7', displayName: 'Opus 4.7', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-opus-4-6', resolvedModel: 'claude-opus-4-6', displayName: 'Opus 4.6', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-sonnet-4-6', resolvedModel: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6', description: 'Efficient for routine tasks' },
+];
+const SERVED_OLDER = ['claude-sonnet-5', 'claude-opus-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'];
+
+// The pipeline ModelCatalogService._shape runs on every read.
+function tiers(raw) {
+  const { current, superseded } = splitSuperseded(dropDefaultAlias(raw).map(normalizeModelRow));
+  const primary = orderPrimary(current);
+  return { primary, legacy: legacyTier(primary, superseded) };
+}
+
+describe('splitSuperseded', () => {
+  test('takes the older models a served catalog appends out of the lineup', () => {
+    const { current, superseded } = splitSuperseded(dropDefaultAlias(SERVED_CLI_MODELS));
+    expect(current.map(m => m.value)).toEqual(['opus', 'claude-fable-5-1', 'sonnet', 'haiku']);
+    expect(superseded.map(m => m.value)).toEqual(SERVED_OLDER);
+  });
+
+  test('gives the compiled list back untouched', () => {
+    // One version per family, which is every catalog the CLI built before it
+    // could serve one. Nothing to demote, and order is preserved.
+    const { current, superseded } = splitSuperseded(MENU_MODELS);
+    expect(current).toEqual(MENU_MODELS);
+    expect(superseded).toEqual([]);
+  });
+
+  test('never demotes an alias row, even one pointing at an older version', () => {
+    // ANTHROPIC_DEFAULT_OPUS_MODEL=claude-opus-4-8 remaps the alias on purpose.
+    const rows = [
+      { value: 'opus', resolvedModel: 'claude-opus-4-8' },
+      { value: 'claude-opus-5-5', resolvedModel: 'claude-opus-5-5' },
+    ];
+    expect(splitSuperseded(rows).superseded).toEqual([]);
+  });
+
+  test('keeps both context builds of one version', () => {
+    const rows = [
+      { value: 'opus', resolvedModel: 'claude-opus-5-5' },
+      { value: 'opus[1m]', resolvedModel: 'claude-opus-5-5[1m]' },
+      { value: 'claude-opus-5-5[1m]', resolvedModel: 'claude-opus-5-5[1m]' },
+    ];
+    expect(splitSuperseded(rows).superseded).toEqual([]);
+  });
+
+  test('compares minor versions, and ignores a trailing date', () => {
+    const rows = [
+      { value: 'claude-haiku-4-5-20251001' },
+      { value: 'claude-haiku-4-6' },
+      { value: 'claude-opus-4-10' },
+      { value: 'claude-opus-4-8' },
+    ];
+    expect(splitSuperseded(rows).superseded.map(m => m.value))
+      .toEqual(['claude-haiku-4-5-20251001', 'claude-opus-4-8']);
+  });
+
+  test('leaves an id it cannot place where the CLI put it', () => {
+    const rows = [
+      { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5' },
+      { value: 'us.anthropic.claude-sonnet-4-6' },
+      { value: 'mystery-model' },
+    ];
+    expect(splitSuperseded(rows).current).toEqual(rows);
+  });
+
+  test('tolerates missing arguments', () => {
+    expect(splitSuperseded(null)).toEqual({ current: [], superseded: [] });
+  });
+});
+
+describe('legacyTier', () => {
+  test('a served catalog fills More models instead of the primary menu', () => {
+    const { primary, legacy } = tiers(SERVED_CLI_MODELS);
+
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.1', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 4.5']);
+    for (const id of SERVED_OLDER) {
+      expect(legacy.filter(m => baseModelId(m.value) === id)).toHaveLength(1);
+    }
+  });
+
+  test('a served catalog and the compiled one produce the same menus', () => {
+    // What the compiled list looked like on the same CLI, the same day.
+    const compiled = [
+      SERVED_CLI_MODELS[0],
+      { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus', description: 'Opus 5.5 · Best for everyday, complex tasks' },
+      { value: 'claude-fable-5-1[1m]', resolvedModel: 'claude-fable-5-1', displayName: 'Fable', description: 'Fable 5.1 · Most capable for your hardest and longest-running tasks' },
+      { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet', description: 'Sonnet 5.5 · Efficient for routine tasks' },
+      { value: 'haiku', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku', description: 'Haiku 4.5 · Fastest for quick answers' },
+    ];
+    const names = ({ primary, legacy }) => ({
+      primary: primary.map(m => m.displayName),
+      legacy: legacy.map(m => baseModelId(m.value)).sort(),
+    });
+    // The curated list may lack a model the served catalog carries; that row
+    // is the only difference allowed, and only in More models.
+    const served = names(tiers(SERVED_CLI_MODELS));
+    const fromCompiled = names(tiers(compiled));
+    expect(served.primary).toEqual(fromCompiled.primary);
+    expect(fromCompiled.legacy.every(id => served.legacy.includes(id))).toBe(true);
+  });
+
+  test('prefers the curated row to the CLI one', () => {
+    const { legacy } = tiers(SERVED_CLI_MODELS);
+    const curated = LEGACY_MODELS.find(m => m.value === 'claude-opus-4-8');
+    expect(legacy.find(m => m.value === 'claude-opus-4-8')).toBe(curated);
+  });
+
+  test('files a CLI-only row with its own family', () => {
+    const extra = { value: 'claude-opus-4-5', resolvedModel: 'claude-opus-4-5', displayName: 'Opus 4.5' };
+    const legacy = legacyTier([], [extra]);
+    const at = legacy.indexOf(extra);
+    expect(at).toBeGreaterThan(-1);
+    expect(legacy.slice(at + 1).some(m => modelFamily(m) === 'opus')).toBe(false);
+    expect(legacy.slice(at + 1).every(m => modelFamily(m) !== 'fable')).toBe(true);
+  });
+
+  test('never lists one model in both menus', () => {
+    // An alias remapped onto the model an explicit row also names.
+    const primary = [
+      { value: 'opus', resolvedModel: 'claude-opus-4-8' },
+      { value: 'claude-opus-5-5', resolvedModel: 'claude-opus-5-5' },
+    ];
+    const superseded = [{ value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8' }];
+    expect(legacyTier(primary, superseded).find(m => baseModelId(m.value) === 'claude-opus-4-8')).toBeUndefined();
+  });
+
+  test('with nothing superseded it is the curated tier', () => {
+    expect(legacyTier(MENU_MODELS, [])).toEqual(dedupeLegacy(MENU_MODELS, LEGACY_MODELS));
+  });
+});
+
 describe('dedupeLegacy', () => {
   test('drops a legacy entry the primary tier already covers', () => {
     const primary = [{ value: 'claude-opus-4-8', displayName: 'Opus 4.8' }];
@@ -299,18 +447,20 @@ describe('dedupeLegacy', () => {
   });
 
   test('keeps the whole legacy tier when nothing overlaps', () => {
-    const primary = [{ value: 'sonnet', resolvedModel: 'claude-sonnet-5' }];
+    const primary = [{ value: 'sonnet', resolvedModel: 'claude-sonnet-5-5' }];
     expect(dedupeLegacy(primary, LEGACY_MODELS)).toHaveLength(LEGACY_MODELS.length);
   });
 
   test('hides a legacy row the CLI has not stopped advertising yet', () => {
     // The state every install is in between an app release and the SDK bump
-    // that follows it: Opus 5 sits in the legacy tier because Opus 5.5 replaced
-    // it, while the bundled CLI still lists Opus 5 as primary. It must appear
-    // once, in the tier the CLI puts it in, not in both menus at once.
+    // that follows it: Opus 5 and Sonnet 5 sit in the legacy tier because
+    // Opus 5.5 and Sonnet 5.5 replaced them, while the bundled CLI still lists
+    // both as primary. Each must appear once, in the tier the CLI puts it in,
+    // not in both menus at once.
     const result = dedupeLegacy(MENU_MODELS, LEGACY_MODELS);
     expect(result.find(m => m.value === 'claude-opus-5')).toBeUndefined();
-    expect(result).toHaveLength(LEGACY_MODELS.length - 1);
+    expect(result.find(m => m.value === 'claude-sonnet-5')).toBeUndefined();
+    expect(result).toHaveLength(LEGACY_MODELS.length - 2);
   });
 
   test('tolerates missing arguments', () => {
@@ -394,21 +544,24 @@ describe('catalog contents', () => {
     expect(FALLBACK_PRIMARY.some(m => modelTier(m) === 'standard')).toBe(true);
   });
 
-  test('the workflow node accepts the current Fable and Opus ids', () => {
+  test('the workflow node accepts the current Fable, Opus and Sonnet ids', () => {
     // Regression guard: this list gates `claude` node validation, and an id
     // missing from it is not rejected — `claude.node.js` silently swaps it for
     // null, so the automation runs on the inherited model without saying so.
     // Fable 5.1 was rejected that way while only Fable 5 was listed.
     expect(CLAUDE_MODEL_VALUES).toContain('claude-fable-5-1');
     expect(CLAUDE_MODEL_VALUES).toContain('claude-opus-5-5');
+    expect(CLAUDE_MODEL_VALUES).toContain('claude-sonnet-5-5');
   });
 
   test('a model demoted to the legacy tier stays selectable everywhere else', () => {
-    // Moving Opus 5 into "More models" must not take it out of the workflow
-    // node's accepted values: existing automations still name it.
-    expect(LEGACY_MODELS.find(m => m.value === 'claude-opus-5')).toBeDefined();
-    expect(CLAUDE_MODEL_VALUES).toContain('claude-opus-5');
-    expect(MODEL_OPTIONS.find(o => o.value === 'claude-opus-5')).toBeDefined();
+    // Moving Opus 5 or Sonnet 5 into "More models" must not take it out of the
+    // workflow node's accepted values: existing automations still name it.
+    for (const id of ['claude-opus-5', 'claude-sonnet-5']) {
+      expect(LEGACY_MODELS.find(m => m.value === id)).toBeDefined();
+      expect(CLAUDE_MODEL_VALUES).toContain(id);
+      expect(MODEL_OPTIONS.find(o => o.value === id)).toBeDefined();
+    }
   });
 
   test('every catalog row carries what the picker renders', () => {

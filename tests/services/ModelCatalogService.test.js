@@ -127,6 +127,27 @@ describe('fetching', () => {
     expect(catalog.legacy.find(m => m.value === 'claude-fable-5')).toBeUndefined();
   });
 
+  test('files the older models a served catalog appends under More models', async () => {
+    // The CLI can serve a published catalog instead of its compiled list, and
+    // that one appends every older model after the current lineup, with no
+    // field saying which part a row came from.
+    const svc = makeService();
+    svc.setFetcher(async () => ({
+      models: [
+        { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5', description: 'For complex work' },
+        { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5', description: 'Most efficient' },
+        { value: 'claude-sonnet-5', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet 5', description: 'Efficient for routine tasks' },
+        { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', description: 'Best for everyday, complex tasks' },
+      ],
+    }));
+
+    const catalog = await svc.getCatalog();
+
+    expect(catalog.primary.map(m => m.value)).toEqual(['opus', 'sonnet']);
+    expect(catalog.legacy.find(m => m.value === 'claude-sonnet-5')).toBeDefined();
+    expect(catalog.legacy.find(m => m.value === 'claude-opus-4-8')).toBeDefined();
+  });
+
   test('collapses concurrent callers onto a single spawn', async () => {
     const svc = makeService();
     const fetcher = jest.fn(async () => ({ models: CLI_MODELS }));
