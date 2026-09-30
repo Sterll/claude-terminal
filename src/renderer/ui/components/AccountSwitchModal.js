@@ -167,7 +167,9 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
         } else {
           const res = await api.accounts.setDefault(id);
           if (!res.success) {
-            row.disabled = false;
+            // The figures may have landed while the switch was in flight and
+            // greyed this row out; a failed switch must not undo that.
+            if (!row.classList.contains('unavailable')) row.disabled = false;
             alert(res.error || 'Switch failed');
             return;
           }

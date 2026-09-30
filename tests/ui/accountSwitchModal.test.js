@@ -181,6 +181,33 @@ describe('account switch offer', () => {
     expect(setProjectAccount).toHaveBeenCalledWith('p1', 'acc-b');
   });
 
+  test('a failed switch does not re-enable a row the figures greyed out meanwhile', async () => {
+    mockApi();
+    let failSwitch;
+    window.electron_api.accounts.setDefault = jest.fn(() => new Promise((resolve) => { failSwitch = resolve; }));
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const { row } = await open({ projectId: null });
+    const bRow = row('acc-b');
+    bRow.click();
+    await arrive({ 'acc-b': figures('acc-b', session(100)) });
+    failSwitch({ success: false, error: 'nope' });
+    await flush();
+    expect(bRow.classList.contains('unavailable')).toBe(true);
+    expect(bRow.disabled).toBe(true);
+    alertSpy.mockRestore();
+  });
+
+  test('a failed switch leaves a pickable row pickable', async () => {
+    mockApi();
+    window.electron_api.accounts.setDefault = jest.fn(async () => ({ success: false, error: 'nope' }));
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    const { row } = await open({ projectId: null });
+    row('acc-b').click();
+    await flush();
+    expect(row('acc-b').disabled).toBe(false);
+    alertSpy.mockRestore();
+  });
+
   test('figures that land after the offer was answered touch nothing', async () => {
     mockApi();
     const { pending, row } = await open();
