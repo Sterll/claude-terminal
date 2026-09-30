@@ -7,6 +7,12 @@
  * used to do, and what would now interrupt work that had nothing to do with
  * the limit.
  *
+ * Each row carries that account's usage figures, and an account that cannot
+ * take the conversation is greyed out and refuses the click: the one that
+ * just ran out, and any other whose figures show a limit this conversation
+ * needs is full. The choice used to be made on names alone, which is how a
+ * switch landed on an account that was spent too.
+ *
  * Returns the chosen account id, or null if the user cancelled.
  */
 
@@ -15,6 +21,13 @@ const { escapeHtml } = require('../../utils/dom');
 const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
 const { setProjectAccount } = require('../../state/projects.state');
+const { buildAccountUsageHtml, blockingLimit, formatBucketReset } = require('./accountUsage');
+
+// How old an account's figures may be before the offer asks again. Settings
+// accepts five minutes because it redraws on every rename; here the question
+// is whether an account can take a turn right now, and five minutes is enough
+// to go from 97% to full. One call per account, once per limit hit.
+const USAGE_MAX_AGE_MS = 60 * 1000;
 
 function formatRelative(iso) {
   if (!iso) return '';
@@ -29,6 +42,8 @@ function formatRelative(iso) {
   return `${Math.round(hrs / 24)}d ago`;
 }
 
+// The account that hit the limit is greyed out from the start, while the
+// others wait on their figures: it is unavailable whatever those say.
 function buildAccountRow(account, isLimited) {
   const lastUsed = account.lastUsedAt ? formatRelative(account.lastUsedAt) : '';
   const color = sanitizeColor(account.color);
@@ -36,15 +51,30 @@ function buildAccountRow(account, isLimited) {
     ? `<span class="account-row-dot" style="background:${color}"></span>`
     : '<span class="account-row-dot account-row-dot--none"></span>';
   return `
-    <button class="account-row${isLimited ? ' active' : ''}" data-id="${account.id}" ${isLimited ? 'disabled' : ''}>
+    <button class="account-row${isLimited ? ' unavailable' : ''}" data-id="${escapeHtml(account.id)}" ${isLimited ? 'disabled' : ''}>
       ${dot}
       <div class="account-row-main">
         <div class="account-row-name">${escapeHtml(account.name)}</div>
         <div class="account-row-meta">${escapeHtml(account.fingerprint?.slice(0, 8) || '')}${lastUsed ? ` &middot; ${escapeHtml(lastUsed)}` : ''}</div>
       </div>
       <div class="account-row-status">${isLimited ? escapeHtml(t('accounts.limited') || 'Limit reached') : escapeHtml(t('accounts.useForProject') || 'Use here')}</div>
+      <div class="account-switch-usage">${buildAccountUsageHtml(null)}</div>
     </button>
   `;
+}
+
+/**
+ * Grey a row out and say when it comes back, if the figures know.
+ * @param {HTMLButtonElement} row
+ * @param {Object|null} bucket - the limit holding it, when known
+ */
+function markUnavailable(row, bucket) {
+  row.disabled = true;
+  row.classList.add('unavailable');
+  const status = row.querySelector('.account-row-status');
+  if (status) status.textContent = t('accounts.limited') || 'Limit reached';
+  const until = bucket ? formatBucketReset(bucket) : '';
+  if (until) row.title = t('accounts.limitedUntil', { time: until });
 }
 
 /**
@@ -59,8 +89,11 @@ function buildAccountRow(account, isLimited) {
  *                                          account, since there is nothing to
  *                                          pin the decision to.
  * @param {string} [opts.projectName]
+ * @param {string} [opts.model]             Model the conversation runs on,
+ *                                          which decides whether a limit
+ *                                          scoped to one model applies.
  */
-async function showAccountSwitchModal({ reason, activeAccountId, projectId = null, projectName = '' } = {}) {
+async function showAccountSwitchModal({ reason, activeAccountId, projectId = null, projectName = '', model = null } = {}) {
   const api = window.electron_api;
   const list = await api.accounts.list();
   if (!list.success) {
@@ -106,6 +139,7 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
         ${reasonHtml}
         ${scopeHtml}
         ${listHtml}
+        <div class="account-switch-note" hidden></div>
         <div class="account-switch-actions">
           <button class="btn btn-secondary" data-extra="capture">${escapeHtml(t('accounts.captureCurrent') || 'Save current as new account')}</button>
         </div>
@@ -133,7 +167,9 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
         } else {
           const res = await api.accounts.setDefault(id);
           if (!res.success) {
-            row.disabled = false;
+            // The figures may have landed while the switch was in flight and
+            // greyed this row out; a failed switch must not undo that.
+            if (!row.classList.contains('unavailable')) row.disabled = false;
             alert(res.error || 'Switch failed');
             return;
           }
@@ -166,6 +202,57 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
     }
 
     showModal(modal);
+
+    // Figures come after the list rather than before it: the sweep waits on
+    // every account's API call, up to five seconds each, and the offer is what
+    // the user is waiting on. A row stays clickable while its figures load.
+    // Rows are never reordered once they arrive, since that would move the one
+    // under the pointer.
+    if (accounts.length && typeof api.accounts.usage === 'function') {
+      api.accounts.usage(USAGE_MAX_AGE_MS).then((res) => {
+        if (resolved) return;
+        paintUsage(res?.success ? (res.data || {}) : null);
+      }).catch((err) => {
+        console.warn('[AccountSwitchModal] usage failed:', err?.message);
+        if (!resolved) paintUsage(null);
+      });
+    }
+
+    /** @param {Object|null} usageById - null when the sweep itself failed */
+    function paintUsage(usageById) {
+      const blockers = [];
+      let selectable = 0;
+      for (const row of modal.querySelectorAll('.account-row[data-id]')) {
+        const id = row.dataset.id;
+        const usage = usageById?.[id];
+        const slot = row.querySelector('.account-switch-usage');
+        // A failed sweep says nothing about any account, so the rows lose
+        // their loading line rather than claiming every one is signed out.
+        if (slot) slot.innerHTML = usageById ? buildAccountUsageHtml(usage) : '';
+        const bucket = blockingLimit(usage, { model });
+        if (!bucket && id !== limitedId) {
+          selectable += 1;
+          continue;
+        }
+        markUnavailable(row, bucket);
+        blockers.push(bucket);
+      }
+      // Nowhere to go, so say when that changes: it is the only thing left to
+      // decide on. Unknown figures leave a row selectable, so this never
+      // fires over an account that merely could not be read.
+      const note = modal.querySelector('.account-switch-note');
+      if (!note || selectable || !blockers.length) return;
+      // A time only when every account has one: an account that ran out
+      // without a full bar to show for it could be back at any moment.
+      const known = blockers.every(b => b && formatBucketReset(b));
+      const first = known
+        ? blockers.slice().sort((a, b) => new Date(a.resetsAt) - new Date(b.resetsAt))[0]
+        : null;
+      note.textContent = first
+        ? t('accounts.allLimitedUntil', { time: formatBucketReset(first) })
+        : (t('accounts.allLimited') || 'Every saved account has hit a limit.');
+      note.hidden = false;
+    }
   });
 }
 

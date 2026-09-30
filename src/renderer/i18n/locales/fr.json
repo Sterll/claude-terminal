@@ -4035,7 +4035,10 @@
     "usageLoading": "Lecture de la consommation…",
     "usageUnavailable": "Consommation indisponible — lancez « claude /login » sur ce compte",
     "usageStale": "L'API n'a pas pu confirmer ces chiffres",
-    "usageRefresh": "Actualiser la consommation"
+    "usageRefresh": "Actualiser la consommation",
+    "limitedUntil": "Disponible à nouveau dans {time}",
+    "allLimited": "Tous les comptes enregistrés ont atteint une limite.",
+    "allLimitedUntil": "Tous les comptes enregistrés ont atteint une limite. Le premier redevient disponible dans {time}."
   },
   "usage": {
     "staleRetry": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. Prochaine tentative à {time} ; cliquez pour réessayer maintenant. {error}",

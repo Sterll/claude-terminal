@@ -4035,7 +4035,10 @@
     "usageLoading": "Reading usage…",
     "usageUnavailable": "Usage unavailable — run \"claude /login\" on this account",
     "usageStale": "The API could not confirm these figures",
-    "usageRefresh": "Refresh usage"
+    "usageRefresh": "Refresh usage",
+    "limitedUntil": "Available again in {time}",
+    "allLimited": "Every saved account has hit a limit.",
+    "allLimitedUntil": "Every saved account has hit a limit. The first one is available again in {time}."
   },
   "usage": {
     "staleRetry": "Usage data may be out of date - the last refresh failed. Next attempt at {time}; click to try now. {error}",

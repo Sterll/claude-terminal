@@ -13,6 +13,7 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 
 const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
 const { getProjectsForAccount } = require('../../state/projects.state');
+const { buildAccountUsageHtml } = require('../components/accountUsage');
 
 // ── Settings search ──
 //
@@ -218,82 +219,6 @@ function renderAgentColorRow(key, label, badge, color) {
       ${badge ? `<span class="agent-color-badge">${escapeHtml(badge)}</span>` : ''}
       <input type="color" class="agent-color-input" value="${color || '#6366f1'}" ${color ? '' : 'data-unset="true"'}>
       ${color ? `<button class="agent-color-reset" title="${t('settings.agentColorReset')}">×</button>` : ''}
-    </div>`;
-}
-
-/**
- * How long until a limit window resets, in the same compact form the titlebar
- * uses. Empty once the window has passed — a countdown at zero says nothing.
- * @param {string|null} iso
- * @returns {string}
- */
-function formatUsageReset(iso) {
-  if (!iso) return '';
-  const target = new Date(iso).getTime();
-  if (Number.isNaN(target)) return '';
-  const remaining = target - Date.now();
-  if (remaining <= 0) return '';
-  const dayUnit = getCurrentLanguage() === 'fr' ? 'j' : 'd';
-  const d = Math.floor(remaining / 86400000);
-  const h = Math.floor((remaining % 86400000) / 3600000);
-  const m = Math.floor((remaining % 3600000) / 60000);
-  if (d > 0) return `${d}${dayUnit} ${h}h`;
-  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}min`;
-  return `${m}min`;
-}
-
-/**
- * One usage bucket, in the markup the titlebar bars already use so both read
- * the same: blue for the session window, purple for the weekly one, and the
- * warning / danger tints above 70% and 90%.
- *
- * A scoped bucket is named by the API, so its label is escaped rather than
- * translated — it is data, not a string we ship.
- *
- * @param {Object} bucket
- * @returns {string}
- */
-function buildUsageBucketHtml(bucket) {
-  const percent = typeof bucket.utilization === 'number' ? Math.round(bucket.utilization) : null;
-  const level = percent === null ? '' : percent >= 90 ? ' danger' : percent >= 70 ? ' warning' : '';
-  const label = bucket.labelKey ? t(bucket.labelKey) : (bucket.label || '');
-  const reset = formatUsageReset(bucket.resetsAt);
-  return `
-    <div class="usage-item" data-type="${escapeHtml(bucket.type || '')}">
-      <div class="usage-header">
-        <span class="usage-label">${escapeHtml(label)}</span>
-        <span class="usage-value">
-          <span class="usage-percent">${percent === null ? '--' : `${percent}%`}</span>
-          <span class="usage-reset">${escapeHtml(reset)}</span>
-        </span>
-      </div>
-      <div class="usage-bar-container">
-        <div class="usage-bar${level}" style="width: ${Math.min(percent ?? 0, 100)}%"></div>
-      </div>
-    </div>`;
-}
-
-/**
- * The usage strip under an account row.
- *
- * An account nobody has run lately has no usable token of its own, and no
- * amount of retrying will produce one — so that case says what to do about it
- * rather than showing bars stuck at zero, which would read as "plenty left".
- *
- * @param {Object|null|undefined} usage - one entry of the accounts-usage map
- * @returns {string}
- */
-function buildAccountUsageHtml(usage) {
-  if (!usage) {
-    return `<div class="account-usage-note">${escapeHtml(t('accounts.usageLoading') || 'Reading usage…')}</div>`;
-  }
-  const buckets = usage.data?.buckets;
-  if (!Array.isArray(buckets) || !buckets.length) {
-    return `<div class="account-usage-note" title="${escapeHtml(usage.error || '')}">${escapeHtml(t('accounts.usageUnavailable') || 'Usage unavailable — run "claude /login" on this account')}</div>`;
-  }
-  return `
-    <div class="account-usage-bars${usage.stale ? ' stale' : ''}"${usage.stale ? ` title="${escapeHtml(t('accounts.usageStale') || 'The API could not confirm these figures')}"` : ''}>
-      ${buckets.map(buildUsageBucketHtml).join('')}
     </div>`;
 }
 

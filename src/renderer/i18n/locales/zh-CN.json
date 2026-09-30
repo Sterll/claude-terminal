@@ -4035,7 +4035,10 @@
     "usageLoading": "正在读取用量…",
     "usageUnavailable": "无法获取用量 — 请对该账号运行 \"claude /login\"",
     "usageStale": "API 无法确认这些数据",
-    "usageRefresh": "刷新用量"
+    "usageRefresh": "刷新用量",
+    "limitedUntil": "{time} 后可再次使用",
+    "allLimited": "所有已保存的账号都已达到上限。",
+    "allLimitedUntil": "所有已保存的账号都已达到上限。最早的一个将在 {time} 后恢复可用。"
   },
   "usage": {
     "staleRetry": "使用情况数据可能已过时 - 上次刷新失败。下次尝试时间 {time}；点击可立即重试。 {error}",
