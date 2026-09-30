@@ -4,12 +4,17 @@
  * Builds the two-tier model catalog the chat picker renders:
  *
  *   primary — whatever the Claude CLI advertises for this account
- *             (`initializationResult().models`), minus its `default` alias.
- *             Follows CLI upgrades on its own, which is the whole point:
- *             hard-coded lists went stale the day Fable 5.1 shipped.
+ *             (`initializationResult().models`), minus its `default` alias
+ *             and minus the older models a newer version of their family
+ *             replaces (`splitSuperseded`). Follows CLI upgrades on its own,
+ *             which is the whole point: hard-coded lists went stale the day
+ *             Fable 5.1 shipped.
  *   legacy  — the hand-curated `LEGACY_MODELS` list, minus anything the
- *             primary tier already covers. The CLI drops older models from its
- *             menu but still accepts their ids, so these stay usable.
+ *             primary tier already covers, plus those replaced rows. The CLI
+ *             drops older models from its compiled menu but still accepts
+ *             their ids, so these stay usable; the catalog it can serve
+ *             instead lists them after the current lineup, with nothing in
+ *             the row to say so.
  *
  * Alongside them, `recommended` names the model the CLI's `default` row points
  * at. The picker shows that model by name when nothing has been chosen, rather
@@ -48,9 +53,9 @@ const path = require('path');
 
 const { dataDir, ensureDataDir } = require('../utils/paths');
 const {
-  LEGACY_MODELS,
   FALLBACK_PRIMARY,
-  dedupeLegacy,
+  splitSuperseded,
+  legacyTier,
   dropDefaultAlias,
   normalizeModelRow,
   orderPrimary,
@@ -206,10 +211,11 @@ class ModelCatalogService {
     // of its entries — a menu line reading "Default (recommended)" says less
     // than the name of the model it stands for.
     const recommended = recommendedModelId(raw);
-    const primary = orderPrimary(dropDefaultAlias(raw).map(normalizeModelRow));
+    const { current, superseded } = splitSuperseded(dropDefaultAlias(raw).map(normalizeModelRow));
+    const primary = orderPrimary(current);
     return {
       primary,
-      legacy: dedupeLegacy(primary, LEGACY_MODELS),
+      legacy: legacyTier(primary, superseded),
       recommended,
       fetchedAt: usingFallback ? null : cache.fetchedAt,
       source: usingFallback ? 'fallback' : source,
