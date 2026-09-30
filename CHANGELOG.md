@@ -2,6 +2,29 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.5] - 2026-09-30
+
+### Added
+- **Database**: connect to a Redis server over TLS, as an ACL user, or straight from a connection URL
+- **Database**: a Redis server overview sits beside the key tree, the query tab is wider, and commands and keys now autocomplete
+- **Database**: every Redis value type can be browsed a page at a time, and a key can be edited, given a new expiry, renamed or deleted in place
+- **Accounts**: the limit switch offer shows each account's usage, with accounts that are already spent greyed out (#225)
+- **Chat**: Sonnet 5.5 joins the model picker, Sonnet 5 moves down to "More models", and the SDK moves to 0.3.284 (#226)
+- **i18n**: Brazilian Portuguese (pt-BR) is now available (#222)
+- **Linux**: `npm install` adds a source checkout entry to the application menu (#223, contributed by @policarpojonathan)
+
+### Changed
+- Database: the Redis key tree is capped and repaints on its own, keeping large databases responsive
+
+### Fixed
+- Chat: a model a served catalog appends after the usual list now files correctly under "More models" instead of the main list (#228)
+- Chat: a catalog row is labelled by the model it actually resolves to
+- Database: browsing a Redis connection now shows the database it was configured for, instead of always the cache
+- Database (MCP tools): the configured Redis database is reported correctly, no longer selecting from the cache
+- Terminal, Notifications (Linux): Wayland notifications stay clickable and the glyph atlas repaints correctly, without affecting other platforms
+- Terminal (Linux): the glyph atlas repaints when the window regains focus, and Wayland toasts no longer steal focus from the app (#221)
+- Sessions: a worktree name with braces in it now displays without the stray characters
+
 ## [1.3.4] - 2026-09-23
 
 ### Added
