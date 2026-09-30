@@ -113,10 +113,35 @@ function _moveHtml(move) {
 }
 
 /**
+ * Take off what only makes sense on the GitHub release page.
+ *
+ * The notes open on a `# Claude Terminal vX` title, which the modal title
+ * already says, and a row of shields.io badges (version, platforms) that
+ * read as noise once the update is on this machine. Both sit above the first
+ * `##` section; nothing below it is touched, so the "New" / "Fixed" badges
+ * that label sections stay.
+ */
+function tidyNotes(md) {
+  const lines = String(md || '').split(/\r?\n/);
+  let end = lines.findIndex(l => /^##\s/.test(l));
+  if (end === -1) end = lines.length;
+  let titleDropped = false;
+  return lines.filter((line, i) => {
+    if (i >= end) return true;
+    if (!titleDropped && /^#\s/.test(line)) {
+      titleDropped = true;
+      return false;
+    }
+    return !/^\s*(!\[[^\]]*\]\([^)]*\)\s*)+$/.test(line);
+  }).join('\n').trim();
+}
+
+/**
  * Build the panel body. The notes are optional: offline, the moves alone are
  * still worth showing, and an empty shell would not be.
  */
-function buildHtml(moves, notes) {
+function buildHtml(moves, rawNotes) {
+  const notes = rawNotes ? tidyNotes(rawNotes) : '';
   const movesSection = moves.length
     ? `<div class="whats-new-section">
         <h3 class="whats-new-section-title">${escapeHtml(t('whatsNew.movedTitle'))}</h3>
@@ -127,11 +152,24 @@ function buildHtml(moves, notes) {
   const notesSection = notes
     ? `<div class="whats-new-section">
         <h3 class="whats-new-section-title">${escapeHtml(t('whatsNew.notesTitle'))}</h3>
-        <div class="whats-new-notes markdown-body">${markdown.render(notes)}</div>
+        <div class="whats-new-notes chat-msg-content">${markdown.render(notes)}</div>
       </div>`
     : `<div class="whats-new-offline">${escapeHtml(t('whatsNew.notesUnavailable'))}</div>`;
 
   return `<div class="whats-new">${movesSection}${notesSection}</div>`;
+}
+
+/**
+ * The release notes are written for GitHub: a centred header of badges, then
+ * the headline items in a two-column table. At the modal's default 500 px that
+ * table wraps a few words per line, so the panel asks for more room;
+ * closeModal() takes the class off again.
+ */
+const MODAL_CLASS = 'modal--whats-new';
+
+function _open(showModal, title, html, footer) {
+  showModal(title, html, footer);
+  document.getElementById('modal')?.classList.add(MODAL_CLASS);
 }
 
 /** Wire the "take me there" buttons, then close the panel behind them. */
@@ -190,7 +228,8 @@ async function maybeShow({ showModal, closeModal, hasHistory }) {
   // empty window on someone who just wanted to get to work.
   if (!moves.length && !notes) return false;
 
-  showModal(
+  _open(
+    showModal,
     t('whatsNew.title', { version: current }),
     buildHtml(moves, notes),
     `<button class="btn-primary" id="whats-new-close">${escapeHtml(t('whatsNew.gotIt'))}</button>`
@@ -202,8 +241,39 @@ async function maybeShow({ showModal, closeModal, hasHistory }) {
   return true;
 }
 
+/**
+ * The update banner's "What's new": the notes of a version that is downloaded
+ * but not installed yet. Same panel as after the restart, minus the moves
+ * (they describe the running version, not the pending one), and it keeps the
+ * install button within reach so reading the notes is not a detour.
+ *
+ * @param {Object} opts
+ * @param {string} opts.version - the downloaded version
+ * @param {string} opts.notes - its release notes, as markdown
+ * @param {(title: string, html: string, footer: string) => void} opts.showModal
+ * @param {() => void} opts.closeModal
+ * @param {() => void} [opts.onInstall]
+ */
+function showReleaseNotes({ version, notes, showModal, closeModal, onInstall }) {
+  const install = onInstall
+    ? `<button class="btn-primary" id="whats-new-install">${escapeHtml(t('updates.restartToUpdate'))}</button>`
+    : '';
+  _open(
+    showModal,
+    t('whatsNew.title', { version }),
+    buildHtml([], notes),
+    `<button class="btn-secondary" id="whats-new-close">${escapeHtml(t('common.close'))}</button>${install}`
+  );
+  document.getElementById('whats-new-close')?.addEventListener('click', closeModal);
+  document.getElementById('whats-new-install')?.addEventListener('click', () => {
+    closeModal();
+    onInstall();
+  });
+}
+
 module.exports = {
   maybeShow,
+  showReleaseNotes,
   setCallbacks,
   // Exported for the tests: the version arithmetic is the part that decides
   // whether anyone ever sees this.
@@ -211,5 +281,6 @@ module.exports = {
   movesBetween,
   shouldShow,
   buildHtml,
+  tidyNotes,
   MOVES,
 };

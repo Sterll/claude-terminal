@@ -90,8 +90,83 @@ describe('buildHtml', () => {
   });
 
   test('renders the notes when they are there', () => {
-    const html = WhatsNew.buildHtml([], '# hello');
-    expect(html).toContain('<p># hello</p>');
+    const html = WhatsNew.buildHtml([], 'hello');
+    expect(html).toContain('<p>hello</p>');
     expect(html).not.toContain('whatsNew.notesUnavailable');
+  });
+
+  test('borrows the chat typography, the only class the markdown rules are scoped to', () => {
+    expect(WhatsNew.buildHtml([], 'hello')).toContain('chat-msg-content');
+  });
+});
+
+describe('tidyNotes', () => {
+  const notes = [
+    '<div align="center">',
+    '',
+    '# ⚡ Claude Terminal `v1.3.5`',
+    '',
+    '**A Redis browser you can actually work in.**',
+    '',
+    '![Version](https://img.shields.io/badge/release-1.3.5-d97706?style=for-the-badge)',
+    '![Windows](https://img.shields.io/badge/Windows-.exe-0078D6) ![macOS](https://img.shields.io/badge/macOS-.dmg-000000)',
+    '',
+    '</div>',
+    '',
+    '## Everything else',
+    '',
+    '![New](https://img.shields.io/badge/New-22c55e)',
+    '',
+    '- **Sonnet 5.5** in the picker',
+  ].join('\n');
+
+  test('drops the title the modal already shows, and the header badges', () => {
+    const out = WhatsNew.tidyNotes(notes);
+    expect(out).not.toContain('# ⚡');
+    expect(out).not.toContain('release-1.3.5');
+    expect(out).not.toContain('Windows-.exe');
+    expect(out).toContain('**A Redis browser you can actually work in.**');
+  });
+
+  test('leaves every section below the header alone, badges included', () => {
+    const out = WhatsNew.tidyNotes(notes);
+    expect(out).toContain('## Everything else');
+    expect(out).toContain('![New](https://img.shields.io/badge/New-22c55e)');
+    expect(out).toContain('- **Sonnet 5.5** in the picker');
+  });
+
+  test('says nothing rather than an empty section when only chrome was there', () => {
+    const html = WhatsNew.buildHtml([], '# Claude Terminal v1\n\n![v](https://img.shields.io/x)');
+    expect(html).toContain('whatsNew.notesUnavailable');
+  });
+});
+
+describe('showReleaseNotes', () => {
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="modal"><div id="modal-body"></div><div id="modal-footer"></div></div>';
+  });
+
+  const showModal = jest.fn((title, html, footer) => {
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('modal-footer').innerHTML = footer;
+  });
+
+  test('opens the wide panel with the notes and an install button', () => {
+    const onInstall = jest.fn();
+    const closeModal = jest.fn();
+    WhatsNew.showReleaseNotes({ version: '1.3.5', notes: 'hello', showModal, closeModal, onInstall });
+
+    expect(document.getElementById('modal').classList.contains('modal--whats-new')).toBe(true);
+    expect(document.getElementById('modal-body').textContent).toContain('hello');
+
+    document.getElementById('whats-new-install').click();
+    expect(closeModal).toHaveBeenCalled();
+    expect(onInstall).toHaveBeenCalled();
+  });
+
+  test('offers no install button when there is nothing to install', () => {
+    WhatsNew.showReleaseNotes({ version: '1.3.5', notes: 'hello', showModal, closeModal: jest.fn() });
+    expect(document.getElementById('whats-new-install')).toBeNull();
+    expect(document.getElementById('whats-new-close')).not.toBeNull();
   });
 });

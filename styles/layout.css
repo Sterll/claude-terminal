@@ -544,67 +544,6 @@ body.platform-darwin .titlebar-drag {
   color: var(--text-primary);
 }
 
-.update-changelog-toggle svg {
-  transition: transform 0.2s;
-}
-
-.update-changelog-toggle.expanded svg {
-  transform: rotate(180deg);
-}
-
-/* Changelog container */
-.update-changelog {
-  border-top: 1px solid var(--border-color);
-  max-height: 200px;
-  overflow-y: auto;
-  background: var(--bg-primary);
-}
-
-.update-changelog-content {
-  padding: 12px 16px;
-  font-size: var(--font-sm);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.update-changelog-content h1,
-.update-changelog-content h2,
-.update-changelog-content h3 {
-  font-size: var(--font-base);
-  color: var(--text-primary);
-  margin: 8px 0 4px;
-}
-
-.update-changelog-content h1:first-child,
-.update-changelog-content h2:first-child,
-.update-changelog-content h3:first-child {
-  margin-top: 0;
-}
-
-.update-changelog-content ul {
-  padding-left: 20px;
-  margin: 4px 0;
-}
-
-.update-changelog-content li {
-  margin: 2px 0;
-}
-
-.update-changelog-content code {
-  background: var(--bg-tertiary);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: var(--font-xs);
-}
-
-.update-changelog-content a {
-  color: var(--accent);
-}
-
-.update-changelog-content a:hover {
-  color: var(--accent-hover);
-}
-
 /* Main Container */
 .main-container {
   display: flex;

@@ -2530,16 +2530,43 @@ mark.qp-hl {
 }
 .whats-new-move-action:hover { background: var(--accent-hover); }
 
-.whats-new-notes {
+/* The release notes are written for GitHub. The markdown renderer drops their
+   raw HTML (the centred header, the two-column headline table), so what
+   arrives is plain headings, paragraphs and GFM tables; tidyNotes() has
+   already taken off the H1 and the header badges. */
+.modal.modal--whats-new {
+  width: 760px;
+  max-width: 92vw;
+}
+
+.whats-new-notes.chat-msg-content {
   font-size: var(--font-sm);
   line-height: 1.6;
   color: var(--text-secondary);
 }
-.whats-new-notes h1,
-.whats-new-notes h2 { font-size: var(--font-md); margin: 16px 0 8px; color: var(--text-primary); }
-.whats-new-notes h3 { font-size: var(--font-base); margin: 12px 0 6px; color: var(--text-primary); }
+.whats-new-notes.chat-msg-content p { margin: 0 0 8px; }
+.whats-new-notes.chat-msg-content > p:first-child {
+  font-size: var(--font-base);
+  color: var(--text-primary);
+}
+.whats-new-notes.chat-msg-content h1,
+.whats-new-notes.chat-msg-content h2 {
+  font-size: var(--font-md);
+  margin: 22px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+.whats-new-notes.chat-msg-content h3 { font-size: var(--font-base); margin: 14px 0 4px; }
+.whats-new-notes.chat-msg-content li { margin: 4px 0; }
+.whats-new-notes.chat-msg-content code {
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-xs);
+}
+.whats-new-notes a { color: var(--accent); }
+.whats-new-notes a:hover { color: var(--accent-hover); }
 .whats-new-notes img { max-height: 20px; vertical-align: middle; }
-.whats-new-notes table { font-size: var(--font-xs); }
 
 .whats-new-offline {
   padding: 12px 16px;

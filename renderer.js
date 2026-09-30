@@ -346,7 +346,7 @@ function closeModal() {
   const pendingCreation = document.getElementById('form-project')?.dataset.operationId;
   if (pendingCreation) api.operations.cancel(pendingCreation);
   document.getElementById('modal-overlay').classList.remove('active');
-  document.getElementById('modal')?.classList.remove('modal--sessions');
+  document.getElementById('modal')?.classList.remove('modal--sessions', 'modal--whats-new');
 }
 
 // ========== LOCAL STATE ==========
@@ -6723,8 +6723,6 @@ const updateProgressText = document.getElementById('update-progress-text');
 const updateBtn = document.getElementById('update-btn');
 const updateDismiss = document.getElementById('update-dismiss');
 const updateChangelogToggle = document.getElementById('update-changelog-toggle');
-const updateChangelog = document.getElementById('update-changelog');
-const updateChangelogContent = document.getElementById('update-changelog-content');
 
 let updateState = {
   available: false,
@@ -6745,8 +6743,6 @@ function showUpdateBanner() {
 
 function hideUpdateBanner() {
   updateBanner.style.display = 'none';
-  updateChangelog.style.display = 'none';
-  updateChangelogToggle.classList.remove('expanded');
   document.querySelector('.main-container').style.height = 'calc(100vh - 36px)';
 }
 
@@ -6779,7 +6775,6 @@ api.updates.onStatus((data) => {
       updateProgressContainer.style.display = 'flex';
       updateBtn.style.display = 'none';
       updateChangelogToggle.style.display = 'none';
-      updateChangelog.style.display = 'none';
       updateBanner.classList.remove('downloaded');
       showUpdateBanner();
       break;
@@ -6800,17 +6795,7 @@ api.updates.onStatus((data) => {
       updateBtn.textContent = t('updates.restartToUpdate');  // Reset button text
       updateBanner.classList.add('downloaded');
       // Show changelog toggle if we have release notes
-      if (updateState.changelog) {
-        updateChangelogToggle.style.display = 'inline-flex';
-        try {
-          const { marked } = require('marked');
-          updateChangelogContent.innerHTML = marked(updateState.changelog);
-        } catch (e) {
-          updateChangelogContent.textContent = updateState.changelog;
-        }
-      } else {
-        updateChangelogToggle.style.display = 'none';
-      }
+      updateChangelogToggle.style.display = updateState.changelog ? 'inline-flex' : 'none';
       showUpdateBanner();
       break;
 
@@ -6833,19 +6818,28 @@ api.updates.onStatus((data) => {
   }
 });
 
-// Restart and install button
-updateBtn.addEventListener('click', () => {
+function installDownloadedUpdate() {
   // Disable button and show installing state
   updateBtn.disabled = true;
   updateBtn.textContent = t('updates.installing');
   api.app.installUpdate();
-});
+}
 
-// Changelog toggle button
+// Restart and install button
+updateBtn.addEventListener('click', installDownloadedUpdate);
+
+// The notes open in the What's new modal rather than under the banner: they
+// are written for GitHub (badges, a two-column table), and a strip spanning
+// the whole window, capped at 200 px, could not hold them.
 updateChangelogToggle.addEventListener('click', () => {
-  const isOpen = updateChangelog.style.display !== 'none';
-  updateChangelog.style.display = isOpen ? 'none' : 'block';
-  updateChangelogToggle.classList.toggle('expanded', !isOpen);
+  if (!updateState.changelog) return;
+  WhatsNew.showReleaseNotes({
+    version: updateState.version,
+    notes: updateState.changelog,
+    showModal,
+    closeModal,
+    onInstall: installDownloadedUpdate,
+  });
 });
 
 // Dismiss button
