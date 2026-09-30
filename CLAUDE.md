@@ -74,7 +74,7 @@ launcher started from the menu does not source the shell profile and so has no
 nvm/fnm/volta `npm` on its PATH. The launcher builds the renderer, adds `--no-sandbox`
 when npm's `chrome-sandbox` is not root-owned and setuid, and sets `CHROME_DESKTOP` so
 the window's app_id matches the entry and the dock shows the icon. It only replaces an
-entry it wrote or a hand-made `npm start` one; skipped in CI, as root, or with
+entry it wrote or a hand-made `npm start` one for this checkout; skipped in CI, as root, or with
 `CLAUDE_TERMINAL_NO_DESKTOP_ENTRY=1`. The AppImage has its own integration
 (`LinuxDesktopIntegration.js`) and is left alone.
 

@@ -55,6 +55,11 @@ function main() {
   env.CHROME_DESKTOP = 'claude-terminal.desktop';
 
   const child = spawn(electron, args, { cwd: ROOT, env, stdio: 'inherit' });
+  // The session manager signals this process, not Electron: pass it on, or a
+  // logout leaves the app running without the launcher that owned it.
+  for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
+    process.on(sig, () => child.kill(sig));
+  }
   child.on('exit', (code, signal) => process.exit(signal ? 1 : code || 0));
 }
 

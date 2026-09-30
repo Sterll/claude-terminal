@@ -36,9 +36,19 @@ const ROOT = path.join(__dirname, '..');
 const DESKTOP_FILE_NAME = 'claude-terminal.desktop';
 const MARKER = 'X-Claude-Terminal-ManagedBy=source';
 
-/** Quote one argument for a desktop entry Exec= line. */
+/**
+ * Quote one argument for a desktop entry Exec= line.
+ *
+ * Two escape passes stack here. Inside quotes the Exec rules want `"`, `` ` ``,
+ * `$` and `\` behind a backslash; but Exec= is also a string value, whose own
+ * unescaping runs first and knows only `\\`, `\s`, `\n`, `\t`, `\r`. So every
+ * backslash the quoting produced is doubled again (GLib rejects the whole key
+ * on an unknown escape like `\"`), and `%` is doubled so it is not read as a
+ * field code.
+ */
 function quoteExecArg(arg) {
-  return '"' + arg.replace(/(["`$\\])/g, '\\$1') + '"';
+  const quoted = '"' + arg.replace(/(["`$\\])/g, '\\$1') + '"';
+  return quoted.replace(/\\/g, '\\\\').replace(/%/g, '%%');
 }
 
 function buildDesktopEntry({ nodePath, launcherPath, iconPath }) {
@@ -58,12 +68,20 @@ function buildDesktopEntry({ nodePath, launcherPath, iconPath }) {
   ].join('\n');
 }
 
-/** Whether an existing entry is ours to replace. */
-function mayReplace(existing) {
+/**
+ * Whether an existing entry is ours to replace.
+ * @param {string|null} existing
+ * @param {string} root - this checkout
+ */
+function mayReplace(existing, root) {
   if (existing === null) return true;
   if (existing.includes(MARKER)) return true;
-  // A hand-written entry launching a checkout through npm start.
-  return /^Name=Claude Terminal\s*$/m.test(existing) && /^Exec=.*\bnpm\b.*\bstart\b/m.test(existing);
+  // A hand-written entry launching this checkout through npm start, whether
+  // it names the checkout on its Exec= line (`--prefix`, `cd ... &&`) or as
+  // its working directory (Path=). One for another clone is not ours.
+  return /^Name=Claude Terminal\s*$/m.test(existing)
+    && /^Exec=.*\bnpm\b.*\bstart\b/m.test(existing)
+    && existing.includes(root);
 }
 
 function readOrNull(file) {
@@ -82,7 +100,7 @@ function install({ home, nodePath, root, log }) {
   const iconPath = path.join(iconDir, 'claude-terminal.png');
 
   const existing = readOrNull(desktopPath);
-  if (!mayReplace(existing)) {
+  if (!mayReplace(existing, root)) {
     log(`  ${desktopPath} exists and was not written by this checkout; left alone.`);
     return false;
   }
