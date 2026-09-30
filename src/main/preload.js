@@ -544,6 +544,11 @@ contextBridge.exposeInMainWorld('electron_api', {
     onCleared: createListener('errorlog:cleared'),
   },
 
+  // ==================== COST ====================
+  cost: {
+    getReport: (range) => ipcRenderer.invoke('cost-get-report', range),
+  },
+
   // ==================== TELEMETRY ====================
   telemetry: {
     getStatus: () => ipcRenderer.invoke('telemetry:get-status'),

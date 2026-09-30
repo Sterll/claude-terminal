@@ -45,7 +45,7 @@ function saveSettings(settings) {
 // sidebar_set_pinned and silently dropped from the pinned list, so keep in sync.
 const ALL_TABS = [
   'claude', 'git', 'database', 'mcp', 'plugins', 'skills',
-  'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking',
+  'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'cost',
   // 'artifacts' is omitted on purpose: its sidebar button is hidden, so there is
   // nothing to navigate to. TAB_LABELS keeps its entry for when it comes back.
   'session-replay', 'memory', 'workspace', 'errorlog', 'connectivity',
@@ -64,6 +64,7 @@ const TAB_LABELS = {
   'control-tower': 'Control Tower (live agents)',
   dashboard: 'Projects dashboard',
   timetracking: 'Time tracking',
+  cost: 'API-equivalent cost per account, project and model',
   'session-replay': 'Session replay',
   memory: 'Memory editor (MEMORY.md)',
   workspace: 'Workspace knowledge base',

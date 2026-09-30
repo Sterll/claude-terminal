@@ -1135,6 +1135,7 @@
     "tooltipTasks": "Jalankan tugas paralel di berbagai worktree",
     "tooltipDashboard": "Ringkasan dan statistik proyek",
     "tooltipTimeTracking": "Lacak waktu yang dihabiskan pada setiap proyek",
+    "tooltipCost": "Biaya setara API dari penggunaan Claude Code Anda, per akun dan proyek",
     "tooltipSessionReplay": "Putar ulang sesi Claude sebelumnya",
     "tooltipMemory": "Konfigurasikan memori dan pengaturan Claude",
     "tooltipWorkspace": "Pusat pengetahuan lintas proyek",
@@ -2277,6 +2278,60 @@
       "total": "Total",
       "lastHour": "Satu jam terakhir",
       "patterns": "Pola"
+    }
+  },
+  "cost": {
+    "tabTitle": "Biaya",
+    "title": "Biaya",
+    "subtitle": "Apa yang dikonsumsi Claude Code di mesin ini, dengan harga daftar API. Dibaca dari transkrip lokal Anda.",
+    "refresh": "Muat ulang",
+    "loading": "Membaca transkrip...",
+    "loadError": "Tidak dapat menghitung biaya",
+    "empty": "Tidak ada aktivitas Claude Code pada periode ini.",
+    "allAccounts": "Semua akun",
+    "unknownAccount": "Akun tidak dikenal",
+    "boundTo": "Terikat ke {name}",
+    "estimatedPrice": "Harga diperkirakan dari keluarga model",
+    "period": {
+      "thisWeek": "Minggu ini",
+      "lastWeek": "Minggu lalu",
+      "last7": "7 hari terakhir",
+      "last30": "30 hari terakhir",
+      "thisMonth": "Bulan ini",
+      "all": "Semua"
+    },
+    "metrics": {
+      "total": "Perkiraan biaya",
+      "perDay": "Per hari",
+      "tokens": "Token",
+      "messages": "Respons"
+    },
+    "sections": {
+      "accounts": "Per akun",
+      "quota": "Nilai 1% dari batas mingguan",
+      "daily": "Per hari",
+      "projects": "Per proyek",
+      "models": "Per model"
+    },
+    "columns": {
+      "project": "Proyek",
+      "model": "Model",
+      "cost": "Biaya",
+      "share": "Porsi",
+      "tokens": "Token"
+    },
+    "quota": {
+      "perPercent": "1% ≈ {value}",
+      "fullWeek": "seminggu penuh ≈ {value}",
+      "detail": "{percent}% terpakai sejak {date}, {cost} di antaranya di mesin ini",
+      "notEnough": "Belum cukup penggunaan minggu ini",
+      "none": "Belum ada angka penggunaan mingguan.",
+      "note": "Hanya menghitung mesin ini. Jika orang atau mesin lain memakai akun yang sama, 1% bernilai lebih dari yang ditampilkan."
+    },
+    "note": {
+      "listPrice": "Angka ini adalah harga daftar API untuk token yang digunakan. Langganan tidak menagihnya: angka ini mengukur seberapa banyak batas paket yang terpakai.",
+      "estimated": "{cost} terjadi sebelum {date}, saat pelacakan akun dimulai, dan dikaitkan dengan akun yang login pada tanggal itu.",
+      "unpriced": "Harga tidak diketahui untuk: {models}"
     }
   },
   "connectivity": {

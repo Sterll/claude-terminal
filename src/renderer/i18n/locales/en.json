@@ -1135,6 +1135,7 @@
     "tooltipTasks": "Run parallel tasks across worktrees",
     "tooltipDashboard": "Project overview and statistics",
     "tooltipTimeTracking": "Track time spent on each project",
+    "tooltipCost": "API-equivalent cost of your Claude Code usage, per account and project",
     "tooltipSessionReplay": "Replay past Claude sessions",
     "tooltipMemory": "Configure Claude's memory and settings",
     "tooltipWorkspace": "Cross-project knowledge hubs",
@@ -2277,6 +2278,60 @@
       "total": "Total",
       "lastHour": "Last hour",
       "patterns": "Patterns"
+    }
+  },
+  "cost": {
+    "tabTitle": "Cost",
+    "title": "Cost",
+    "subtitle": "What Claude Code consumed on this machine, priced at API list rates. Read from your local transcripts.",
+    "refresh": "Refresh",
+    "loading": "Reading transcripts...",
+    "loadError": "Could not compute costs",
+    "empty": "No Claude Code activity in this period.",
+    "allAccounts": "All accounts",
+    "unknownAccount": "Unknown account",
+    "boundTo": "Bound to {name}",
+    "estimatedPrice": "Price estimated from the model family",
+    "period": {
+      "thisWeek": "This week",
+      "lastWeek": "Last week",
+      "last7": "Last 7 days",
+      "last30": "Last 30 days",
+      "thisMonth": "This month",
+      "all": "All time"
+    },
+    "metrics": {
+      "total": "Estimated cost",
+      "perDay": "Per day",
+      "tokens": "Tokens",
+      "messages": "Responses"
+    },
+    "sections": {
+      "accounts": "By account",
+      "quota": "What 1% of the weekly limit is worth",
+      "daily": "Per day",
+      "projects": "By project",
+      "models": "By model"
+    },
+    "columns": {
+      "project": "Project",
+      "model": "Model",
+      "cost": "Cost",
+      "share": "Share",
+      "tokens": "Tokens"
+    },
+    "quota": {
+      "perPercent": "1% ≈ {value}",
+      "fullWeek": "full week ≈ {value}",
+      "detail": "{percent}% used since {date}, {cost} of it on this machine",
+      "notEnough": "Not enough usage yet this week",
+      "none": "No weekly usage figures available yet.",
+      "note": "Counts this machine only. If other people or machines use the same account, 1% is worth more than shown."
+    },
+    "note": {
+      "listPrice": "Figures are API list prices for the tokens used. A subscription does not bill them: they measure how much of the plan limit the work drew.",
+      "estimated": "{cost} predates {date}, when account tracking started, and is attributed to the account that held the login at that date.",
+      "unpriced": "No price known for: {models}"
     }
   },
   "connectivity": {

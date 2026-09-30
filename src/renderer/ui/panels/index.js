@@ -17,6 +17,7 @@ const WorkspacePanel = require('./WorkspacePanel');
 const ErrorLogPanel = require('./ErrorLogPanel');
 const FilesPanel = require('./FilesPanel');
 const ArtifactsPanel = require('./ArtifactsPanel');
+const CostPanel = require('./CostPanel');
 
 // WorkflowPanel, DatabasePanel, ControlTowerPanel, SessionReplayPanel and
 // ParallelTaskPanel are deliberately absent: they are code-split and reached
@@ -40,4 +41,5 @@ module.exports = {
   WorkspacePanel,
   ErrorLogPanel,
   ArtifactsPanel,
+  CostPanel,
 };

@@ -1230,6 +1230,7 @@
     "tooltipTasks": "Exécuter des tâches en parallèle via worktrees",
     "tooltipDashboard": "Vue d'ensemble et statistiques du projet",
     "tooltipTimeTracking": "Suivre le temps passé sur chaque projet",
+    "tooltipCost": "Coût équivalent API de votre usage de Claude Code, par compte et par projet",
     "tooltipSessionReplay": "Rejouer les sessions passées de Claude",
     "tooltipMemory": "Configurer la mémoire et les paramètres de Claude",
     "tooltipWorkspace": "Hubs de connaissances multi-projets",
@@ -2277,6 +2278,60 @@
       "total": "Total",
       "lastHour": "Dernière heure",
       "patterns": "Patterns"
+    }
+  },
+  "cost": {
+    "tabTitle": "Coûts",
+    "title": "Coûts",
+    "subtitle": "Ce que Claude Code a consommé sur cette machine, au tarif public de l'API. Calculé à partir de vos transcripts locaux.",
+    "refresh": "Actualiser",
+    "loading": "Lecture des transcripts...",
+    "loadError": "Impossible de calculer les coûts",
+    "empty": "Aucune activité Claude Code sur cette période.",
+    "allAccounts": "Tous les comptes",
+    "unknownAccount": "Compte inconnu",
+    "boundTo": "Lié à {name}",
+    "estimatedPrice": "Prix estimé à partir de la famille du modèle",
+    "period": {
+      "thisWeek": "Cette semaine",
+      "lastWeek": "Semaine dernière",
+      "last7": "7 derniers jours",
+      "last30": "30 derniers jours",
+      "thisMonth": "Ce mois-ci",
+      "all": "Tout"
+    },
+    "metrics": {
+      "total": "Coût estimé",
+      "perDay": "Par jour",
+      "tokens": "Tokens",
+      "messages": "Réponses"
+    },
+    "sections": {
+      "accounts": "Par compte",
+      "quota": "Ce que vaut 1 % de la limite hebdo",
+      "daily": "Par jour",
+      "projects": "Par projet",
+      "models": "Par modèle"
+    },
+    "columns": {
+      "project": "Projet",
+      "model": "Modèle",
+      "cost": "Coût",
+      "share": "Part",
+      "tokens": "Tokens"
+    },
+    "quota": {
+      "perPercent": "1 % ≈ {value}",
+      "fullWeek": "semaine pleine ≈ {value}",
+      "detail": "{percent} % utilisés depuis le {date}, dont {cost} sur cette machine",
+      "notEnough": "Pas encore assez d'usage cette semaine",
+      "none": "Aucun chiffre d'usage hebdomadaire disponible pour l'instant.",
+      "note": "Ne compte que cette machine. Si d'autres personnes ou machines utilisent le même compte, 1 % vaut plus que ce qui est affiché."
+    },
+    "note": {
+      "listPrice": "Les montants sont les prix publics de l'API pour les tokens utilisés. Un abonnement ne les facture pas : ils mesurent la part de la limite du forfait consommée.",
+      "estimated": "{cost} datent d'avant le {date}, début du suivi des comptes, et sont attribués au compte connecté à cette date.",
+      "unpriced": "Aucun prix connu pour : {models}"
     }
   },
   "connectivity": {

@@ -1619,6 +1619,13 @@ class ChatService {
         // handle the CLI has never heard of.
         if (message.type === 'system' && message.subtype === 'init' && message.session_id && session) {
           session.sdkSessionId = message.session_id;
+          // The transcript does not record the account; the cost screen needs
+          // to know which one this session ran on from here on.
+          try {
+            require('./CostService').noteSessionAccount(message.session_id, session.accountId || null);
+          } catch (err) {
+            console.warn('[ChatService] could not record session account:', err.message);
+          }
         }
 
         // In-band failures: assistant messages tagged `error`, and results

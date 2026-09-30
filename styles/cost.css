@@ -1,0 +1,400 @@
+/* ── Cost Panel ─────────────────────────────────────────────────────────── */
+
+.cost-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  padding: 16px 20px;
+  gap: 12px;
+}
+
+.cost-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.cost-header h2 {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.cost-subtitle {
+  margin: 4px 0 0;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.cost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.cost-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cost-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.cost-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Filters */
+.cost-filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cost-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cost-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.cost-chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cost-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+.cost-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Body */
+.cost-body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.cost-empty,
+.cost-error {
+  padding: 40px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+
+.cost-error {
+  color: var(--danger);
+}
+
+.cost-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.cost-metric {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+}
+
+.cost-metric-value {
+  font-size: var(--font-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-metric-label {
+  margin-top: 2px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.cost-card {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  min-width: 0;
+}
+
+.cost-card h3 {
+  margin: 0 0 10px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.cost-muted {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+.cost-note {
+  margin: 8px 0 0;
+}
+
+.cost-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.cost-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* Accounts */
+.cost-account-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) 2fr auto 48px;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: var(--font-sm);
+}
+
+.cost-account-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cost-account-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.cost-account-share {
+  text-align: right;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Quota calibration */
+.cost-quota-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  font-size: var(--font-sm);
+}
+
+.cost-quota-row + .cost-quota-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.cost-quota-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.cost-quota-value {
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cost-quota-week {
+  color: var(--text-secondary);
+}
+
+.cost-quota-detail {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+
+/* Daily chart */
+.cost-days {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 180px;
+}
+
+.cost-days.dense {
+  gap: 2px;
+}
+
+.cost-day {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cost-day-value {
+  height: 14px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.cost-day-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+
+.cost-day-seg {
+  width: 100%;
+}
+
+.cost-day-label {
+  height: 14px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+/* Tables */
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-sm);
+}
+
+.cost-table th {
+  padding: 4px 6px;
+  text-align: left;
+  font-size: var(--font-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cost-table td {
+  padding: 6px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  vertical-align: middle;
+}
+
+.cost-table tr:last-child td {
+  border-bottom: none;
+}
+
+.cost-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-table .muted {
+  color: var(--text-muted);
+}
+
+.cost-table td.share {
+  width: 30%;
+}
+
+.cost-table td.share .cost-bar {
+  display: inline-block;
+  width: calc(100% - 48px);
+  vertical-align: middle;
+}
+
+.cost-table td.share span {
+  display: inline-block;
+  width: 44px;
+  text-align: right;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.cost-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.cost-project-bound {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.cost-estimated {
+  color: var(--warning);
+  cursor: help;
+}
+
+.cost-notes p {
+  margin: 0 0 4px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}

@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 214 test files)
+npm test                 # Run Jest tests (jsdom, 217 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -85,8 +85,8 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 36 IPC files, 330 handlers total
-├── src/main/services/               # 36 services
+├── src/main/ipc/                    # 37 IPC files, 331 handlers total
+├── src/main/services/               # 37 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 22 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
@@ -98,23 +98,23 @@ Electron Renderer Process (Browser)
 ├── src/renderer/state/              # 15 observable state modules
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/components/      # 20 UI components
-├── src/renderer/ui/panels/          # 25 UI panels
+├── src/renderer/ui/panels/          # 26 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3790 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3831 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 19 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 20 modules shared between main, renderer and the MCP server
 
 Styles
-└── styles/                          # 30 modular CSS files (~57,000 lines total)
+└── styles/                          # 31 modular CSS files (~57,000 lines total)
 
 MCP Servers (shipped with the app)
 └── resources/mcp-servers/
@@ -163,6 +163,7 @@ Remote UI (PWA for mobile)
 | `discord-rpc.ipc.js` | 2 | Discord Rich Presence enable/disable |
 | `project.ipc.js` | 1 | TODO/FIXME/HACK/XXX scanning, project stats |
 | `time.ipc.js` | 1 | Time tracking snapshot |
+| `cost.ipc.js` | 1 | API-equivalent cost report per account / project / model / day, and the live-account listener it registers on `AccountManager` |
 | `telemetry.ipc.js` | 1 | Opt-in anonymous telemetry |
 | `preview.ipc.js` | 1 | Serves ```html markdown blocks over the `ct-preview://` scheme (see below) |
 | `project-types.ipc.js` | 2 | List declarative project-type extensions from `~/.claude-terminal/project-types/`, create that directory |
@@ -170,7 +171,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 330 IPC handlers across 36 files.**
+**Total: 331 IPC handlers across 37 files.**
 
 ### Services (`src/main/services/`)
 
@@ -210,6 +211,7 @@ Remote UI (PWA for mobile)
 | `CloudRelayClient.js` | WSS client to self-hosted cloud relay |
 | `SyncEngine.js` | Bidirectional desktop <-> cloud sync, conflict resolution, file watcher, per-entity toggles |
 | `TelemetryService.js` | Opt-in anonymous telemetry |
+| `CostService.js` | Prices what Claude Code consumed on this machine at API list rates (`src/shared/model-pricing.js`), from the transcripts under `~/.claude/projects`. The transcripts do not record the account, so attribution is rebuilt, most specific first: the account a chat session started on (`ChatService` reports it at `init`), the project's binding, then whichever account held the machine-wide login at that moment, from a timeline `AccountManager.onLiveChange` feeds. That timeline only starts when this service first runs; older work goes to the account live at that point and is reported as `estimatedCost`. Claude Code writes one message several times while it streams, the early copies with a partial `output_tokens`, so every counter keeps its maximum rather than its first value. First scan reads in 4 MB chunks and yields between them; later ones read only the bytes appended since |
 | `ProjectTypeExtensionService.js` | Discovers third-party project types in `~/.claude-terminal/project-types/`. Reads and validates a declarative manifest and hands the renderer inert JSON — it never `require()`s what it finds, in either process. Off by default, per-extension opt-in on top, and it never rejects: a broken extension yields one entry in `problems[]` and nothing else. Design note: `design/project-type-extensions.md` |
 | `FivemService.js` | Re-export (delegated to `src/project-types/fivem`) |
 
@@ -378,6 +380,7 @@ The tests are the point, not the line count. Everything listed above was unreach
 | `ArtifactsPanel` | Gallery of **published** artifacts for the current project - the local equivalent of Claude Desktop's artifact list. These come from the SDK's `Artifact` tool, so each has a real title, subtitle, emoji and shareable URL. Deliberately not the extracts the store also holds |
 | `TasksView` | The "simple mode" tab of the workflow panel. A task is a workflow with `mode: 'simple'`; the user edits what / when / where and `src/shared/simple-task.js` compiles the cron expression, graph and steps. It writes the same workflow object the advanced editor writes, through the same `workflow.save` IPC |
 | `ErrorLogPanel` | Error log viewer with level/domain filtering, pattern detection, AI diagnosis and export |
+| `CostPanel` | The Cost tab: API-equivalent cost per account, project, model and day, for this week, last week, 7 / 30 days, this month or all time. Its "what 1% is worth" card sets each account's cost since its weekly reset against the weekly percentage the usage API reports, which is the only way to turn the % meter into dollars; it counts this machine only, and says so |
 
 The dashboard has three sub-views, switched by `_dashViews` and rendered from `DashboardService`: **Overview** (the default), **Kanban** (delegated to `KanbanPanel`) and **Timeline**. The timeline is the only one that loads its own data, through `ProjectTimeline`; it caches the collected events for 30 s so changing the period or a filter chip redraws without six more round trips, and `invalidateCache()` drops that cache alongside the dashboard one.
 
@@ -414,7 +417,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 3790 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3831 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -468,7 +471,7 @@ Ids are registered as `ext-<id>` so an extension cannot shadow a built-in, and i
 | `setup-wizard.html` | 1944 | 7-step onboarding with embedded EN/FR/ES/ID/pt-BR translations |
 | `notification.html` | 262 | Custom toast with auto-dismiss progress bar |
 
-## CSS Architecture (`styles/` - 30 files, ~57,000 lines)
+## CSS Architecture (`styles/` - 31 files, ~57,000 lines)
 
 ### CSS Variables (`:root` in `base.css`)
 
@@ -532,6 +535,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `artifacts.css` | 554 | Artifact library |
 | `files.css` | 450 | Files screen |
 | `errorlog.css` | 430 | Error log panel |
+| `cost.css` | 400 | Cost panel |
 | `xterm.css` | 285 | xterm vendor |
 | `base.css` | 274 | Variables, fonts, reset |
 | `diff.css` | 106 | DiffRenderer output |
@@ -552,7 +556,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes`
+`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -579,6 +583,7 @@ Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guard
 │   └── <id>/                          # Artifact versions
 ├── terminals/output/<projectId>.log   # Rolling terminal output tail (TerminalOutputCapture)
 ├── usage.json                         # Focused account's usage, mirrored for the MCP tools
+├── cost/account-timeline.json         # Live-account switches and per-session accounts, for cost attribution
 ├── usage/triggers/                    # Re-fetch requests dropped by the MCP usage_refresh tool
 ├── workflows/
 │   ├── definitions.json               # Workflow graphs (single-writer protocol, see _workflowStore.js)
@@ -683,7 +688,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 214 unit test files (jsdom environment)
+npm test                    # Run all 217 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -692,7 +697,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 214 test files
+- **Framework:** Jest with jsdom, 217 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -870,7 +875,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **Commits:** `feat(scope): description` in English, imperative mood
 - **IPC pattern:** Service (main) -> IPC handler -> Preload bridge -> Renderer service
 - **Dashboard sections:** `buildXxxHtml()` in `DashboardService.js`
-- **CSS:** `.component-name.state` pattern, CSS variables, 30 modular files in `styles/`. No colour literals outside `base.css` - there is no theme system yet, and every hard-coded hex is one more thing to migrate when there is one
+- **CSS:** `.component-name.state` pattern, CSS variables, 31 modular files in `styles/`. No colour literals outside `base.css` - there is no theme system yet, and every hard-coded hex is one more thing to migrate when there is one
 - **i18n:** add keys to all six locales (`en`, `fr`, `es`, `id`, `zh-CN`, `pt-BR`) - `tests/i18n/i18n-coherence.test.js` fails otherwise; use `t('dot.path')`. Main-process error messages stay in English.
 - **State updates:** `state.set()` / `state.setProp()`, subscribe with `state.subscribe()`
 - **File I/O:** atomic writes for user data (temp + rename), `.bak` backup

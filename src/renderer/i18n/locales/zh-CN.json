@@ -1135,6 +1135,7 @@
     "tooltipTasks": "跨工作树运行并行任务",
     "tooltipDashboard": "项目概况及统计",
     "tooltipTimeTracking": "跟踪每个项目花费的时间",
+    "tooltipCost": "按账户和项目统计 Claude Code 使用量的等价 API 费用",
     "tooltipSessionReplay": "重播过去的Claude会话",
     "tooltipMemory": "配置Claude的内存和设置",
     "tooltipWorkspace": "跨项目知识中心",
@@ -2277,6 +2278,60 @@
       "total": "总计",
       "lastHour": "最后一小时",
       "patterns": "图案"
+    }
+  },
+  "cost": {
+    "tabTitle": "费用",
+    "title": "费用",
+    "subtitle": "Claude Code 在本机的消耗，按 API 标价计算。数据来自本地会话记录。",
+    "refresh": "刷新",
+    "loading": "正在读取会话记录...",
+    "loadError": "无法计算费用",
+    "empty": "此时间段内没有 Claude Code 活动。",
+    "allAccounts": "所有账户",
+    "unknownAccount": "未知账户",
+    "boundTo": "绑定到 {name}",
+    "estimatedPrice": "价格根据模型系列估算",
+    "period": {
+      "thisWeek": "本周",
+      "lastWeek": "上周",
+      "last7": "最近 7 天",
+      "last30": "最近 30 天",
+      "thisMonth": "本月",
+      "all": "全部"
+    },
+    "metrics": {
+      "total": "估算费用",
+      "perDay": "每天",
+      "tokens": "Token",
+      "messages": "回复"
+    },
+    "sections": {
+      "accounts": "按账户",
+      "quota": "每周限额 1% 的价值",
+      "daily": "每天",
+      "projects": "按项目",
+      "models": "按模型"
+    },
+    "columns": {
+      "project": "项目",
+      "model": "模型",
+      "cost": "费用",
+      "share": "占比",
+      "tokens": "Token"
+    },
+    "quota": {
+      "perPercent": "1% ≈ {value}",
+      "fullWeek": "整周 ≈ {value}",
+      "detail": "自 {date} 起已用 {percent}%，其中本机 {cost}",
+      "notEnough": "本周用量还不够",
+      "none": "暂无每周用量数据。",
+      "note": "仅统计本机。如果其他人或其他机器使用同一账户，1% 的实际价值高于显示值。"
+    },
+    "note": {
+      "listPrice": "金额为所用 token 的 API 标价。订阅不会按此计费：它衡量的是工作消耗了多少套餐限额。",
+      "estimated": "{cost} 发生在 {date}（开始跟踪账户）之前，按当时登录的账户归属。",
+      "unpriced": "以下模型没有已知价格：{models}"
     }
   },
   "connectivity": {

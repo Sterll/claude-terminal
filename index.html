@@ -187,6 +187,13 @@
           </svg>
           <span data-i18n="ui.tabTimeTracking">Time Tracking</span>
         </button>
+        <button class="nav-tab" data-tab="cost" title="Cost" data-i18n-title="ui.tooltipCost">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="2" x2="12" y2="22"/>
+            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+          <span data-i18n="cost.tabTitle">Cost</span>
+        </button>
         <button class="nav-tab" data-tab="database" title="Database" data-i18n-title="ui.tooltipDatabase">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.72 1.23 6 1.23s4.39-.45 6-1.23V17zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2V9.77C7.61 10.55 9.72 11 12 11s4.39-.45 6-1.23V12zm-6-3c-3.87 0-6-1.5-6-2s2.13-2 6-2 6 1.5 6 2-2.13 2-6 2z"/>
@@ -823,6 +830,11 @@
       <!-- Error Log Tab -->
       <div class="tab-content" id="tab-errorlog">
         <div id="errorlog-panel-root"></div>
+      </div>
+
+      <!-- Cost Tab -->
+      <div class="tab-content" id="tab-cost">
+        <div id="cost-panel-root"></div>
       </div>
 
       <!-- Cloud Tab -->

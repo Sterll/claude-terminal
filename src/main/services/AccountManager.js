@@ -78,6 +78,25 @@ function writeIndex(index) {
   const tmp = `${indexFile}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(index, null, 2));
   fs.renameSync(tmp, indexFile);
+  if (_liveListener) {
+    try {
+      _liveListener(index.liveId ?? null);
+    } catch (err) {
+      console.warn('[AccountManager] live-account listener failed:', err.message);
+    }
+  }
+}
+
+let _liveListener = null;
+
+/**
+ * Be told which account holds the machine-wide login after every index write.
+ * Called with the same id repeatedly; the listener dedupes. The cost screen
+ * uses it to attribute unbound work to whoever was live at the time.
+ * @param {(liveId: string|null) => void} cb
+ */
+function onLiveChange(cb) {
+  _liveListener = cb;
 }
 
 /**
@@ -608,5 +627,6 @@ module.exports = {
   ensureAccountStore,
   credentialsForAccount,
   ownsLiveStore,
-  accountEnv
+  accountEnv,
+  onLiveChange
 };

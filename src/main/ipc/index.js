@@ -39,6 +39,7 @@ const { registerWorkspaceHandlers } = require('./workspace.ipc');
 const { registerKnowledgeHandlers } = require('./knowledge.ipc');
 const { registerArtifactHandlers } = require('./artifacts.ipc');
 const { registerErrorLogHandlers } = require('./errorLog.ipc');
+const { registerCostHandlers } = require('./cost.ipc');
 const { registerAccountsHandlers } = require('./accounts.ipc');
 const { registerDiscordRpcHandlers } = require('./discord-rpc.ipc');
 const { registerPreviewHandlers } = require('./preview.ipc');
@@ -93,6 +94,7 @@ function registerAllHandlers(mainWindow) {
   registerKnowledgeHandlers();
   registerArtifactHandlers();
   registerErrorLogHandlers();
+  registerCostHandlers();
   registerAccountsHandlers();
   registerDiscordRpcHandlers();
   registerPreviewHandlers();

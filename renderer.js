@@ -117,7 +117,7 @@ const registry = require('./src/project-types/registry');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
 const WhatsNew = require('./src/renderer/ui/components/WhatsNew');
-const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, CloudPanel, ConnectivityPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel } = require('./src/renderer/ui/panels');
+const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, CloudPanel, ConnectivityPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel, CostPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
 const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
@@ -4095,6 +4095,13 @@ const _TAB_LIFECYCLE = {
     },
     deactivate: () => ErrorLogPanel.cleanup()
   },
+  cost: {
+    activate: () => {
+      const root = document.getElementById('cost-panel-root');
+      if (root) CostPanel.loadPanel(root);
+    },
+    deactivate: () => CostPanel.cleanup()
+  },
   connectivity: {
     activate: () => {
       const container = document.getElementById('tab-connectivity');
@@ -4198,7 +4205,7 @@ document.querySelectorAll('.nav-tab[data-tab]').forEach(tab => {
 // index.html because the screen cannot be populated (see the note there). Both
 // the customize modal and the More dropdown are built from this list, so
 // leaving it in would offer a tab that no longer exists in the DOM.
-const _ALL_TABS_ORDER = ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
+const _ALL_TABS_ORDER = ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'cost', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'];
 
 function applyPinnedTabs() {
   const pinned = settingsState.get().pinnedTabs || _ALL_TABS_ORDER;
