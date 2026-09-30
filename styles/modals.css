@@ -2308,13 +2308,16 @@ mark.qp-hl {
 }
 
 /* Same swatch as the project tab tint, so a row is recognisable as the
-   account colouring the tab it will move. */
+   account colouring the tab it will move. Pinned to the name line, since the
+   usage strip makes the row taller than the name. */
 .account-switch-list .account-row-dot {
-  flex: 0 0 auto;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  margin-right: 8px;
+  margin-top: 5px;
 }
 
 .account-switch-list .account-row-dot--none {
@@ -2322,12 +2325,14 @@ mark.qp-hl {
   background: transparent;
 }
 
+/* A grid rather than a flex row: the usage strip needs the width under the
+   status as well as under the name, or three bars do not fit side by side. */
 .account-switch-list .account-row {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  column-gap: 8px;
   padding: 10px 12px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
@@ -2344,18 +2349,35 @@ mark.qp-hl {
   background: var(--bg-hover);
 }
 
+/* Disabled for the moment it takes to apply a pick. */
 .account-switch-list .account-row:disabled {
-  cursor: default;
+  cursor: progress;
   opacity: 0.7;
 }
 
-.account-switch-list .account-row.active {
-  border-color: var(--accent);
-  background: var(--accent-dim);
+/* An account that cannot take the conversation: the one that just ran out,
+   and any other whose figures show a limit this conversation needs is full.
+   It used to wear the accent, which read as "selected" rather than as the one
+   row you could not pick. Greyed rather than hidden, so its bars still say
+   which limit is full and when it resets. */
+.account-switch-list .account-row.unavailable {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: transparent;
+  border-style: dashed;
+}
+
+.account-switch-list .account-row.unavailable .account-row-dot {
+  filter: grayscale(1);
+}
+
+.account-switch-list .account-row.unavailable .account-row-status {
+  color: var(--text-muted);
 }
 
 .account-switch-list .account-row-main {
-  flex: 1;
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2381,11 +2403,47 @@ mark.qp-hl {
 }
 
 .account-switch-list .account-row-status {
+  grid-column: 3;
+  grid-row: 1;
+  margin-left: 4px;
   font-size: var(--font-xs);
   color: var(--accent);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+/* The bars Settings draws under each account (settings.css). Sized to their
+   content and wrapped rather than shared out evenly: an even share left each
+   one narrower than its label, percentage and countdown, and they ran into
+   each other. */
+.account-switch-usage {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  margin-top: 6px;
+}
+
+.account-switch-usage:empty {
+  display: none;
+}
+
+.account-switch-usage .account-usage-bars {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+
+.account-switch-usage .account-usage-bars .usage-item {
+  flex: 0 1 auto;
+  max-width: none;
+}
+
+/* Every account is spent: when the first one comes back. */
+.account-switch-note {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  padding: 0 2px;
+  margin-bottom: 12px;
+  line-height: 1.5;
 }
 
 .account-switch-empty {

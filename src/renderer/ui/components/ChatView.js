@@ -7715,7 +7715,10 @@ class ChatView extends BaseComponent {
         reason: ctx.error || t('accounts.limitReached') || 'Usage limit reached on the active account.',
         activeAccountId: ctx.activeAccountId,
         projectId: ctx.projectId || null,
-        projectName: limitedProject?.name || ''
+        projectName: limitedProject?.name || '',
+        // A limit scoped to one model only rules an account out for a
+        // conversation on that model.
+        model: selectedModel || null
       });
       if (destroyed || !newId) return false;
       return await restartOnAccount(newId, true);

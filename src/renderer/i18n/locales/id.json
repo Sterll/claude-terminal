@@ -4035,7 +4035,10 @@
     "usageLoading": "Membaca penggunaan…",
     "usageUnavailable": "Penggunaan tidak tersedia — jalankan \"claude /login\" pada akun ini",
     "usageStale": "API tidak dapat memastikan angka ini",
-    "usageRefresh": "Segarkan penggunaan"
+    "usageRefresh": "Segarkan penggunaan",
+    "limitedUntil": "Tersedia lagi dalam {time}",
+    "allLimited": "Semua akun tersimpan telah mencapai batas.",
+    "allLimitedUntil": "Semua akun tersimpan telah mencapai batas. Akun pertama tersedia lagi dalam {time}."
   },
   "usage": {
     "staleRetry": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. Percobaan berikutnya pukul {time}; klik untuk mencoba sekarang. {error}",
