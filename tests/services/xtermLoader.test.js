@@ -161,3 +161,65 @@ describe('loadXterm', () => {
     await expect(second).rejects.toBeDefined();
   });
 });
+
+describe('trackForRepaintOnReturn', () => {
+  const originalProcess = window.electron_nodeModules.process;
+
+  function fakeTerminal() {
+    const element = document.createElement('div');
+    document.body.appendChild(element);
+    return { element, rows: 24, refresh: jest.fn() };
+  }
+  function fakeWebgl() {
+    return { clearTextureAtlas: jest.fn(), onContextLoss: jest.fn() };
+  }
+  const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+  beforeEach(() => jest.resetModules());
+  afterEach(() => {
+    window.electron_nodeModules.process = originalProcess;
+    document.body.innerHTML = '';
+  });
+
+  it('re-cuts the atlas once per return on Linux, even when focus and visibility both fire', async () => {
+    window.electron_nodeModules.process = { ...originalProcess, platform: 'linux' };
+    const { trackForRepaintOnReturn } = require(LOADER);
+    const terminal = fakeTerminal();
+    const webgl = fakeWebgl();
+    trackForRepaintOnReturn(terminal, webgl);
+
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await nextFrame();
+
+    expect(webgl.clearTextureAtlas).toHaveBeenCalledTimes(1);
+    expect(terminal.refresh).toHaveBeenCalledWith(0, 23);
+  });
+
+  it('forgets a terminal once it is closed', async () => {
+    window.electron_nodeModules.process = { ...originalProcess, platform: 'linux' };
+    const { trackForRepaintOnReturn } = require(LOADER);
+    const terminal = fakeTerminal();
+    const webgl = fakeWebgl();
+    trackForRepaintOnReturn(terminal, webgl);
+
+    terminal.element.remove();
+    window.dispatchEvent(new Event('focus'));
+    await nextFrame();
+
+    expect(webgl.clearTextureAtlas).not.toHaveBeenCalled();
+  });
+
+  it('does nothing off Linux, where the fault has not been seen', async () => {
+    window.electron_nodeModules.process = { ...originalProcess, platform: 'win32' };
+    const { trackForRepaintOnReturn } = require(LOADER);
+    const webgl = fakeWebgl();
+    trackForRepaintOnReturn(fakeTerminal(), webgl);
+
+    window.dispatchEvent(new Event('focus'));
+    await nextFrame();
+
+    expect(webgl.onContextLoss).not.toHaveBeenCalled();
+    expect(webgl.clearTextureAtlas).not.toHaveBeenCalled();
+  });
+});

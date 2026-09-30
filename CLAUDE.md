@@ -104,7 +104,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN locales (3787 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3787 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
@@ -178,7 +178,7 @@ Remote UI (PWA for mobile)
 |---------|---------|
 | `AccountManager.js` | Multiple Claude OAuth accounts: snapshots the CLI's live credential store into `~/.claude-terminal/accounts/` and swaps the active credentials on demand. The live store is the macOS login Keychain on darwin, `~/.claude/.credentials.json` elsewhere. Login itself stays the CLI's job (`claude /login` once, then capture) |
 | `ArtifactService.js` | Main-process facade over `src/shared/artifact-store.js` (shared verbatim with the MCP server process). Adds the two things only main can do: broadcast `artifacts-changed` to every window, and poll for out-of-process writes from the MCP tools |
-| `ModelCatalogService.js` | Builds the chat picker's two-tier model catalog: `primary` from whatever the CLI advertises (`initializationResult().models`) minus its `default` alias, `legacy` from the hand-curated list minus anything primary already covers. Follows CLI upgrades on its own, which is the point - hard-coded lists went stale the day Fable 5.1 shipped. The disk cache is keyed on the SDK binary's version as well as its age, because the model list is compiled into that binary: after an update a young cache still describes the previous CLI. A refresh that changes the catalog is pushed to every window (`onChange`) |
+| `ModelCatalogService.js` | Builds the chat picker's two-tier model catalog: `primary` from whatever the CLI advertises (`initializationResult().models`) minus its `default` alias, `legacy` from the hand-curated list minus anything primary already covers, plus the CLI rows a newer version of their family supersedes (`splitSuperseded`): the published catalog the CLI can serve instead of its compiled list appends every older model after the current lineup, with no field to tell them apart. Follows CLI upgrades on its own, which is the point - hard-coded lists went stale the day Fable 5.1 shipped. The disk cache is keyed on the SDK binary's version as well as its age, because the model list is compiled into that binary: after an update a young cache still describes the previous CLI. A refresh that changes the catalog is pushed to every window (`onChange`) |
 | `VoiceService.js` | Speech-to-text. The renderer captures the mic and hands over raw PCM; anything needing a secret or the network happens here. Groq is the only backend for now (a local Whisper burns CPU exactly when the user is gaming and is worse in French). The API key lives in the OS credential store, never in settings.json, and is never sent to the renderer |
 | `ErrorLogService.js` | Centralized error collection, classification and pattern detection. Captures IPC/service errors, uncaught exceptions/rejections, and every `console.error`/`console.warn` from main. `console.error` maps to `warning`, not `critical`: main has ~208 console.error sites and most are caught-and-degraded paths, so `critical` stays reserved for uncaught failures |
 | `TerminalOutputCapture.js` | Writes a rolling tail of each project's terminal output to `~/.claude-terminal/terminals/output/<projectId>.log`. That path was already read by the MCP `terminal_read_output` tool and the `terminal` workflow node, but nothing wrote it - this is the missing writer. Buffered and flushed on a timer, capped and trimmed from the head |
@@ -413,8 +413,8 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 
 ### Internationalization (`src/renderer/i18n/locales/`)
 
-- **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`)
-- **Keys:** 3787 per locale, all five in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
+- **Keys:** 3787 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -465,7 +465,7 @@ Ids are registered as `ext-<id>` so an extension cannot shadow a built-in, and i
 |------|------:|---------|
 | `index.html` | 979 | Main app: titlebar, sidebar (customizable + pinned tabs), content panels, modals |
 | `quick-picker.html` | 531 | Command Palette (inline Node script) |
-| `setup-wizard.html` | 1642 | 7-step onboarding with embedded EN/FR translations |
+| `setup-wizard.html` | 1944 | 7-step onboarding with embedded EN/FR/ES/ID/pt-BR translations |
 | `notification.html` | 262 | Custom toast with auto-dismiss progress bar |
 
 ## CSS Architecture (`styles/` - 30 files, ~57,000 lines)
@@ -609,7 +609,7 @@ that difference from `AccountManager`.
 | Package | Version | Purpose |
 |---------|---------|---------|
 | `electron` | ^43.7.0 | Desktop framework (Chromium ~140) |
-| `@anthropic-ai/claude-agent-sdk` | ^0.3.280 | Claude Code streaming chat |
+| `@anthropic-ai/claude-agent-sdk` | ^0.3.284 | Claude Code streaming chat |
 | `@xterm/xterm` + addons | ^6.0.0 | Terminal emulator (WebGL, fit) |
 | `node-pty` | ^1.1.0 | PTY process management |
 | `keytar` | ^7.9.0 | OS credential storage |
@@ -699,7 +699,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `core/` - BaseComponent, BasePanel, ApiProvider, ServiceContainer
   - `events/` - hook session routing, permission-notification suppression by permission mode
   - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
-  - `i18n/` - i18n, coherence across the 5 locales, unused/missing key usage
+  - `i18n/` - i18n, coherence across the 6 locales, unused/missing key usage
   - `integration/` - state persistence
   - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
   - `remote-ui/` - hierarchy
@@ -871,7 +871,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **IPC pattern:** Service (main) -> IPC handler -> Preload bridge -> Renderer service
 - **Dashboard sections:** `buildXxxHtml()` in `DashboardService.js`
 - **CSS:** `.component-name.state` pattern, CSS variables, 30 modular files in `styles/`. No colour literals outside `base.css` - there is no theme system yet, and every hard-coded hex is one more thing to migrate when there is one
-- **i18n:** add keys to all five locales (`en`, `fr`, `es`, `id`, `zh-CN`) - `tests/i18n/i18n-coherence.test.js` fails otherwise; use `t('dot.path')`. Main-process error messages stay in English.
+- **i18n:** add keys to all six locales (`en`, `fr`, `es`, `id`, `zh-CN`, `pt-BR`) - `tests/i18n/i18n-coherence.test.js` fails otherwise; use `t('dot.path')`. Main-process error messages stay in English.
 - **State updates:** `state.set()` / `state.setProp()`, subscribe with `state.subscribe()`
 - **File I/O:** atomic writes for user data (temp + rename), `.bak` backup
 - **Project types:** extend `base-type.js`, register in `registry.js`, provide service + IPC + dashboard + i18n
@@ -879,4 +879,4 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **Security:** sanitize user-supplied markdown with `dompurify`; never inject untrusted HTML into chat or dashboard panels.
 - **Lint:** `npm run lint` before pushing. The boundary rules encode the main/renderer split described above - if one fires, the fix is a new IPC handler, not an `eslint-disable`.
 - **This file:** `npm run check:docs` verifies the counts and paths above against the actual tree. When you add an IPC file, a service, a panel, a node type or a locale, update the matching table in the same commit. A `CLAUDE.md` that sends the reader to a directory that no longer exists is worse than no `CLAUDE.md`.
-- **README:** it ships in the app's five locales — `README.md` (English, the base GitHub renders) plus `README.{fr,es,id,zh-CN}.md`. The same `check:docs` run compares the four translations against the English one: identical heading structure, a language switcher reaching every other file, and internal anchors that resolve. Only the *shape* is checked, never the prose. A section added on one side only fails the build, so add or remove a section in all five at once. Anchors are generated from the translated heading text, so a cross-reference cannot be copied verbatim from the English file.
+- **README:** it ships in the app's six locales — `README.md` (English, the base GitHub renders) plus `README.{fr,es,id,zh-CN,pt-BR}.md`. The same `check:docs` run compares the five translations against the English one: identical heading structure, a language switcher reaching every other file, and internal anchors that resolve. Only the *shape* is checked, never the prose. A section added on one side only fails the build, so add or remove a section in all six at once. Anchors are generated from the translated heading text, so a cross-reference cannot be copied verbatim from the English file.

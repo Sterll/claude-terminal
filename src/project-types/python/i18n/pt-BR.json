@@ -1,0 +1,21 @@
+{
+  "python": {
+    "version": "Versão do Python",
+    "venv": "Ambiente virtual",
+    "venvActive": "Ativo",
+    "venvAbsent": "Não encontrado",
+    "dependencies": "dependências",
+    "entryPoint": "Ponto de entrada",
+    "projectType": "Gerenciador de pacotes",
+    "venvPathLabel": "Caminho do ambiente virtual",
+    "venvPathHint": "Deixe vazio para detectar automaticamente (.venv, venv, env)",
+    "mainScriptLabel": "Script principal",
+    "mainScriptHint": "Deixe vazio para detectar automaticamente"
+  },
+  "newProject": {
+    "types": {
+      "python": "Python",
+      "pythonDesc": "Projeto Python com detecção de ambiente"
+    }
+  }
+}

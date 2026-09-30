@@ -140,6 +140,19 @@ jobs:
           message: ${{ steps.parse.outputs.message_zh_CN }}
           color: ${{ steps.parse.outputs.color_zh_CN }}
 
+      # ── Brazilian Portuguese (pt-BR) ─────────────────────────────────────────
+
+      - name: Update badge - Brazilian Portuguese (pt-BR)
+        if: steps.parse.outputs.message_pt_BR != ''
+        uses: schneegans/dynamic-badges-action@e9a478b16159b4d31420099ba146cdc50f134483
+        with:
+          auth: ${{ secrets.GIST_SECRET }}
+          gistID: ${{ secrets.GIST_ID }}
+          filename: i18n_pt-BR.json
+          label: "🌐 Brazilian Portuguese (pt-BR)"
+          message: ${{ steps.parse.outputs.message_pt_BR }}
+          color: ${{ steps.parse.outputs.color_pt_BR }}
+
       # ── Template for future locales ──────────────────────────────────────────
       # To add a new locale (e.g., German 'de'), copy the block above and set:
       #   filename:  i18n_de.json

@@ -217,9 +217,9 @@ describe('registry.registerExternal', () => {
     const mergeTranslations = jest.fn();
     registry.registerExternal([entry()], { mergeTranslations });
 
-    expect(mergeTranslations).toHaveBeenCalledTimes(5);
+    expect(mergeTranslations).toHaveBeenCalledTimes(6);
     const langs = mergeTranslations.mock.calls.map((c) => c[0]).sort();
-    expect(langs).toEqual(['en', 'es', 'fr', 'id', 'zh-CN']);
+    expect(langs).toEqual(['en', 'es', 'fr', 'id', 'pt-BR', 'zh-CN']);
     for (const [, bundle] of mergeTranslations.mock.calls) {
       expect(Object.keys(bundle)).toEqual(['ext']);
     }

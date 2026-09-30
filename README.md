@@ -7,7 +7,8 @@
   <a href="README.fr.md">Français</a> &bull;
   <a href="README.es.md">Español</a> &bull;
   <a href="README.id.md">Bahasa Indonesia</a> &bull;
-  <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.zh-CN.md">简体中文</a> &bull;
+  <a href="README.pt-BR.md">Português (Brasil)</a>
 </p>
 
 <p align="center">

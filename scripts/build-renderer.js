@@ -111,7 +111,7 @@ const cssBuildOptions = {
 // Keep in sync with SUPPORTED_LANGUAGES in src/renderer/i18n/index.js, minus
 // 'en': a locale missing here is selectable in the picker but silently renders
 // English, because readLocaleFile() finds nothing in dist/locales/.
-const LAZY_LOCALES = ['fr', 'es', 'id', 'zh-CN'];
+const LAZY_LOCALES = ['fr', 'es', 'id', 'zh-CN', 'pt-BR'];
 
 /**
  * Drop the previous build's chunks. Their names are content-hashed, so
