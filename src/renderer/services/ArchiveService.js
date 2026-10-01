@@ -63,10 +63,22 @@ class ArchiveService extends BaseService {
     }
   }
 
-  async archiveCurrentFile(monthStr) {
+  /**
+   * Archive a month of tracking data.
+   * @param {string} monthStr "YYYY-MM"
+   * @param {Object} [data] the data to archive. Without it, timetracking.json is
+   *   read from disk, which misses whatever has not been saved yet.
+   * @returns {Promise<boolean>} false when nothing could be written, so the
+   *   caller knows not to reset the data it was archiving
+   */
+  async archiveCurrentFile(monthStr, data) {
     const fsp = this.api.fs.promises;
     try {
-      try { await fsp.access(timeTrackingFile); } catch { return; }
+      let current = data;
+      if (!current) {
+        try { await fsp.access(timeTrackingFile); } catch { return true; }
+        current = JSON.parse(await fsp.readFile(timeTrackingFile, 'utf8'));
+      }
       const [yearStr, monthNumStr] = monthStr.split('-');
       const year = parseInt(yearStr, 10);
       const month = parseInt(monthNumStr, 10) - 1;
@@ -77,21 +89,19 @@ class ArchiveService extends BaseService {
       let destExists = false;
       try { await fsp.access(destPath); destExists = true; } catch {}
 
-      if (destExists) {
-        const existing = JSON.parse(await fsp.readFile(destPath, 'utf8'));
-        const current = JSON.parse(await fsp.readFile(timeTrackingFile, 'utf8'));
-        const merged = this._mergeArchives(existing, current, monthStr);
-        const tempFile = `${destPath}.tmp`;
-        await fsp.writeFile(tempFile, JSON.stringify(merged, null, 2));
-        await fsp.rename(tempFile, destPath);
-      } else {
-        await fsp.copyFile(timeTrackingFile, destPath);
-      }
+      const toWrite = destExists
+        ? this._mergeArchives(JSON.parse(await fsp.readFile(destPath, 'utf8')), current, monthStr)
+        : current;
+      const tempFile = `${destPath}.tmp`;
+      await fsp.writeFile(tempFile, JSON.stringify(toWrite, null, 2));
+      await fsp.rename(tempFile, destPath);
 
       this.invalidateArchiveCache(year, month);
       console.debug(`[ArchiveService] Archived ${monthStr} → ${destPath}`);
+      return true;
     } catch (error) {
       console.error('[ArchiveService] Failed to archive current file:', error.message);
+      return false;
     }
   }
 

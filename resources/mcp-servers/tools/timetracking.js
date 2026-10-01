@@ -137,6 +137,19 @@ function normalizeArchive(data) {
 }
 
 /**
+ * The previous month's archive when this week started in it, else null.
+ * timetracking.json is reset on the 1st, so without it the week totals fell
+ * back to the days of the new month.
+ */
+function loadWeekSpillover() {
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - daysSinceMonday(now));
+  if (weekStart.getMonth() === now.getMonth()) return null;
+  return loadArchive(weekStart.getFullYear(), weekStart.getMonth());
+}
+
+/**
  * Collect all sessions (global + per-project) from the current timetracking.json,
  * optionally filtered by project name and/or date range.
  * Returns an array of { date, startTime, endTime, duration, project } objects.
@@ -430,11 +443,14 @@ async function handle(name, args) {
     }
 
     if (name === 'time_week') {
-      const globalWeek = sumDuration(tt.global?.sessions || [], isThisWeek);
+      const spill = loadWeekSpillover();
+      const globalWeek = sumDuration((spill?.globalSessions || []).concat(tt.global?.sessions || []), isThisWeek);
 
       const projectLines = [];
-      for (const [pid, pdata] of Object.entries(tt.projects || {})) {
-        const dur = sumDuration(pdata.sessions || [], isThisWeek);
+      const projectIds = new Set([...Object.keys(tt.projects || {}), ...Object.keys(spill?.projectSessions || {})]);
+      for (const pid of projectIds) {
+        const sessions = (spill?.projectSessions?.[pid]?.sessions || []).concat(tt.projects?.[pid]?.sessions || []);
+        const dur = sumDuration(sessions, isThisWeek);
         if (dur > 0) {
           projectLines.push({ name: projectMap.get(pid) || pid, duration: dur });
         }
@@ -468,14 +484,14 @@ async function handle(name, args) {
       }
       if (!pid) return fail(`Project "${args.project}" not found.`);
 
-      const pdata = tt.projects?.[pid];
-      if (!pdata || !pdata.sessions?.length) {
+      const sessions = tt.projects?.[pid]?.sessions || [];
+      const spilled = loadWeekSpillover()?.projectSessions?.[pid]?.sessions || [];
+      if (!sessions.length && !spilled.length) {
         return ok(`No time tracked for ${projectMap.get(pid) || pid}.`);
       }
 
-      const sessions = pdata.sessions;
       const today = sumDuration(sessions, isToday);
-      const week = sumDuration(sessions, isThisWeek);
+      const week = sumDuration(spilled.concat(sessions), isThisWeek);
       const total = sumDuration(sessions);
 
       let output = `# ${projectMap.get(pid) || pid}\n`;
@@ -504,7 +520,7 @@ async function handle(name, args) {
     if (name === 'time_summary') {
       const globalSessions = tt.global?.sessions || [];
       const monthTotal = sumDuration(globalSessions);
-      const weekTotal = sumDuration(globalSessions, isThisWeek);
+      const weekTotal = sumDuration((loadWeekSpillover()?.globalSessions || []).concat(globalSessions), isThisWeek);
       const todayTotal = sumDuration(globalSessions, isToday);
 
       let output = `# Time Tracking Summary\n`;

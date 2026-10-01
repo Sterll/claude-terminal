@@ -17,7 +17,12 @@ const { formatDuration } = require('../utils/formatDuration');
 const os   = require('os');
 
 const TIME_FILE = path.join(os.homedir(), '.claude-terminal', 'timetracking.json');
-const ARCHIVES_DIR = path.join(os.homedir(), '.claude-terminal', 'archives');
+// Monthly archives, written by src/renderer/services/ArchiveService.js
+const ARCHIVE_DIR = path.join(os.homedir(), '.claude-terminal', 'timetracking');
+const MONTH_NAMES = [
+  'january', 'february', 'march', 'april', 'may', 'june',
+  'july', 'august', 'september', 'october', 'november', 'december'
+];
 
 // ─── Date helpers (mirrors timeTracking.state.js) ────────────────────────────
 
@@ -82,13 +87,39 @@ async function loadCurrentData() {
   }
 }
 
+/**
+ * Load a monthly archive (month is 0-based), normalized to
+ * { global: sessions[], projects: { [id]: sessions[] } }. Archives come in two
+ * shapes: a copy of timetracking.json (v3) and the older globalSessions /
+ * projectSessions layout.
+ */
 async function loadArchive(year, month) {
-  const file = path.join(ARCHIVES_DIR, String(year), String(month).padStart(2, '0'), 'archive-data.json');
+  const file = path.join(ARCHIVE_DIR, String(year), `${MONTH_NAMES[month]}.json`);
+  let data;
   try {
-    return JSON.parse(await fs.promises.readFile(file, 'utf8'));
+    data = JSON.parse(await fs.promises.readFile(file, 'utf8'));
   } catch {
     return null;
   }
+  const projects = {};
+  if (data.globalSessions) {
+    for (const [id, p] of Object.entries(data.projectSessions || {})) projects[id] = p.sessions || [];
+    return { global: data.globalSessions, projects };
+  }
+  for (const [id, p] of Object.entries(data.projects || {})) projects[id] = p.sessions || [];
+  return { global: data.global?.sessions || [], projects };
+}
+
+/**
+ * The archive of the previous month when this week started in it, else null.
+ * timetracking.json is reset on the 1st, so without this the week total fell
+ * back to the days of the new month.
+ */
+async function loadWeekSpillover(now) {
+  const weekStart = startOfWeek(now);
+  if (weekStart >= startOfMonth(now)) return null;
+  const d = new Date(weekStart);
+  return loadArchive(d.getFullYear(), d.getMonth());
 }
 
 // ─── Stats computation ───────────────────────────────────────────────────────
@@ -97,8 +128,10 @@ async function loadArchive(year, month) {
  * Compute today/week/month totals from a sessions array.
  * @param {Array} sessions
  * @param {number} now
+ * @param {Array} [prevSessions] the archived previous month's sessions, counted
+ *   toward the week only (total and month stay the current month's)
  */
-function computePeriodTotals(sessions, now) {
+function computePeriodTotals(sessions, now, prevSessions = []) {
   const todayStart  = startOfDay(now);
   const weekStart   = startOfWeek(now);
   const monthStart  = startOfMonth(now);
@@ -115,6 +148,9 @@ function computePeriodTotals(sessions, now) {
     week  += clampDuration(start, end, weekStart,  todayEnd);
     month += clampDuration(start, end, monthStart, todayEnd);
   }
+  for (const s of prevSessions) {
+    week += clampDuration(new Date(s.startTime).getTime(), new Date(s.endTime).getTime(), weekStart, todayEnd);
+  }
 
   return { today, week, month, total };
 }
@@ -126,14 +162,14 @@ function computePeriodTotals(sessions, now) {
  * Returns { today, week, month, todayFormatted, weekFormatted, monthFormatted,
  *           projects: [{ id, name, today, todayFormatted }] }
  */
-function handleGetToday(data) {
+function handleGetToday(data, prev) {
   const now = Date.now();
-  const global = computePeriodTotals(data.global?.sessions || [], now);
+  const global = computePeriodTotals(data.global?.sessions || [], now, prev?.global);
 
   // Build per-project today totals
   const projects = [];
   for (const [id, proj] of Object.entries(data.projects || {})) {
-    const t = computePeriodTotals(proj.sessions || [], now);
+    const t = computePeriodTotals(proj.sessions || [], now, prev?.projects[id]);
     if (t.today > 0) {
       projects.push({ id, today: t.today, todayFormatted: formatDuration(t.today) });
     }
@@ -155,10 +191,10 @@ function handleGetToday(data) {
  * action: 'get_week' — per-day breakdown for the current week.
  * Returns { total, totalFormatted, days: [{ date, ms, formatted }] }
  */
-function handleGetWeek(data) {
+function handleGetWeek(data, prev) {
   const now = Date.now();
   const weekStart = startOfWeek(now);
-  const sessions = data.global?.sessions || [];
+  const sessions = (prev?.global || []).concat(data.global?.sessions || []);
 
   // Build 7-day buckets
   const days = [];
@@ -189,11 +225,11 @@ function handleGetWeek(data) {
  * Returns { id, today, week, month, total, todayFormatted, weekFormatted,
  *           monthFormatted, totalFormatted, sessionCount }
  */
-function handleGetProject(data, projectId) {
+function handleGetProject(data, projectId, prev) {
   if (!projectId) throw new Error('time node: get_project requires a projectId');
   const now = Date.now();
   const sessions = data.projects?.[projectId]?.sessions || [];
-  const t = computePeriodTotals(sessions, now);
+  const t = computePeriodTotals(sessions, now, prev?.projects[projectId]);
 
   return {
     id:             projectId,
@@ -214,12 +250,12 @@ function handleGetProject(data, projectId) {
  * Returns { projects: [{ id, today, week, total, todayFormatted, ... }] }
  * sorted by today desc.
  */
-function handleGetAllProjects(data) {
+function handleGetAllProjects(data, prev) {
   const now = Date.now();
   const projects = [];
 
   for (const [id, proj] of Object.entries(data.projects || {})) {
-    const t = computePeriodTotals(proj.sessions || [], now);
+    const t = computePeriodTotals(proj.sessions || [], now, prev?.projects[id]);
     projects.push({
       id,
       today:          t.today,
@@ -280,12 +316,13 @@ function handleGetSessions(data, config) {
 async function getTimeStats(config = {}) {
   const data   = await loadCurrentData();
   const action = config.action || 'get_today';
+  const prev   = action === 'get_sessions' ? null : await loadWeekSpillover(Date.now());
 
   switch (action) {
-    case 'get_today':        return handleGetToday(data);
-    case 'get_week':         return handleGetWeek(data);
-    case 'get_project':      return handleGetProject(data, config.projectId);
-    case 'get_all_projects': return handleGetAllProjects(data);
+    case 'get_today':        return handleGetToday(data, prev);
+    case 'get_week':         return handleGetWeek(data, prev);
+    case 'get_project':      return handleGetProject(data, config.projectId, prev);
+    case 'get_all_projects': return handleGetAllProjects(data, prev);
     case 'get_sessions':     return handleGetSessions(data, config);
     default:
       throw new Error(`Unknown time action: "${action}"`);

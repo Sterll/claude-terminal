@@ -62,6 +62,10 @@ let dirty = false;
 // Latched when timetracking.json exists but cannot be parsed. Blocks every
 // save for the rest of the session — see loadData().
 let loadFailed = false;
+// Global sessions of the previous (archived) month. timetracking.json only
+// holds the current month, but a week can start in the previous one: without
+// these, the week total dropped to the days of the new month on the 1st.
+let previousMonthGlobalSessions = [];
 
 // ============================================================
 // PERSISTENCE
@@ -230,10 +234,13 @@ async function initTimeTracking(projectsState) {
   // 5. Archive past-month sessions
   await archivePastMonths();
 
-  // 6. Cleanup orphaned projects
+  // 6. Load the previous month's sessions, for a week that straddles it
+  await loadPreviousMonthSessions();
+
+  // 7. Cleanup orphaned projects
   cleanupOrphans();
 
-  // 7. Start tick
+  // 8. Start tick
   lastKnownDate = getTodayString();
   lastTickTime = Date.now();
   tickTimer = setInterval(tick, TICK_INTERVAL);
@@ -334,11 +341,13 @@ async function archivePastMonths() {
   // This protects existing users whose timetracking.json has an outdated month
   // stamp but still contains current-month sessions (e.g. after a refactor or
   // clock drift). If any session belongs to the current month, skip archiving.
+  // The month is read in local time: startTime is a UTC ISO string, so east of
+  // UTC a session started just after local midnight on the 1st carries the
+  // previous month's prefix.
+  const inCurrentMonth = s => localMonthOf(s.startTime) === currentMonthStr;
   const hasCurrentMonthSessions = (
-    (state.global?.sessions || []).some(s => s.startTime?.startsWith(currentMonthStr)) ||
-    Object.values(state.projects || {}).some(p =>
-      (p.sessions || []).some(s => s.startTime?.startsWith(currentMonthStr))
-    )
+    (state.global?.sessions || []).some(inCurrentMonth) ||
+    Object.values(state.projects || {}).some(p => (p.sessions || []).some(inCurrentMonth))
   );
 
   if (hasCurrentMonthSessions) {
@@ -348,8 +357,23 @@ async function archivePastMonths() {
     return;
   }
 
-  // The stored month is truly past — copy file as archive then reset
-  await ArchiveService.archiveCurrentFile(state.month);
+  // The stored month is truly past — archive it, then reset.
+  // Archive what is in memory, not the file on disk: at midnight the sessions
+  // the split just closed exist only in memory until the next debounced save,
+  // so copying the file archived the month without its last stretch of work.
+  const archived = await ArchiveService.archiveCurrentFile(state.month, {
+    version: 3,
+    month: state.month,
+    global: state.global,
+    projects: state.projects
+  });
+
+  // A failed archive must not be followed by the reset, or the month is gone
+  // from both places. The stale stamp makes the next launch or midnight retry.
+  if (archived === false) {
+    console.error(`[TimeTracking] Archiving ${state.month} failed, keeping its sessions in timetracking.json`);
+    return;
+  }
 
   dataState.set({
     version: 3,
@@ -359,6 +383,24 @@ async function archivePastMonths() {
   });
   save();
   console.debug(`[TimeTracking] Archived ${state.month} → starting fresh for ${currentMonthStr}`);
+}
+
+/**
+ * Load the previous month's global sessions from its archive. A week can start
+ * in that month (any month not beginning on a Monday), and once it is archived
+ * those days exist nowhere in timetracking.json.
+ */
+async function loadPreviousMonthSessions() {
+  const now = new Date();
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  try {
+    previousMonthGlobalSessions =
+      (await ArchiveService.getArchivedGlobalSessions(prev.getFullYear(), prev.getMonth())) || [];
+  } catch (e) {
+    previousMonthGlobalSessions = [];
+    console.warn('[TimeTracking] Could not load the previous month archive:', e.message);
+  }
+  dataState._notify();
 }
 
 function cleanupOrphans() {
@@ -530,7 +572,9 @@ function tick() {
     const oldMonth = lastKnownDate.substring(0, 7);
     const newMonth = todayStr.substring(0, 7);
     if (oldMonth !== newMonth) {
-      archivePastMonths().catch(e => console.warn('[TimeTracking] archivePastMonths error:', e.message));
+      archivePastMonths()
+        .then(loadPreviousMonthSessions)
+        .catch(e => console.warn('[TimeTracking] archivePastMonths error:', e.message));
     }
 
     lastKnownDate = todayStr;
@@ -645,8 +689,12 @@ function getGlobalTimes() {
   const state = dataState.get();
   let today = 0, week = 0, month = 0;
 
-  // Sum from saved sessions (sessions may span period boundaries due to merging)
-  for (const session of (state.global?.sessions || [])) {
+  // Sum from saved sessions (sessions may span period boundaries due to merging).
+  // The previous month's archived sessions only ever reach the week (and the
+  // odd session that crossed midnight into the 1st), but the clamping below
+  // already keeps each one to its own period, so they need no special case.
+  const sessions = previousMonthGlobalSessions.concat(state.global?.sessions || []);
+  for (const session of sessions) {
     const start = new Date(session.startTime).getTime();
     const end = new Date(session.endTime).getTime();
     // Only count the portion of the session that falls within each period
@@ -766,6 +814,14 @@ function getTodayString() {
 
 function getMonthString() {
   const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** "YYYY-MM" of an ISO timestamp, in local time. */
+function localMonthOf(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
