@@ -391,10 +391,11 @@ function attributionContext() {
  * specific source first: the session's recorded account, the project's
  * binding, then the account live at that moment.
  */
-function* attributed(ctx, { from = 0, to = Infinity, onlyAccount = null } = {}) {
+function* attributed(ctx, { from = 0, to = Infinity, onlyAccount = null, onlyProject = null } = {}) {
   const { timeline, byDir, knownAccounts } = ctx;
   for (const state of _files.values()) {
     const project = byDir.get(state.dir) || null;
+    if (onlyProject && project?.id !== onlyProject) continue;
     const binding = project?.accountId || null;
     for (const rec of state.messages.values()) {
       if (rec.t < from || rec.t >= to) continue;
@@ -423,11 +424,12 @@ function recordCost(rec) {
 /**
  * Aggregate every message whose timestamp falls in [from, to).
  *
- * @param {{ from?: number, to?: number, accountId?: string|null }} [range] - epoch ms,
- *   open-ended when omitted; `accountId` keeps only what is attributed to it
+ * @param {{ from?: number, to?: number, accountId?: string|null, projectId?: string|null }} [range] -
+ *   epoch ms, open-ended when omitted; `accountId` keeps only what is attributed
+ *   to that account, `projectId` only what was spent in that project
  * @returns {Promise<Object>}
  */
-async function getReport({ from = 0, to = Infinity, accountId: onlyAccount = null } = {}) {
+async function getReport({ from = 0, to = Infinity, accountId: onlyAccount = null, projectId: onlyProject = null } = {}) {
   await scan();
   const ctx = attributionContext();
   const { timeline, accounts } = ctx;
@@ -442,7 +444,7 @@ async function getReport({ from = 0, to = Infinity, accountId: onlyAccount = nul
   let firstSeen = Infinity;
   let lastSeen = 0;
 
-  for (const { state, project, binding, rec, accountId, estimated } of attributed(ctx, { from, to, onlyAccount })) {
+  for (const { state, project, binding, rec, accountId, estimated } of attributed(ctx, { from, to, onlyAccount, onlyProject })) {
     const cost = recordCost(rec);
     if (cost === null) unpriced.add(rec.m);
     const value = cost || 0;
@@ -463,11 +465,14 @@ async function getReport({ from = 0, to = Infinity, accountId: onlyAccount = nul
         name: project?.name || fallbackName(state.dir),
         boundAccountId: binding,
         byAccount: {},
+        byDay: {},
       });
     }
+    const day = localDay(rec.t);
     const p = projectsAgg.get(state.dir);
     addTo(p, rec, value);
     p.byAccount[accountId] = (p.byAccount[accountId] || 0) + value;
+    p.byDay[day] = (p.byDay[day] || 0) + value;
 
     const modelId = normalizeModelId(rec.m);
     if (!modelsAgg.has(modelId)) {
@@ -475,7 +480,6 @@ async function getReport({ from = 0, to = Infinity, accountId: onlyAccount = nul
     }
     addTo(modelsAgg.get(modelId), rec, value);
 
-    const day = localDay(rec.t);
     if (!daysAgg.has(day)) daysAgg.set(day, { date: day, cost: 0, byAccount: {} });
     const d = daysAgg.get(day);
     d.cost += value;

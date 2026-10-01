@@ -20,7 +20,8 @@ function registerCostHandlers() {
     const from = Number.isFinite(range?.from) ? range.from : 0;
     const to = Number.isFinite(range?.to) ? range.to : Infinity;
     const accountId = typeof range?.accountId === 'string' ? range.accountId : null;
-    return CostService.getReport({ from, to, accountId });
+    const projectId = typeof range?.projectId === 'string' ? range.projectId : null;
+    return CostService.getReport({ from, to, accountId, projectId });
   });
 
   ipcMain.handle('cost-get-quota', (_event, args = {}) => {
