@@ -2,6 +2,7 @@ const {
   GLOBAL_SHORTCUT_DEFAULTS,
   toElectronAccelerator,
   isUnsafeAccelerator,
+  matchesAccelerator,
   resolveGlobalShortcuts
 } = require('../../src/shared/global-shortcuts');
 
@@ -148,5 +149,37 @@ describe('resolveGlobalShortcuts', () => {
     );
     expect(ids(result)).toEqual(['globalNewTerminal', 'globalNewWorktree']);
     expect(result.rejected.map(r => r.id)).toEqual(['globalQuickPicker']);
+  });
+});
+
+describe('matchesAccelerator (in-window fallback)', () => {
+  const press = (extra) => ({ type: 'keyDown', control: false, meta: false, alt: false, shift: false, ...extra });
+
+  test('Ctrl+Shift+T matches on Linux, read from the physical key', () => {
+    // With Shift held the key reads as "T"; on some layouts it is not a letter at all.
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: 'T', code: 'KeyT' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: '?', code: 'KeyT' }), 'linux')).toBe(true);
+  });
+
+  test('modifiers must match exactly', () => {
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, key: 't', code: 'KeyT' }), 'linux')).toBe(false);
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, alt: true, key: 'T', code: 'KeyT' }), 'linux')).toBe(false);
+  });
+
+  test('CommandOrControl is Cmd on macOS, not Ctrl', () => {
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ meta: true, shift: true, key: 'T', code: 'KeyT' }), 'darwin')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: 'T', code: 'KeyT' }), 'darwin')).toBe(false);
+  });
+
+  test('ignores key-up, auto-repeat and an unbound accelerator', () => {
+    const input = press({ control: true, shift: true, key: 'T', code: 'KeyT' });
+    expect(matchesAccelerator('CommandOrControl+Shift+T', { ...input, type: 'keyUp' }, 'linux')).toBe(false);
+    expect(matchesAccelerator('CommandOrControl+Shift+T', { ...input, isAutoRepeat: true }, 'linux')).toBe(false);
+    expect(matchesAccelerator(null, input, 'linux')).toBe(false);
+  });
+
+  test('named keys compare on key', () => {
+    expect(matchesAccelerator('CommandOrControl+Space', press({ control: true, key: 'Space', code: 'Space' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('Alt+F9', press({ alt: true, key: 'F9', code: 'F9' }), 'linux')).toBe(true);
   });
 });

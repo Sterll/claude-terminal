@@ -731,6 +731,11 @@ class TerminalManager extends BaseComponent {
       if (e.ctrlKey && !e.shiftKey && e.key.toLowerCase() === 'w' && e.type === 'keydown') {
         return false;
       }
+      // Ctrl+T is the app's "new Claude terminal"; left to xterm it becomes the
+      // shell's transpose-chars and never reaches the shortcut listener.
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 't' && e.type === 'keydown') {
+        return false;
+      }
       if (e.ctrlKey && !e.shiftKey && e.key === ',' && e.type === 'keydown') {
         return false;
       }

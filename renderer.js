@@ -6663,14 +6663,16 @@ api.remote.onOpenChatTab(({ cwd, prompt, images, model, effort, resumeSessionId 
   setInterval(pushTime, 30000);
 })();
 
+// Ctrl+Shift+T and the tray's "New Terminal" open a plain shell, not a Claude
+// session: Ctrl+T is already the in-app way to start Claude.
 api.tray.onOpenTerminal(() => {
   const selectedFilter = projectsState.get().selectedProjectFilter;
   const projects = projectsState.get().projects;
   if (selectedFilter !== null && projects[selectedFilter]) {
-    createTerminalForProject(projects[selectedFilter]);
+    createBasicTerminalForProject(projects[selectedFilter]);
   } else if (projects.length > 0) {
     // No project selected, use the first one
-    createTerminalForProject(projects[0]);
+    createBasicTerminalForProject(projects[0]);
   }
 });
 

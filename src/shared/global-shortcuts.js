@@ -113,10 +113,65 @@ function resolveGlobalShortcuts(config = {}, platform = process.platform) {
   return { resolved, rejected };
 }
 
+/**
+ * Whether a `before-input-event` input is the key press an accelerator names.
+ *
+ * This is the in-window half of a global shortcut. On a native Wayland session
+ * `globalShortcut.register()` returns true and then never fires unless the
+ * compositor implements the GlobalShortcuts portal, which GNOME only does from
+ * 48 on — so on Ubuntu 24.04 Ctrl+Shift+T did nothing, even with the window
+ * focused, because nothing else in the app listened for it. Where the OS grab
+ * does work it consumes the key first and the window never sees it.
+ *
+ * Modifiers must match exactly, so Ctrl+Shift+T does not also answer
+ * Ctrl+Alt+Shift+T.
+ *
+ * @param {string} accelerator - Electron accelerator form
+ * @param {{ type?: string, key?: string, code?: string, control?: boolean, meta?: boolean, alt?: boolean, shift?: boolean, isAutoRepeat?: boolean }} input
+ * @param {string} [platform] - defaults to the running platform
+ * @returns {boolean}
+ */
+function matchesAccelerator(accelerator, input, platform = process.platform) {
+  if (!accelerator || !input || input.type !== 'keyDown' || input.isAutoRepeat) return false;
+
+  const want = { control: false, meta: false, alt: false, shift: false };
+  let key = null;
+  for (const raw of String(accelerator).split('+')) {
+    const part = raw.trim().toLowerCase();
+    if (part === 'commandorcontrol' || part === 'cmdorctrl') {
+      want[platform === 'darwin' ? 'meta' : 'control'] = true;
+    } else if (part === 'control' || part === 'ctrl') {
+      want.control = true;
+    } else if (part === 'command' || part === 'cmd' || part === 'super' || part === 'meta') {
+      want.meta = true;
+    } else if (part === 'alt' || part === 'option') {
+      want.alt = true;
+    } else if (part === 'shift') {
+      want.shift = true;
+    } else {
+      key = part;
+    }
+  }
+  if (!key) return false;
+
+  for (const mod of Object.keys(want)) {
+    if (!!input[mod] !== want[mod]) return false;
+  }
+
+  // `key` is layout- and shift-dependent (Shift+1 is "!"), `code` is the
+  // physical key; a single letter or digit is compared on `code` so Shift does
+  // not change what it reads as.
+  const code = String(input.code || '');
+  if (/^[a-z]$/.test(key)) return code === `Key${key.toUpperCase()}` || String(input.key).toLowerCase() === key;
+  if (/^[0-9]$/.test(key)) return code === `Digit${key}` || String(input.key) === key;
+  return String(input.key || '').toLowerCase() === key || code.toLowerCase() === key;
+}
+
 module.exports = {
   GLOBAL_SHORTCUT_DEFAULTS,
   X11_UNSAFE_KEYS,
   toElectronAccelerator,
   isUnsafeAccelerator,
+  matchesAccelerator,
   resolveGlobalShortcuts
 };

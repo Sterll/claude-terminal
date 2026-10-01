@@ -472,6 +472,10 @@ class ShortcutsManager extends BasePanel {
       const projects = this._ctx.projectsState.get().projects;
       if (selectedFilter !== null && projects[selectedFilter]) {
         this._ctx.createTerminalForProject(projects[selectedFilter]);
+      } else if (projects.length > 0) {
+        this._ctx.setSelectedProjectFilter(0);
+        this._ctx.ProjectList.render();
+        this._ctx.createTerminalForProject(projects[0]);
       }
     }, { global: true });
 
