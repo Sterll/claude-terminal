@@ -445,6 +445,51 @@
     "nothingToCommit": "Tidak ada yang di-commit. Working tree bersih."
   },
   "dashboard": {
+    "brief": {
+      "noGit": "Bukan repositori git",
+      "synced": "tersinkron",
+      "more": "Statistik dan riwayat",
+      "metrics": {
+        "costWeek": "Biaya minggu ini",
+        "timeWeek": "Waktu minggu ini",
+        "commitsWeek": "Commit minggu ini"
+      },
+      "ci": {
+        "success": "CI lulus",
+        "failure": "CI gagal",
+        "running": "CI berjalan",
+        "none": "Tanpa CI"
+      },
+      "resume": {
+        "title": "Lanjutkan",
+        "button": "Lanjutkan",
+        "empty": "Belum ada sesi Claude untuk proyek ini.",
+        "lastRecap": "Ringkasan terakhir"
+      },
+      "todo": {
+        "title": "Perlu ditangani",
+        "empty": "Tidak ada yang menunggu",
+        "conflicts": "Konflik merge di {count} file",
+        "ciFailed": "CI gagal: {name}",
+        "ciRunning": "CI berjalan: {name}",
+        "unpushed": "{count} commit belum di-push",
+        "behind": "{count} commit untuk di-pull",
+        "todos": "{count} TODO / FIXME di kode"
+      },
+      "activity": {
+        "title": "Aktivitas, {days} hari terakhir",
+        "cost": "Biaya",
+        "commitsLegend": "Commit",
+        "commits": "{count} commit"
+      },
+      "overview": {
+        "week": "Minggu {date}",
+        "activeProjects": "Proyek aktif minggu ini",
+        "toHandle": "Hal yang perlu ditangani",
+        "more": "dan {count} lagi",
+        "noCommit": "Belum ada commit"
+      }
+    },
     "openFolder": "Buka folder",
     "openClaude": "Buka Claude",
     "pull": "Pull",

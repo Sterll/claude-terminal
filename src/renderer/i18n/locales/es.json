@@ -445,6 +445,51 @@
     "nothingToCommit": "Nada que commitear. El árbol de trabajo está limpio."
   },
   "dashboard": {
+    "brief": {
+      "noGit": "No es un repositorio git",
+      "synced": "sincronizado",
+      "more": "Estadísticas e historial",
+      "metrics": {
+        "costWeek": "Coste esta semana",
+        "timeWeek": "Tiempo esta semana",
+        "commitsWeek": "Commits esta semana"
+      },
+      "ci": {
+        "success": "CI correcta",
+        "failure": "CI fallida",
+        "running": "CI en curso",
+        "none": "Sin CI"
+      },
+      "resume": {
+        "title": "Retomar",
+        "button": "Retomar",
+        "empty": "Aún no hay sesiones de Claude en este proyecto.",
+        "lastRecap": "Último resumen"
+      },
+      "todo": {
+        "title": "Pendiente",
+        "empty": "Nada pendiente",
+        "conflicts": "Conflicto de fusión en {count} archivo(s)",
+        "ciFailed": "CI fallida: {name}",
+        "ciRunning": "CI en curso: {name}",
+        "unpushed": "{count} commit(s) por enviar",
+        "behind": "{count} commit(s) por traer",
+        "todos": "{count} TODO / FIXME en el código"
+      },
+      "activity": {
+        "title": "Actividad, últimos {days} días",
+        "cost": "Coste",
+        "commitsLegend": "Commits",
+        "commits": "{count} commit(s)"
+      },
+      "overview": {
+        "week": "Semana del {date}",
+        "activeProjects": "Proyectos activos esta semana",
+        "toHandle": "Puntos pendientes",
+        "more": "y {count} más",
+        "noCommit": "Sin commits"
+      }
+    },
     "openFolder": "Abrir carpeta",
     "openClaude": "Abrir Claude",
     "pull": "Pull",

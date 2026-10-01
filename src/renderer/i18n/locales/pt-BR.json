@@ -445,6 +445,51 @@
     "nothingToCommit": "Nada para commitar. A árvore de trabalho está limpa."
   },
   "dashboard": {
+    "brief": {
+      "noGit": "Não é um repositório git",
+      "synced": "sincronizado",
+      "more": "Estatísticas e histórico",
+      "metrics": {
+        "costWeek": "Custo nesta semana",
+        "timeWeek": "Tempo nesta semana",
+        "commitsWeek": "Commits nesta semana"
+      },
+      "ci": {
+        "success": "CI ok",
+        "failure": "CI falhando",
+        "running": "CI em andamento",
+        "none": "Sem CI"
+      },
+      "resume": {
+        "title": "Retomar",
+        "button": "Retomar",
+        "empty": "Nenhuma sessão do Claude neste projeto ainda.",
+        "lastRecap": "Último resumo"
+      },
+      "todo": {
+        "title": "Pendências",
+        "empty": "Nada pendente",
+        "conflicts": "Conflito de merge em {count} arquivo(s)",
+        "ciFailed": "CI falhando: {name}",
+        "ciRunning": "CI em andamento: {name}",
+        "unpushed": "{count} commit(s) para enviar",
+        "behind": "{count} commit(s) para puxar",
+        "todos": "{count} TODO / FIXME no código"
+      },
+      "activity": {
+        "title": "Atividade, últimos {days} dias",
+        "cost": "Custo",
+        "commitsLegend": "Commits",
+        "commits": "{count} commit(s)"
+      },
+      "overview": {
+        "week": "Semana de {date}",
+        "activeProjects": "Projetos ativos nesta semana",
+        "toHandle": "Pendências",
+        "more": "e mais {count}",
+        "noCommit": "Nenhum commit"
+      }
+    },
     "openFolder": "Abrir pasta",
     "openClaude": "Abrir Claude",
     "pull": "Pull",

@@ -445,6 +445,51 @@
     "nothingToCommit": "Nothing to commit. The working tree is clean."
   },
   "dashboard": {
+    "brief": {
+      "noGit": "Not a git repository",
+      "synced": "up to date",
+      "more": "Statistics and history",
+      "metrics": {
+        "costWeek": "Cost this week",
+        "timeWeek": "Time this week",
+        "commitsWeek": "Commits this week"
+      },
+      "ci": {
+        "success": "CI passing",
+        "failure": "CI failing",
+        "running": "CI running",
+        "none": "No CI"
+      },
+      "resume": {
+        "title": "Pick up where you left off",
+        "button": "Resume",
+        "empty": "No Claude session for this project yet.",
+        "lastRecap": "Last recap"
+      },
+      "todo": {
+        "title": "Needs attention",
+        "empty": "Nothing waiting",
+        "conflicts": "Merge conflict in {count} file(s)",
+        "ciFailed": "CI failing: {name}",
+        "ciRunning": "CI running: {name}",
+        "unpushed": "{count} commit(s) to push",
+        "behind": "{count} commit(s) to pull",
+        "todos": "{count} TODO / FIXME in the code"
+      },
+      "activity": {
+        "title": "Activity, last {days} days",
+        "cost": "Cost",
+        "commitsLegend": "Commits",
+        "commits": "{count} commit(s)"
+      },
+      "overview": {
+        "week": "Week of {date}",
+        "activeProjects": "Active projects this week",
+        "toHandle": "Items needing attention",
+        "more": "and {count} more",
+        "noCommit": "No commit yet"
+      }
+    },
     "openFolder": "Open folder",
     "openClaude": "Open Claude",
     "pull": "Pull",

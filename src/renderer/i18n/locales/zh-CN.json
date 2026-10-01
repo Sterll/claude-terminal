@@ -445,6 +445,51 @@
     "nothingToCommit": "没有需要提交的更改。工作树是干净的。"
   },
   "dashboard": {
+    "brief": {
+      "noGit": "不是 git 仓库",
+      "synced": "已同步",
+      "more": "统计与历史",
+      "metrics": {
+        "costWeek": "本周费用",
+        "timeWeek": "本周时间",
+        "commitsWeek": "本周提交"
+      },
+      "ci": {
+        "success": "CI 通过",
+        "failure": "CI 失败",
+        "running": "CI 运行中",
+        "none": "无 CI"
+      },
+      "resume": {
+        "title": "继续工作",
+        "button": "继续",
+        "empty": "此项目还没有 Claude 会话。",
+        "lastRecap": "最近摘要"
+      },
+      "todo": {
+        "title": "待处理",
+        "empty": "没有待处理事项",
+        "conflicts": "{count} 个文件存在合并冲突",
+        "ciFailed": "CI 失败：{name}",
+        "ciRunning": "CI 运行中：{name}",
+        "unpushed": "{count} 个提交待推送",
+        "behind": "{count} 个提交待拉取",
+        "todos": "代码中有 {count} 个 TODO / FIXME"
+      },
+      "activity": {
+        "title": "最近 {days} 天的活动",
+        "cost": "费用",
+        "commitsLegend": "提交",
+        "commits": "{count} 个提交"
+      },
+      "overview": {
+        "week": "{date} 这一周",
+        "activeProjects": "本周活跃项目",
+        "toHandle": "待处理事项",
+        "more": "还有 {count} 项",
+        "noCommit": "暂无提交"
+      }
+    },
     "openFolder": "打开文件夹",
     "openClaude": "打开 Claude",
     "pull": "拉取",

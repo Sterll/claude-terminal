@@ -540,6 +540,51 @@
     "nothingToCommit": "Rien à commiter. L'arbre de travail est propre."
   },
   "dashboard": {
+    "brief": {
+      "noGit": "Pas un dépôt git",
+      "synced": "synchronisé",
+      "more": "Statistiques et historique",
+      "metrics": {
+        "costWeek": "Coût cette semaine",
+        "timeWeek": "Temps cette semaine",
+        "commitsWeek": "Commits cette semaine"
+      },
+      "ci": {
+        "success": "CI OK",
+        "failure": "CI en échec",
+        "running": "CI en cours",
+        "none": "Pas de CI"
+      },
+      "resume": {
+        "title": "Reprendre",
+        "button": "Reprendre",
+        "empty": "Aucune session Claude pour ce projet.",
+        "lastRecap": "Dernier résumé"
+      },
+      "todo": {
+        "title": "À traiter",
+        "empty": "Rien à traiter",
+        "conflicts": "Conflit de fusion sur {count} fichier(s)",
+        "ciFailed": "CI en échec : {name}",
+        "ciRunning": "CI en cours : {name}",
+        "unpushed": "{count} commit(s) à pousser",
+        "behind": "{count} commit(s) à récupérer",
+        "todos": "{count} TODO / FIXME dans le code"
+      },
+      "activity": {
+        "title": "Activité, {days} derniers jours",
+        "cost": "Coût",
+        "commitsLegend": "Commits",
+        "commits": "{count} commit(s)"
+      },
+      "overview": {
+        "week": "Semaine du {date}",
+        "activeProjects": "Projets actifs cette semaine",
+        "toHandle": "Points à traiter",
+        "more": "et {count} de plus",
+        "noCommit": "Aucun commit"
+      }
+    },
     "openFolder": "Ouvrir dossier",
     "openClaude": "Ouvrir Claude",
     "pull": "Pull",

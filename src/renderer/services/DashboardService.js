@@ -16,6 +16,7 @@ const { t } = require('../i18n');
 const registry = require('../../project-types/registry');
 const KanbanPanel = require('../ui/panels/KanbanPanel');
 const Timeline = require('./ProjectTimeline');
+const Brief = require('./dashboard/briefing');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
@@ -1845,6 +1846,126 @@ async function renderTimelineView(container, project, data, options, isRefreshin
   });
 }
 
+// ==================== BRIEFING (top of the project view) ====================
+
+const BRANCH_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2a3 3 0 0 0-3 3c0 1.28.81 2.38 1.94 2.81A4 4 0 0 0 9 12H6a3 3 0 0 0 0 6 3 3 0 0 0 2.94-2.41A4 4 0 0 0 13 12v-1.17A3 3 0 0 0 15 8a3 3 0 0 0-3-3 3 3 0 0 0-2.24 1.01A4 4 0 0 0 6 2z"/></svg>';
+
+/** Branch, sync state and pending changes, on one line under the title. */
+function buildBranchLineHtml(gitInfo = {}, { trailingSep = true } = {}) {
+  const tail = trailingSep ? '<span class="dash-sub-sep">·</span>' : '';
+  if (!gitInfo.isGitRepo) {
+    return gitInfo.isGitRepo === false
+      ? `<span class="dash-sub-item">${escapeHtml(t('dashboard.brief.noGit'))}</span>${tail}`
+      : '';
+  }
+  const parts = [`<span class="dash-sub-item dash-branch">${BRANCH_ICON}${escapeHtml(gitInfo.branch || '')}</span>`];
+  const ab = gitInfo.aheadBehind || {};
+  if (ab.hasRemote && !ab.notTracking) {
+    if (!ab.ahead && !ab.behind) {
+      parts.push(`<span class="dash-sub-item tone-success">${escapeHtml(t('dashboard.brief.synced'))}</span>`);
+    } else {
+      const sync = [ab.ahead ? `↑${ab.ahead}` : '', ab.behind ? `↓${ab.behind}` : ''].filter(Boolean).join(' ');
+      parts.push(`<span class="dash-sub-item tone-info">${sync}</span>`);
+    }
+  }
+  const files = gitInfo.files || {};
+  const changed = (files.staged?.length || 0) + (files.unstaged?.length || 0) + (files.untracked?.length || 0);
+  if (changed) parts.push(`<span class="dash-sub-item tone-warning">${escapeHtml(t('dashboard.filesChanged', { count: changed }))}</span>`);
+  return parts.join('<span class="dash-sub-sep">·</span>') + tail;
+}
+
+function buildProjectMetricsHtml(project, data) {
+  const cost = Brief.loadProjectCost(project.id).value;
+  const week = Brief.weekStart();
+  const time = Brief.timeSince(getProjectSessions(project.id), getProjectTimes(project.id), week);
+  const commits = Brief.commitsSince(data.commitHistory30d, week);
+  return Brief.buildMetricsHtml([
+    {
+      key: 'cost',
+      value: cost ? Brief.formatUsd(cost.weekCost) : cost === null ? '-' : '…',
+      pending: cost === undefined,
+      label: t('dashboard.brief.metrics.costWeek'),
+    },
+    { key: 'time', value: formatDuration(time), label: t('dashboard.brief.metrics.timeWeek') },
+    {
+      key: 'commits',
+      value: commits === null ? '…' : String(commits),
+      pending: commits === null,
+      label: t('dashboard.brief.metrics.commitsWeek'),
+    },
+    Brief.ciMetric(data.workflowRuns, data.pullRequests),
+  ]);
+}
+
+function projectTodoItems(project, data, gitOps) {
+  return Brief.todoItems({
+    gitInfo: data.gitInfo || {},
+    workflowRuns: data.workflowRuns,
+    pullRequests: data.pullRequests,
+    conflicts: gitOps?.mergeInProgress ? (gitOps.conflicts || []) : [],
+    todoCount: Brief.loadTodoCount(project).value,
+  });
+}
+
+function projectActivityDays(project, data) {
+  const cost = Brief.loadProjectCost(project.id).value;
+  const commits = Brief.commitsByDay(data.commitHistory30d);
+  return Brief.lastDays(Brief.ACTIVITY_DAYS).map(date => ({
+    date,
+    cost: cost ? (cost.byDay[date] || 0) : null,
+    commits: commits[date] || 0,
+  }));
+}
+
+function replaceSlot(root, selector, html) {
+  const el = root.querySelector(selector);
+  if (!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html.trim();
+  if (tmp.firstElementChild) el.replaceWith(tmp.firstElementChild);
+}
+
+/**
+ * Fill the briefing as its sources arrive: cost and sessions come from the
+ * transcripts, the TODO count from a scan of the tree. Each lands on its own,
+ * and the blocks repaint from the shared cache rather than one by one.
+ */
+function wireBriefing(container, project, data, options, gitOps, isCurrent) {
+  const brief = container.querySelector('.dash-brief');
+  if (!brief) return;
+
+  brief.addEventListener('click', (e) => {
+    const resume = e.target.closest('[data-resume]');
+    if (resume) {
+      options.onTaskSessionOpen?.(project, resume.dataset.resume);
+      return;
+    }
+    const link = e.target.closest('.dash-todo-item[data-url]');
+    if (link) api.dialog.openExternal(link.dataset.url);
+  });
+
+  const repaint = () => {
+    if (!isCurrent() || !brief.isConnected) return;
+    replaceSlot(brief, '.dash-metrics', buildProjectMetricsHtml(project, data));
+    replaceSlot(brief, '[data-dash="resume"]', Brief.cardHtml('resume', t('dashboard.brief.resume.title'),
+      Brief.buildResumeHtml(Brief.loadSessions(project).value ?? null, Brief.loadLatestRecap(project.id).value), 'dash-resume'));
+    replaceSlot(brief, '[data-dash="todo"]', Brief.cardHtml('todo', t('dashboard.brief.todo.title'),
+      Brief.buildTodoHtml(projectTodoItems(project, data, gitOps))));
+    replaceSlot(brief, '[data-dash="activity"]', Brief.cardHtml('activity', t('dashboard.brief.activity.title', { days: Brief.ACTIVITY_DAYS }),
+      Brief.buildActivityHtml(projectActivityDays(project, data))));
+  };
+
+  const loads = [
+    Brief.loadProjectCost(project.id),
+    Brief.loadSessions(project),
+    Brief.loadLatestRecap(project.id),
+    Brief.loadTodoCount(project),
+  ];
+  for (const load of loads) {
+    if (load.pending) load.ready.then(repaint, () => {});
+  }
+}
+
 function renderDashboardHtml(container, project, data, options, isRefreshing = false, isCurrent = () => true) {
   const {
     terminalCount = 0,
@@ -1891,6 +2012,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   const gitOps = getGitOperation(project.id);
   const hasMergeConflict = gitOps.mergeInProgress && gitOps.conflicts.length > 0;
   const projectTimes = getProjectTimes(project.id);
+  const typeStatsHtml = typeHandler.getDashboardStats({ fivemStatus, projectIndex: projectsState.get().projects.findIndex(p => p.id === project.id), project, t }) || '';
 
   // Build HTML
   container.innerHTML = `
@@ -1909,10 +2031,19 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
       <div class="merge-alert-hint">${t('git.resolveConflicts')}</div>
     </div>
     ` : ''}
-    <div class="dashboard-project-header" data-animate="0">
+    <div class="dashboard-project-header dash-header" data-animate="0">
       <div class="dashboard-project-title">
-        <h2>${escapeHtml(project.name)}</h2>
-        <span class="dashboard-project-type ${dashboardBadge ? dashboardBadge.cssClass : ''}">${dashboardBadge ? dashboardBadge.text : t('dashboard.standalone')}</span>
+        <div class="dash-title-row">
+          <h2>${escapeHtml(project.name)}</h2>
+          ${dashboardBadge ? `<span class="dashboard-project-type ${dashboardBadge.cssClass}">${escapeHtml(dashboardBadge.text)}</span>` : ''}
+        </div>
+        <div class="dash-subline">
+          ${buildBranchLineHtml(gitInfo)}
+          <button class="dash-path btn-copy-path" title="${t('dashboard.copyPath')}">
+            <code>${escapeHtml(project.path)}</code>
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+          </button>
+        </div>
       </div>
       <div class="dashboard-project-actions">
         <button class="btn-secondary" id="dash-btn-open-folder">
@@ -1942,48 +2073,54 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
       </div>
     </div>
 
-    <div class="dashboard-quick-stats" data-animate="1">
-      <div class="quick-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
-        <span>${terminalCount} ${t('dashboard.terminals')}</span>
+    ${typeStatsHtml.trim() ? `<div class="dashboard-quick-stats dash-type-stats" data-animate="1">${typeStatsHtml}</div>` : ''}
+
+    <div class="dash-brief" data-animate="1">
+      ${buildProjectMetricsHtml(project, data)}
+      <div class="dash-row">
+        ${Brief.cardHtml('resume', t('dashboard.brief.resume.title'), Brief.buildResumeHtml(Brief.loadSessions(project).value ?? null, Brief.loadLatestRecap(project.id).value), 'dash-resume')}
+        ${Brief.cardHtml('todo', t('dashboard.brief.todo.title'), Brief.buildTodoHtml(projectTodoItems(project, data, gitOps)))}
       </div>
-      <div class="quick-stat time-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-        <span class="time-today">${formatDuration(projectTimes.today)}</span>
-        <span class="time-sep">/</span>
-        <span class="time-total">${formatDuration(projectTimes.total)}</span>
-      </div>
-      ${typeHandler.getDashboardStats({ fivemStatus, projectIndex: projectsState.get().projects.findIndex(p => p.id === project.id), project, t })}
-      ${gitInfo.isGitRepo && gitInfo.remoteUrl ? `
-      <div class="quick-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
-        <span class="remote-url">${escapeHtml(redactUrlCredentials(gitInfo.remoteUrl).replace(/^https?:\/\//, '').replace(/\.git$/, '').substring(0, 40))}</span>
-      </div>
-      ` : ''}
+      ${Brief.cardHtml('activity', t('dashboard.brief.activity.title', { days: Brief.ACTIVITY_DAYS }), Brief.buildActivityHtml(projectActivityDays(project, data)))}
     </div>
 
-    <div class="dashboard-path-bar" data-animate="2">
-      <code>${escapeHtml(project.path)}</code>
-      <button class="btn-icon-small btn-copy-path" title="${t('dashboard.copyPath')}">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
-      </button>
-    </div>
-
-    <div class="dashboard-grid" data-animate="3">
-      <div class="dashboard-col">
-        ${gitInfo.isGitRepo === undefined ? '' : buildGitStatusHtml(gitInfo)}
-        ${buildWorkflowRunsHtml(workflowRuns)}
-        ${buildPullRequestsHtml(pullRequests)}
+    <details class="dash-more" data-animate="2">
+      <summary>${t('dashboard.brief.more')}</summary>
+      <div class="dashboard-quick-stats">
+        <div class="quick-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.89 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10z"/></svg>
+          <span>${terminalCount} ${t('dashboard.terminals')}</span>
+        </div>
+        <div class="quick-stat time-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
+          <span class="time-today">${formatDuration(projectTimes.today)}</span>
+          <span class="time-sep">/</span>
+          <span class="time-total">${formatDuration(projectTimes.total)}</span>
+        </div>
+        ${gitInfo.isGitRepo && gitInfo.remoteUrl ? `
+        <div class="quick-stat">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+          <span class="remote-url">${escapeHtml(redactUrlCredentials(gitInfo.remoteUrl).replace(/^https?:\/\//, '').replace(/\.git$/, '').substring(0, 40))}</span>
+        </div>
+        ` : ''}
       </div>
-      <div class="dashboard-col">
-        <div class="dashboard-session-recaps" hidden></div>
-        ${buildStatsHtml(stats, gitInfo)}
-        ${buildClaudeActivityHtml()}
-        ${gitInfo.isGitRepo ? buildContributorsHtml(gitInfo.contributors) : ''}
-      </div>
-    </div>
 
-    ${buildProjectInsightsHtml(data, project.id)}
+      <div class="dashboard-grid">
+        <div class="dashboard-col">
+          ${gitInfo.isGitRepo === undefined ? '' : buildGitStatusHtml(gitInfo)}
+          ${buildWorkflowRunsHtml(workflowRuns)}
+          ${buildPullRequestsHtml(pullRequests)}
+        </div>
+        <div class="dashboard-col">
+          <div class="dashboard-session-recaps" hidden></div>
+          ${buildStatsHtml(stats, gitInfo)}
+          ${buildClaudeActivityHtml()}
+          ${gitInfo.isGitRepo ? buildContributorsHtml(gitInfo.contributors) : ''}
+        </div>
+      </div>
+
+      ${buildProjectInsightsHtml(data, project.id)}
+    </details>
   `;
 
   // A refresh must display final values too (entrance animations only run once).
@@ -2007,6 +2144,8 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   };
   window.addEventListener('session-recap-updated', _sessionRecapHandler);
   void updateRecaps();
+
+  wireBriefing(container, project, data, options, gitOps, isCurrent);
 
   // Attach click handlers for workflow runs
   container.querySelectorAll('.workflow-run-item').forEach(item => {
@@ -2354,121 +2493,88 @@ async function _preloadAllProjectsInner() {
  */
 function buildOverviewCardHtml(project, dataMap, timesMap) {
   const data = dataMap[project.id];
-  const times = timesMap[project.id] || { today: 0 };
   const hasData = !!data;
-
   const gitInfo = data?.gitInfo || {};
-  const branch = gitInfo.branch || '';
-  const aheadBehind = gitInfo.aheadBehind || {};
-  const files = gitInfo.files || {};
-  const workflowRuns = data?.workflowRuns || {};
-  const pullRequests = data?.pullRequests || {};
   const projectType = data?.projectType || null;
 
-  const stagedCount = files?.staged?.length || 0;
-  const unstagedCount = files?.unstaged?.length || 0;
-  const untrackedCount = files?.untracked?.length || 0;
-  const totalChanges = stagedCount + unstagedCount + untrackedCount;
+  const ci = Brief.ciState(data?.workflowRuns);
+  const ciHtml = ci
+    ? `<span class="overview-ci ${ci}" title="CI: ${ci}">${ci === 'success' ? '✓' : ci === 'failure' ? '✗' : '⟳'}</span>`
+    : '';
+  const typeBadgeHtml = projectType
+    ? `<span class="overview-type-badge" style="--type-color: ${sanitizeColor(projectType.color) || '#888'}">${escapeHtml(projectType.label)}</span>`
+    : '';
 
-  const latestRun = workflowRuns?.runs?.[0];
-  let ciHtml = '';
-  if (latestRun) {
-    let ciClass = 'skipped';
-    let ciSymbol = '?';
-    if (latestRun.status === 'in_progress' || latestRun.status === 'queued') {
-      ciClass = 'running';
-      ciSymbol = '⟳';
-    } else if (latestRun.conclusion === 'success') {
-      ciClass = 'success';
-      ciSymbol = '✓';
-    } else if (latestRun.conclusion === 'failure') {
-      ciClass = 'failure';
-      ciSymbol = '✗';
-    }
-    ciHtml = `<span class="overview-ci ${ciClass}" title="CI: ${latestRun.conclusion || latestRun.status}">${ciSymbol}</span>`;
-  }
+  const costs = Brief.loadAllProjectsCost().value;
+  const projectCost = costs?.byProject?.[project.id];
+  const costValue = costs === undefined ? '…' : Brief.formatUsd(projectCost?.weekCost || 0);
+  const week = Brief.weekStart();
+  const time = Brief.timeSince(getProjectSessions(project.id), timesMap[project.id] || getProjectTimes(project.id), week);
+  const spark = Brief.lastDays(7).map(day => projectCost?.byDay?.[day] || 0);
 
-  let typeBadgeHtml = '';
-  if (projectType) {
-    typeBadgeHtml = `<span class="overview-type-badge" style="--type-color: ${sanitizeColor(projectType.color) || '#888'}">${escapeHtml(projectType.label)}</span>`;
-  }
-
-  const openPrs = (pullRequests?.pullRequests || []).filter(pr => pr.state === 'open').length;
   const lastCommit = gitInfo.recentCommits?.[0] || null;
-
-  let syncHtml = '';
-  if (aheadBehind.hasRemote && !aheadBehind.notTracking) {
-    const parts = [];
-    if (aheadBehind.behind > 0) parts.push(`↓${aheadBehind.behind}`);
-    if (aheadBehind.ahead > 0) parts.push(`↑${aheadBehind.ahead}`);
-    if (parts.length > 0) {
-      syncHtml = `<span class="overview-sync">${parts.join(' ')}</span>`;
-    }
-  }
-
-  let statsHtml = '';
-  if (!hasData && !projectType) {
-    statsHtml = `<div class="overview-stat overview-no-data"><span>${t('dashboard.noData')}</span></div>`;
-  } else {
-    if (branch) {
-      statsHtml += `<div class="overview-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2a3 3 0 0 0-3 3c0 1.28.81 2.38 1.94 2.81A4 4 0 0 0 9 12H6a3 3 0 0 0 0 6 3 3 0 0 0 2.94-2.41A4 4 0 0 0 13 12v-1.17A3 3 0 0 0 15 8a3 3 0 0 0-3-3 3 3 0 0 0-2.24 1.01A4 4 0 0 0 6 2z"/></svg>
-        <span>${escapeHtml(branch)}</span>
-        ${syncHtml}
-      </div>`;
-    }
-
-    if (lastCommit) {
-      const commitMsg = (lastCommit.message || '').length > 40
-        ? lastCommit.message.substring(0, 40) + '...'
-        : (lastCommit.message || '');
-      statsHtml += `<div class="overview-stat overview-commit">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3c-.46-4.17-3.77-7.48-7.94-7.94V1h-2v2.06C6.83 3.52 3.52 6.83 3.06 11H1v2h2.06c.46 4.17 3.77 7.48 7.94 7.94V23h2v-2.06c4.17-.46 7.48-3.77 7.94-7.94H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/></svg>
-        <span class="overview-commit-hash">${lastCommit.hash || ''}</span>
-        <span class="overview-commit-msg">${escapeHtml(commitMsg)}</span>
-        ${lastCommit.date ? `<span class="overview-commit-date">${lastCommit.date}</span>` : ''}
-      </div>`;
-    }
-
-    if (openPrs > 0) {
-      statsHtml += `<div class="overview-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM6 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 4v6.76a3 3 0 1 0 2 0V11H6zm1 9a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm0 4v6.76a3 3 0 1 0 2 0V11h-2zm1 9a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
-        <span>${t('dashboard.openPrs', { count: openPrs })}</span>
-      </div>`;
-    }
-
-    if (totalChanges > 0) {
-      statsHtml += `<div class="overview-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zM6 20V4h7v5h5v11H6z"/></svg>
-        <span>${t('dashboard.filesChanged', { count: totalChanges })}</span>
-      </div>`;
-    }
-
-    if (times.today > 0) {
-      statsHtml += `<div class="overview-stat">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>
-        <span>${formatDuration(times.today)} ${t('dashboard.todayTime')}</span>
-      </div>`;
-    }
-
-    if (!statsHtml && projectType) {
-      statsHtml = `<div class="overview-stat overview-no-data"><span>${t('dashboard.noData')}</span></div>`;
-    }
-  }
+  const foot = lastCommit
+    ? `<span class="dash-card-commit">${escapeHtml(lastCommit.message || '')}</span>${lastCommit.date ? `<span class="dash-card-date">${escapeHtml(lastCommit.date)}</span>` : ''}`
+    : `<span class="dash-card-commit muted">${escapeHtml(hasData || projectType ? t('dashboard.brief.overview.noCommit') : t('dashboard.noData'))}</span>`;
 
   const projectIndex = projectsState.get().projects.findIndex(p => p.id === project.id);
   return `
-    <div class="overview-card ${!hasData && !projectType ? 'loading' : ''}" data-project-index="${projectIndex}">
+    <div class="overview-card dash-project-card ${!hasData && !projectType ? 'loading' : ''}" data-project-index="${projectIndex}">
       <div class="overview-card-header">
         <span class="overview-project-name">${escapeHtml(project.name)}</span>
-        <div class="overview-header-badges">
-          ${typeBadgeHtml}
-          ${ciHtml}
-        </div>
+        <div class="overview-header-badges">${typeBadgeHtml}${ciHtml}</div>
       </div>
-      <div class="overview-card-stats">
-        ${statsHtml}
+      <div class="dash-subline dash-card-sub">${buildBranchLineHtml(gitInfo, { trailingSep: false })}</div>
+      <div class="dash-card-stats">
+        <div><div class="dash-card-value${costs === undefined ? ' pending' : ''}">${escapeHtml(costValue)}</div><div class="dash-card-label">${escapeHtml(t('dashboard.brief.metrics.costWeek'))}</div></div>
+        <div><div class="dash-card-value">${escapeHtml(formatDuration(time))}</div><div class="dash-card-label">${escapeHtml(t('dashboard.brief.metrics.timeWeek'))}</div></div>
+        ${Brief.sparklineHtml(spark)}
       </div>
+      <div class="dash-card-foot">${foot}</div>
+    </div>
+  `;
+}
+
+const TONE_ORDER = { danger: 0, warning: 1, purple: 2, info: 3, muted: 4 };
+
+/** The week across every project: what it cost, what it took, what waits. */
+function buildOverviewTopHtml(projects, dataMap, timesMap) {
+  const week = Brief.weekStart();
+  const costs = Brief.loadAllProjectsCost().value;
+  let timeTotal = 0;
+  let active = 0;
+  const items = [];
+  projects.forEach((project) => {
+    const time = Brief.timeSince(getProjectSessions(project.id), timesMap[project.id] || getProjectTimes(project.id), week);
+    timeTotal += time;
+    if (time > 0 || costs?.byProject?.[project.id]?.weekCost > 0) active++;
+    const data = dataMap[project.id];
+    if (!data) return;
+    const projectIndex = projectsState.get().projects.findIndex(p => p.id === project.id);
+    for (const item of Brief.todoItems({ gitInfo: data.gitInfo || {}, workflowRuns: data.workflowRuns, pullRequests: data.pullRequests })) {
+      items.push({ ...item, project: project.name, projectIndex, url: undefined });
+    }
+  });
+  items.sort((a, b) => (TONE_ORDER[a.tone] ?? 9) - (TONE_ORDER[b.tone] ?? 9));
+  const shown = items.slice(0, 8);
+  const more = items.length - shown.length;
+
+  const weekLabel = new Date(week).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
+  return `
+    <div class="dash-overview-head">
+      <h2>${escapeHtml(t('dashboard.overview'))}</h2>
+      <span class="dash-muted">${escapeHtml(t('dashboard.brief.overview.week', { date: weekLabel }))}</span>
+    </div>
+    <div class="dash-brief">
+      ${Brief.buildMetricsHtml([
+        { key: 'cost', value: costs === undefined ? '…' : Brief.formatUsd(costs?.weekTotal || 0), pending: costs === undefined, label: t('dashboard.brief.metrics.costWeek') },
+        { key: 'time', value: formatDuration(timeTotal), label: t('dashboard.brief.metrics.timeWeek') },
+        { key: 'active', value: `${active} / ${projects.length}`, label: t('dashboard.brief.overview.activeProjects') },
+        { key: 'todo', value: String(items.length), label: t('dashboard.brief.overview.toHandle'), tone: items.some(i => i.tone === 'danger') ? 'danger' : items.length ? 'warning' : 'success' },
+      ])}
+      ${Brief.cardHtml('todo', t('dashboard.brief.todo.title'),
+        Brief.buildTodoHtml(shown, { withProject: true })
+        + (more > 0 ? `<div class="dash-muted dash-more-line">${escapeHtml(t('dashboard.brief.overview.more', { count: more }))}</div>` : ''))}
     </div>
   `;
 }
@@ -2570,11 +2676,32 @@ function buildOverviewHtml(projects, options = {}) {
  * @param {Array} projects - All projects
  * @param {Object} options - { dataMap, timesMap, onCardClick }
  */
+const _overviewRenders = new WeakMap();
+
 function renderOverview(container, projects, options = {}) {
   cancelRender(container);
-  const { onCardClick } = options;
+  const { onCardClick, dataMap = {}, timesMap = {} } = options;
+  const token = {};
+  const firstPaint = !container.querySelector('.dash-overview');
+  _overviewRenders.set(container, token);
 
-  container.innerHTML = buildOverviewHtml(projects, options);
+  container.innerHTML = projects.length
+    ? `<div class="dash-overview">${buildOverviewTopHtml(projects, dataMap, timesMap)}${buildOverviewHtml(projects, options)}</div>`
+    : buildOverviewHtml(projects, options);
+
+  container.querySelectorAll('.dash-todo-item[data-project-index]').forEach(item => {
+    item.addEventListener('click', () => onCardClick?.(parseInt(item.dataset.projectIndex, 10)));
+  });
+
+  // Costs come from the transcripts and land after the first paint.
+  const costs = Brief.loadAllProjectsCost();
+  if (costs.pending) {
+    costs.ready.then(() => {
+      if (_overviewRenders.get(container) === token && container.querySelector('.dash-overview')) {
+        renderOverview(container, projects, options);
+      }
+    }, () => {});
+  }
 
   // Attach click handlers
   container.querySelectorAll('.overview-card').forEach(card => {
@@ -2584,6 +2711,7 @@ function renderOverview(container, projects, options = {}) {
     });
   });
 
+  if (!firstPaint) return;
   // Animate cards in
   const cards = container.querySelectorAll('.overview-card');
   cards.forEach((card, i) => {

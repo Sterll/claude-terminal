@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 218 test files)
+npm test                 # Run Jest tests (jsdom, 219 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -104,7 +104,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3836 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3867 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
@@ -310,7 +310,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `xtermLoader.js` | The one place `@xterm/*` is loaded. 719 KB of emulator that used to be in the startup bundle because five files require()d it at the top level, now fetched when a terminal is actually mounted. The core must be awaited before `new Terminal()`; the WebGL addon is attached afterwards, fire-and-forget, and is not fetched at all when the machine has no WebGL2 context — it has a DOM-renderer fallback, the core does not |
 | `ProjectService.js` | Add/delete/open projects, editor integration, git status check |
 | `SettingsService.js` | Accent color DOM application, notification permissions, window title |
-| `DashboardService.js` | `buildXxxHtml()` helpers, data caching (30s TTL), disk cache |
+| `DashboardService.js` | `buildXxxHtml()` helpers, data caching (30s TTL), disk cache. The project page and the overview open on a briefing built by `dashboard/briefing.js`: the week's cost, time and commits, the last Claude sessions with a Resume button, and what is waiting (uncommitted files, commits to push or pull, failing CI, open PRs, TODO count). It reads only what the app already collects (git, GitHub, time tracking, `CostService`, `claude.sessions`, the TODO scan), caches each source per project so the several paints of one render share a single fetch, and folds the older sections (code stats, contributors, commit graphs) into a closed `details` at the bottom |
 | `TimeTrackingDashboard.js` | Charts & stats |
 | `GitTabService.js` | Git UI helpers, status display |
 | `McpService.js` | Load/save MCP configs from `~/.claude.json` |
@@ -417,7 +417,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 3836 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3867 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -513,9 +513,9 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `chat.css` | 5583 | Chat UI, messages, permissions, thinking, subagents |
 | `projects.css` | 4627 | Project list, tree, project bar, drag-drop, customize |
 | `git.css` | 4285 | Git panel, diff view, worktrees, commit graph |
+| `dashboard.css` | 3360 | Briefing (week metrics, resume, needs attention, activity), stats cards, heatmap, health badges |
 | `settings.css` | 3166 | Settings forms |
 | `database.css` | 3014 | DB panel, SQL editor, Redis tree |
-| `dashboard.css` | 2695 | Stats cards, heatmap, health badges |
 | `terminal.css` | 2484 | xterm, tabs, loading |
 | `markdown-blocks.css` | 2381 | Custom markdown blocks |
 | `modals.css` | 2348 | Modals |
@@ -689,7 +689,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 218 unit test files (jsdom environment)
+npm test                    # Run all 219 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -698,7 +698,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 218 test files
+- **Framework:** Jest with jsdom, 219 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
