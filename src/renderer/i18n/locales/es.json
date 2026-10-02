@@ -1336,6 +1336,9 @@
     "resetError": "Error al deshacer el commit"
   },
   "skillsAgents": {
+    "filterSkills": "Filtrar skills por nombre, descripción...",
+    "filterAgents": "Filtrar agentes por nombre, herramienta...",
+    "noMatch": "Nada coincide con este filtro.",
     "panelDescription": "Los skills personalizan las respuestas de Claude. Los agentes son workers autonomos con sus propias herramientas.",
     "noSkills": "Sin skills instalados",
     "noSkillsHint": "Los skills son instrucciones que definen como Claude se comporta en tus proyectos (estandares de codigo, estilo de commit, reglas de review...).",

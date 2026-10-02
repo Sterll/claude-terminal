@@ -1339,6 +1339,9 @@
     "resetError": "无法撤消提交"
   },
   "skillsAgents": {
+    "filterSkills": "按名称、描述筛选技能...",
+    "filterAgents": "按名称、工具筛选代理...",
+    "noMatch": "没有匹配此筛选条件的项目。",
     "panelDescription": "技能自定义Claude的反应方式。智能体是拥有自己工具的自主工作者。",
     "noSkills": "没有安装技能",
     "noSkillsHint": "技能是塑造 Claude 在项目中行为方式的自定义指令（编码标准、提交风格、审核规则......）。",

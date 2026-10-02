@@ -521,7 +521,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `modals.css` | 2348 | Modals |
 | `parallel.css` | 2333 | Parallel tasks |
 | `fivem.css` | 2164 | FiveM-specific |
-| `skills.css` | 1625 | Skills + agents panel |
+| `skills.css` | 1812 | Skills + agents panel (compact `.sa-*` cards, filter) |
 | `session-replay.css` | 1605 | Session Replay timeline |
 | `layout.css` | 1489 | Sidebar, grid |
 | `time-tracking.css` | 1444 | Time tracking charts |

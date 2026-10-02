@@ -99,37 +99,115 @@ class SkillsAgentsPanel extends BasePanel {
     }
   }
 
-  _renderSkillCard(s, isPlugin) {
-    const desc = (s.description && s.description !== '---' && s.description !== t('common.noDescription')) ? escapeHtml(s.description) : '';
-    const initial = escapeHtml((s.name || '?').charAt(0).toUpperCase());
-    const cardClass = isPlugin ? 'list-card plugin-card' : 'list-card';
-    const badge = isPlugin
-      ? `<div class="list-card-badge plugin">Plugin</div>`
-      : `<div class="list-card-badge">${t('skillsAgents.skill')}</div>`;
-    const filePath = s.filePath ? s.filePath.replace(/"/g, '&quot;') : '';
+  // ── Lists ──
+  //
+  // One card shape for skills and agents: name, two lines of description, the
+  // agent's tools as chips, and the actions as icons. The whole card opens the
+  // editor, since that is what a click on a skill is for nine times out of ten.
 
+  static ICONS = {
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+  };
+
+  _description(item) {
+    const d = item.description;
+    if (!d || d === '---' || d === t('common.noDescription')) return '';
+    // Cards show the opening of the description; the rest is in the editor.
+    return String(d).split(/\n\s*\n/)[0].replace(/\s+/g, ' ').trim();
+  }
+
+  _renderCard(item, { kind, readOnly = false }) {
+    const ICONS = SkillsAgentsPanel.ICONS;
+    const desc = this._description(item);
+    const filePath = item.filePath ? escapeHtml(item.filePath) : '';
+    const tools = kind === 'agent' && item.tools?.length
+      ? `<div class="sa-card-tools">${item.tools.slice(0, 4).map(tool => `<span class="sa-chip">${escapeHtml(tool)}</span>`).join('')}${item.tools.length > 4 ? `<span class="sa-chip more">+${item.tools.length - 4}</span>` : ''}</div>`
+      : '';
+    const search = `${item.name || ''} ${desc} ${(item.tools || []).join(' ')}`.toLowerCase();
     return `
-    <div class="${cardClass}" data-path="${s.path.replace(/"/g, '&quot;')}" data-file-path="${filePath}" data-skill-id="${escapeHtml(s.id)}" data-is-plugin="${isPlugin}">
-      <div class="card-initial">${initial}</div>
-      <div class="list-card-header">
-        <div class="list-card-title">${escapeHtml(s.name)}</div>
-        ${badge}
+      <div class="sa-card${filePath && !readOnly ? ' editable' : ''}" data-kind="${kind}" data-id="${escapeHtml(item.id)}"
+           data-path="${escapeHtml(item.path)}" data-file-path="${filePath}" data-search="${escapeHtml(search)}">
+        <div class="sa-card-head">
+          <span class="sa-card-name">${escapeHtml(item.name)}</span>
+          <span class="sa-card-actions">
+            ${filePath && !readOnly ? `<button class="sa-icon-btn" data-action="edit" title="${escapeHtml(t('common.edit'))}">${ICONS.edit}</button>` : ''}
+            <button class="sa-icon-btn" data-action="open" title="${escapeHtml(t('marketplace.openFolder'))}">${ICONS.folder}</button>
+            ${!readOnly ? `<button class="sa-icon-btn danger" data-action="delete" title="${escapeHtml(t('common.delete'))}">${ICONS.trash}</button>` : ''}
+          </span>
+        </div>
+        <div class="sa-card-desc${desc ? '' : ' empty'}">${desc ? escapeHtml(desc) : escapeHtml(t('common.noDescription'))}</div>
+        ${tools}
+      </div>`;
+  }
+
+  _renderSection(title, items, opts, badge = '') {
+    return `
+      <div class="list-section sa-section">
+        <div class="list-section-title">${badge}${escapeHtml(title)} <span class="list-section-count">${items.length}</span></div>
+        <div class="sa-grid">${items.map(item => this._renderCard(item, opts)).join('')}</div>
+      </div>`;
+  }
+
+  _renderToolbar(kind, count) {
+    const placeholder = kind === 'skill' ? t('skillsAgents.filterSkills') : t('skillsAgents.filterAgents');
+    return `
+      <div class="sa-toolbar">
+        <label class="sa-search">
+          ${SkillsAgentsPanel.ICONS.search}
+          <input type="text" class="sa-search-input" placeholder="${escapeHtml(placeholder)}" data-total="${count}">
+        </label>
       </div>
-      ${desc ? `<div class="list-card-desc">${desc}</div>` : ''}
-      <div class="list-card-footer">
-        ${!isPlugin && filePath ? `<button class="btn-sm btn-accent btn-edit">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          ${t('common.edit')}
-        </button>` : ''}
-        <button class="btn-sm btn-secondary btn-open">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-          ${t('marketplace.openFolder')}
-        </button>
-        ${!isPlugin ? `<button class="btn-sm btn-delete btn-del" title="${t('common.delete')}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-        </button>` : ''}
-      </div>
-    </div>`;
+      <div class="sa-no-match" hidden>${escapeHtml(t('skillsAgents.noMatch'))}</div>`;
+  }
+
+  /** Filtering hides cards in place: no re-render, so focus stays in the field. */
+  _bindList(list, reload) {
+    const input = list.querySelector('.sa-search-input');
+    if (input) {
+      input.addEventListener('input', () => {
+        const q = input.value.trim().toLowerCase();
+        let shown = 0;
+        list.querySelectorAll('.sa-section').forEach(section => {
+          let visible = 0;
+          section.querySelectorAll('.sa-card').forEach(card => {
+            const hit = !q || card.dataset.search.includes(q);
+            card.hidden = !hit;
+            if (hit) visible++;
+          });
+          section.hidden = visible === 0;
+          shown += visible;
+        });
+        list.querySelector('.sa-no-match').hidden = shown > 0;
+      });
+    }
+
+    list.addEventListener('click', async (e) => {
+      const card = e.target.closest('.sa-card');
+      if (!card) return;
+      const action = e.target.closest('[data-action]')?.dataset.action
+        || (card.classList.contains('editable') ? 'edit' : 'open');
+      e.stopPropagation();
+      if (action === 'open') {
+        this.api.dialog.openInExplorer(card.dataset.path);
+      } else if (action === 'edit') {
+        if (card.dataset.filePath) this._showEditorModal(card.dataset.kind, card.dataset.id, card.dataset.filePath);
+      } else if (action === 'delete') {
+        const isSkill = card.dataset.kind === 'skill';
+        const ok = await showConfirm({
+          title: isSkill ? (t('skillsAgents.deleteSkill') || 'Delete skill') : (t('skillsAgents.deleteAgent') || 'Delete agent'),
+          message: isSkill ? t('skillsAgents.confirmDeleteSkill') : t('skillsAgents.confirmDeleteAgent'),
+          confirmLabel: t('common.delete'),
+          danger: true,
+        });
+        if (ok) {
+          await this.api.fs.promises.rm(card.dataset.path, { recursive: true, force: true });
+          reload();
+        }
+      }
+    });
   }
 
   _renderSkills() {
@@ -160,50 +238,25 @@ class SkillsAgentsPanel extends BasePanel {
 
     const localSkills = this._state.skills.filter(s => !s.isPlugin);
     const pluginSkills = this._state.skills.filter(s => s.isPlugin);
-
     const pluginsBySource = {};
     pluginSkills.forEach(s => {
       if (!pluginsBySource[s.sourceLabel]) pluginsBySource[s.sourceLabel] = [];
       pluginsBySource[s.sourceLabel].push(s);
     });
 
-    let html = '';
-
+    let html = this._renderToolbar('skill', this._state.skills.length);
     if (localSkills.length > 0) {
-      html += `<div class="list-section">
-        <div class="list-section-title">${t('skillsAgents.local')} <span class="list-section-count">${localSkills.length}</span></div>
-        <div class="list-section-grid">`;
-      html += localSkills.map(s => this._renderSkillCard(s, false)).join('');
-      html += `</div></div>`;
+      html += this._renderSection(t('skillsAgents.local'), localSkills, { kind: 'skill' });
     }
-
     Object.entries(pluginsBySource).forEach(([source, skills]) => {
-      html += `<div class="list-section">
-        <div class="list-section-title"><span class="plugin-badge">Plugin</span> ${escapeHtml(source)} <span class="list-section-count">${skills.length}</span></div>
-        <div class="list-section-grid">`;
-      html += skills.map(s => this._renderSkillCard(s, true)).join('');
-      html += `</div></div>`;
+      html += this._renderSection(source, skills, { kind: 'skill', readOnly: true }, '<span class="plugin-badge">Plugin</span> ');
     });
 
-    list.innerHTML = html;
-
-    list.querySelectorAll('.list-card').forEach(card => {
-      card.querySelector('.btn-open').onclick = () => this.api.dialog.openInExplorer(card.dataset.path);
-      const editBtn = card.querySelector('.btn-edit');
-      if (editBtn) {
-        editBtn.onclick = () => {
-          const fp = card.dataset.filePath;
-          if (fp) this._showEditorModal('skill', card.dataset.skillId, fp);
-        };
-      }
-      const delBtn = card.querySelector('.btn-del');
-      if (delBtn) {
-        delBtn.onclick = async () => {
-          const ok = await showConfirm({ title: t('skillsAgents.deleteSkill') || 'Delete skill', message: t('skillsAgents.confirmDeleteSkill'), confirmLabel: t('common.delete'), danger: true });
-          if (ok) { await this.api.fs.promises.rm(card.dataset.path, { recursive: true, force: true }); this.loadSkills(); }
-        };
-      }
-    });
+    // A fresh element drops the delegated listener of the previous render.
+    const fresh = list.cloneNode(false);
+    list.replaceWith(fresh);
+    fresh.innerHTML = html;
+    this._bindList(fresh, () => this.loadSkills());
   }
 
   _renderAgents() {
@@ -222,58 +275,12 @@ class SkillsAgentsPanel extends BasePanel {
       return;
     }
 
-    let html = `<div class="list-section">
-      <div class="list-section-title">${t('skillsAgents.agents')} <span class="list-section-count">${this._state.agents.length}</span></div>
-      <div class="list-section-grid">`;
-    html += this._state.agents.map(a => {
-      const desc = (a.description && a.description !== '---' && a.description !== t('common.noDescription')) ? escapeHtml(a.description) : '';
-      const initial = escapeHtml((a.name || '?').charAt(0).toUpperCase());
-      const filePath = a.filePath ? a.filePath.replace(/"/g, '&quot;') : '';
-      const toolChips = (a.tools && a.tools.length > 0)
-        ? `<div class="skill-sections agent-tools">${a.tools.slice(0, 5).map(tool => `<span class="skill-section-chip agent-tool-chip">${escapeHtml(tool)}</span>`).join('')}</div>`
-        : '';
-      return `
-      <div class="list-card agent-card" data-path="${a.path.replace(/"/g, '&quot;')}" data-file-path="${filePath}" data-agent-id="${escapeHtml(a.id)}">
-        <div class="card-initial">${initial}</div>
-        <div class="list-card-header">
-          <div class="list-card-title">${escapeHtml(a.name)}</div>
-          <div class="list-card-badge agent">${t('skillsAgents.agent')}</div>
-        </div>
-        ${desc ? `<div class="list-card-desc">${desc}</div>` : ''}
-        ${toolChips}
-        <div class="list-card-footer">
-          ${filePath ? `<button class="btn-sm btn-accent btn-edit">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            ${t('common.edit')}
-          </button>` : ''}
-          <button class="btn-sm btn-secondary btn-open">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
-            ${t('marketplace.openFolder')}
-          </button>
-          <button class="btn-sm btn-delete btn-del" title="${t('common.delete')}">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
-          </button>
-        </div>
-      </div>`;
-    }).join('');
-    html += `</div></div>`;
-
-    list.innerHTML = html;
-
-    list.querySelectorAll('.list-card').forEach(card => {
-      card.querySelector('.btn-open').onclick = () => this.api.dialog.openInExplorer(card.dataset.path);
-      const editBtn = card.querySelector('.btn-edit');
-      if (editBtn) {
-        editBtn.onclick = () => {
-          const fp = card.dataset.filePath;
-          if (fp) this._showEditorModal('agent', card.dataset.agentId, fp);
-        };
-      }
-      card.querySelector('.btn-del').onclick = async () => {
-        const ok = await showConfirm({ title: t('skillsAgents.deleteAgent') || 'Delete agent', message: t('skillsAgents.confirmDeleteAgent'), confirmLabel: t('common.delete'), danger: true });
-        if (ok) { await this.api.fs.promises.rm(card.dataset.path, { recursive: true, force: true }); this.loadAgents(); }
-      };
-    });
+    const html = this._renderToolbar('agent', this._state.agents.length)
+      + this._renderSection(t('skillsAgents.agents'), this._state.agents, { kind: 'agent' });
+    const fresh = list.cloneNode(false);
+    list.replaceWith(fresh);
+    fresh.innerHTML = html;
+    this._bindList(fresh, () => this.loadAgents());
   }
 
   async _showEditorModal(type, id, filePath) {

@@ -1434,6 +1434,9 @@
     "resetError": "Impossible d'annuler le commit"
   },
   "skillsAgents": {
+    "filterSkills": "Filtrer les skills par nom, description...",
+    "filterAgents": "Filtrer les agents par nom, outil...",
+    "noMatch": "Rien ne correspond à ce filtre.",
     "panelDescription": "Les skills personnalisent les reponses de Claude. Les agents sont des workers autonomes avec leurs propres outils.",
     "noSkills": "Aucun skill installe",
     "noSkillsHint": "Les skills sont des instructions qui definissent comment Claude se comporte dans vos projets (standards de code, style de commit, regles de review...).",

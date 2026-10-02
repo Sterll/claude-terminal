@@ -1339,6 +1339,9 @@
     "resetError": "Gagal mengurungkan commit"
   },
   "skillsAgents": {
+    "filterSkills": "Saring skill menurut nama, deskripsi...",
+    "filterAgents": "Saring agen menurut nama, alat...",
+    "noMatch": "Tidak ada yang cocok dengan filter ini.",
     "panelDescription": "Skill menyesuaikan cara Claude merespons. Agent adalah pekerja otonom dengan tool-nya sendiri.",
     "noSkills": "Belum ada skill terpasang",
     "noSkillsHint": "Skill adalah instruksi kustom yang membentuk perilaku Claude dalam proyek Anda (standar penulisan kode, gaya commit, aturan review...).",

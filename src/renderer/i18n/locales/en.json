@@ -1339,6 +1339,9 @@
     "resetError": "Failed to undo commit"
   },
   "skillsAgents": {
+    "filterSkills": "Filter skills by name, description...",
+    "filterAgents": "Filter agents by name, tool...",
+    "noMatch": "Nothing matches this filter.",
     "panelDescription": "Skills customize how Claude responds. Agents are autonomous workers with their own tools.",
     "noSkills": "No skills installed",
     "noSkillsHint": "Skills are custom instructions that shape how Claude behaves in your projects (coding standards, commit style, review rules...).",
