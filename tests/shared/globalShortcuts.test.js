@@ -155,10 +155,26 @@ describe('resolveGlobalShortcuts', () => {
 describe('matchesAccelerator (in-window fallback)', () => {
   const press = (extra) => ({ type: 'keyDown', control: false, meta: false, alt: false, shift: false, ...extra });
 
-  test('Ctrl+Shift+T matches on Linux, read from the physical key', () => {
-    // With Shift held the key reads as "T"; on some layouts it is not a letter at all.
+  test('Ctrl+Shift+T matches on Linux, whatever case Shift gives the letter', () => {
     expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: 'T', code: 'KeyT' }), 'linux')).toBe(true);
-    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: '?', code: 'KeyT' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: 't', code: 'KeyT' }), 'linux')).toBe(true);
+  });
+
+  test('a letter follows the layout, not the physical key (AZERTY swaps W and Z)', () => {
+    // Ctrl+Shift+Z is redo; on AZERTY it sits where QWERTY has W.
+    expect(matchesAccelerator('CommandOrControl+Shift+W', press({ control: true, shift: true, key: 'Z', code: 'KeyW' }), 'linux')).toBe(false);
+    expect(matchesAccelerator('CommandOrControl+Shift+W', press({ control: true, shift: true, key: 'W', code: 'KeyZ' }), 'linux')).toBe(true);
+  });
+
+  test('falls back to the physical key when the layout produces no Latin letter', () => {
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: 'Е', code: 'KeyT' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+Shift+T', press({ control: true, shift: true, key: 'Е', code: 'KeyY' }), 'linux')).toBe(false);
+  });
+
+  test('a digit reads through Shift and AZERTY\'s unshifted digit row', () => {
+    expect(matchesAccelerator('CommandOrControl+Shift+1', press({ control: true, shift: true, key: '!', code: 'Digit1' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+1', press({ control: true, key: '&', code: 'Digit1' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+1', press({ control: true, key: '2', code: 'Digit1' }), 'linux')).toBe(false);
   });
 
   test('modifiers must match exactly', () => {
@@ -178,8 +194,11 @@ describe('matchesAccelerator (in-window fallback)', () => {
     expect(matchesAccelerator(null, input, 'linux')).toBe(false);
   });
 
-  test('named keys compare on key', () => {
-    expect(matchesAccelerator('CommandOrControl+Space', press({ control: true, key: 'Space', code: 'Space' }), 'linux')).toBe(true);
+  test('named keys compare on key, including names the DOM spells differently', () => {
+    expect(matchesAccelerator('CommandOrControl+Space', press({ control: true, key: ' ', code: 'Space' }), 'linux')).toBe(true);
     expect(matchesAccelerator('Alt+F9', press({ alt: true, key: 'F9', code: 'F9' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+Up', press({ control: true, key: 'ArrowUp', code: 'ArrowUp' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('Alt+Esc', press({ alt: true, key: 'Escape', code: 'Escape' }), 'linux')).toBe(true);
+    expect(matchesAccelerator('CommandOrControl+Up', press({ control: true, key: 'ArrowDown', code: 'ArrowDown' }), 'linux')).toBe(false);
   });
 });

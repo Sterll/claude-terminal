@@ -295,8 +295,13 @@ function bootstrapApp() {
    * GlobalShortcuts portal behind it (GNOME < 48, i.e. Ubuntu 24.04), and the
    * key is then delivered to the page, which has no handler for it. Where the
    * OS grab works it consumes the key before this sees it.
+   *
+   * Linux only. On Windows and macOS the grab is reliable, and answering here
+   * as well would add a second matcher that has to agree with the OS on every
+   * layout, for no shortcut that does not already fire.
    */
   function attachInWindowShortcuts(win) {
+    if (process.platform !== 'linux') return;
     if (!win || win.isDestroyed()) return;
     win.webContents.on('before-input-event', (event, input) => {
       for (const { id, accelerator } of activeShortcuts) {
