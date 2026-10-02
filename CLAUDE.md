@@ -524,7 +524,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `skills.css` | 1812 | Skills + agents panel (compact `.sa-*` cards, filter) |
 | `session-replay.css` | 1605 | Session Replay timeline |
 | `layout.css` | 1489 | Sidebar, grid |
-| `time-tracking.css` | 1444 | Time tracking charts |
+| `time-tracking.css` | 1436 | Time tracking charts |
 | `memory.css` | 1147 | CLAUDE.md editor + global knowledge |
 | `cloud.css` | 956 | Cloud sync |
 | `control-tower.css` | 947 | Control Tower |
