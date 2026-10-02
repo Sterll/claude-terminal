@@ -113,10 +113,91 @@ function resolveGlobalShortcuts(config = {}, platform = process.platform) {
   return { resolved, rejected };
 }
 
+/**
+ * Accelerator key names whose DOM `key` value is spelled differently. The
+ * shortcut capture UI writes `Up`, `Space`... (see getKeyFromEvent).
+ */
+const ACCELERATOR_KEY_NAMES = {
+  up: 'arrowup',
+  down: 'arrowdown',
+  left: 'arrowleft',
+  right: 'arrowright',
+  space: ' ',
+  esc: 'escape',
+  return: 'enter',
+  plus: '+'
+};
+
+/**
+ * Whether a `before-input-event` input is the key press an accelerator names.
+ *
+ * This is the in-window half of a global shortcut. On a native Wayland session
+ * `globalShortcut.register()` returns true and then never fires unless the
+ * compositor implements the GlobalShortcuts portal, which GNOME only does from
+ * 48 on, so on Ubuntu 24.04 Ctrl+Shift+T did nothing, even with the window
+ * focused, because nothing else in the app listened for it. Where the OS grab
+ * does work it consumes the key first and the window never sees it.
+ *
+ * Modifiers must match exactly, so Ctrl+Shift+T does not also answer
+ * Ctrl+Alt+Shift+T.
+ *
+ * Letters and digits are matched on the character the layout produces
+ * (`input.key`), the way the OS grab resolves an accelerator, and on the
+ * physical key (`input.code`) only when the layout produces something else.
+ * Accepting both at once is wrong: on AZERTY, W and Z swap places, so
+ * Ctrl+Shift+Z (redo) carries `code: 'KeyW'` and would open a new worktree.
+ * The fallback is what keeps Shift+1 (`!`), AZERTY's unshifted digit row
+ * (`&`, `é`...) and non-Latin layouts (`е` on Cyrillic) working.
+ *
+ * @param {string} accelerator - Electron accelerator form
+ * @param {{ type?: string, key?: string, code?: string, control?: boolean, meta?: boolean, alt?: boolean, shift?: boolean, isAutoRepeat?: boolean }} input
+ * @param {string} [platform] - defaults to the running platform
+ * @returns {boolean}
+ */
+function matchesAccelerator(accelerator, input, platform = process.platform) {
+  if (!accelerator || !input || input.type !== 'keyDown' || input.isAutoRepeat) return false;
+
+  const want = { control: false, meta: false, alt: false, shift: false };
+  let key = null;
+  for (const raw of String(accelerator).split('+')) {
+    const part = raw.trim().toLowerCase();
+    if (part === 'commandorcontrol' || part === 'cmdorctrl') {
+      want[platform === 'darwin' ? 'meta' : 'control'] = true;
+    } else if (part === 'control' || part === 'ctrl') {
+      want.control = true;
+    } else if (part === 'command' || part === 'cmd' || part === 'super' || part === 'meta') {
+      want.meta = true;
+    } else if (part === 'alt' || part === 'option') {
+      want.alt = true;
+    } else if (part === 'shift') {
+      want.shift = true;
+    } else {
+      key = part;
+    }
+  }
+  if (!key) return false;
+
+  for (const mod of Object.keys(want)) {
+    if (!!input[mod] !== want[mod]) return false;
+  }
+
+  const pressed = String(input.key || '').toLowerCase();
+  const code = String(input.code || '');
+  if (/^[a-z]$/.test(key)) {
+    return /^[a-z]$/.test(pressed) ? pressed === key : code === `Key${key.toUpperCase()}`;
+  }
+  if (/^[0-9]$/.test(key)) {
+    return /^[0-9]$/.test(pressed) ? pressed === key : code === `Digit${key}`;
+  }
+  const named = ACCELERATOR_KEY_NAMES[key] || key;
+  return pressed === named || code.toLowerCase() === named;
+}
+
 module.exports = {
   GLOBAL_SHORTCUT_DEFAULTS,
   X11_UNSAFE_KEYS,
   toElectronAccelerator,
   isUnsafeAccelerator,
+  matchesAccelerator,
   resolveGlobalShortcuts
 };
