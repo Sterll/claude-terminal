@@ -496,3 +496,102 @@
   color: var(--text-secondary);
   font-size: var(--font-xs);
 }
+
+/* ── Remote terminal tabs ── */
+
+/* The host badge on a terminal tab: dot and icon only, the label is in the
+   tooltip. Clicking it acts on the host, not on the tab. */
+.terminal-tab .tab-remote-host {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.terminal-tab .tab-remote-host .remote-host-badge {
+  margin-left: 0;
+  padding: 0 3px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.terminal-tab.remote-disconnected .tab-name {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* "Connection lost" over a remote tab whose ssh dropped. The scrollback stays
+   underneath; the tab comes back under the same id. */
+.terminal-remote-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg-primary) 82%, transparent);
+  pointer-events: auto;
+}
+
+.terminal-remote-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 420px;
+  padding: 16px 18px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.terminal-remote-title {
+  font-size: var(--font-base);
+  font-weight: 600;
+}
+
+.terminal-remote-detail {
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.terminal-remote-error {
+  font-size: var(--font-xs);
+  color: var(--danger);
+}
+
+.terminal-remote-error[hidden] {
+  display: none;
+}
+
+.terminal-remote-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.terminal-remote-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  cursor: pointer;
+}
+
+.terminal-remote-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.terminal-remote-btn.primary {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.terminal-remote-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

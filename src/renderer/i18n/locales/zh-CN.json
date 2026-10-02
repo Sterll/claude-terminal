@@ -4489,6 +4489,20 @@
     }
   },
   "ssh": {
+    "terminal": {
+      "lost": "与 {host} 的连接已断开",
+      "waiting": "主机状态：{state}。{host} 恢复可达后，此标签页会自动重新打开。",
+      "manual": "主机状态：{state}。主机可达后请重新连接。",
+      "needsUser": "{reason}。请通过主机徽章处理后再重新连接。",
+      "gaveUp": "连接连续多次断开。准备好后请重新连接。",
+      "reconnect": "重新连接",
+      "reconnecting": "正在重新连接...",
+      "closeTab": "关闭标签页",
+      "respawnFailed": "无法重新打开终端：{error}",
+      "reconnected": "已重新连接到 {host}",
+      "claudeMissing": "在 {host} 上未找到 Claude Code。请在该主机上安装，或在主机配置中设置其路径。",
+      "historyOnHost": "此项目的对话历史保存在 {host} 上，目前尚未在此列出。"
+    },
     "openRemoteProject": "打开远程项目",
     "modalTitle": "打开远程项目",
     "back": "返回",

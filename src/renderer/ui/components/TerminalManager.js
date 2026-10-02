@@ -74,6 +74,9 @@ const {
 } = require('./terminal/sessionCards');
 const { createMdRenderer, buildMdToc } = require('./terminal/markdownViewer');
 const { getBuiltinSystemPrompt } = require('../../services/BuiltinSystemPrompts');
+const { isRemoteProject, sameProject, can: remoteCan } = require('../../../shared/remote-capabilities');
+const { isRemotePath } = require('../../../shared/remote-path');
+const { createRemoteTabs } = require('./terminal/remoteTab');
 
 // Lazy require to avoid circular dependency
 let QuickActions = null;
@@ -168,6 +171,8 @@ class TerminalManager extends BaseComponent {
     this._modeSwitching = new Set();
     // A close-confirmation dialog is up; further × clicks are ignored.
     this._closeConfirmOpen = false;
+    // Tabs of remote (SSH) projects: host badge, disconnect overlay, respawn.
+    this._remoteTabs = this._createRemoteTabs();
     this._callbacks = {
       onNotification: null,
       onRenderProjects: null,
@@ -194,6 +199,55 @@ class TerminalManager extends BaseComponent {
     Object.assign(this._callbacks, cbs);
   }
 
+  /** Wire the remote tab unit to the host status mirror and the app's own UI. */
+  _createRemoteTabs() {
+    const self = this;
+    const hostsState = () => require('../../state/remoteHosts.state');
+    const hostBadge = () => require('./RemoteHostBadge');
+    return createRemoteTabs({
+      api: this._api,
+      getTerminal,
+      ptyIdOf,
+      hosts: {
+        getProjectHost: (project) => hostsState().getProjectHost(project),
+        holdHost: (profileId) => hostsState().holdHost(profileId),
+        connectHost: (profileId) => hostsState().connectHost(profileId),
+        subscribe: (fn) => hostsState().remoteHostsState.subscribe(fn),
+        // Main pings connected hosts and retries waiting ones on this.
+        nudge: () => self._api.ssh?.networkOnline?.(),
+      },
+      badge: {
+        buildHostBadgeHtml: (project, opts) => hostBadge().buildHostBadgeHtml(project, opts),
+        onHostBadgeClick: (projectId) => hostBadge().onHostBadgeClick(projectId),
+        stateLabel: (state) => hostBadge().stateLabel(state),
+      },
+      t,
+      toast: (opts) => {
+        try { require('./Toast').showToast(opts); } catch (_) { /* no toast container yet */ }
+      },
+      onCloseTab: (tabId) => self.closeTerminal(tabId),
+    });
+  }
+
+  /** The tab a PTY id belongs to (they differ once a tab has switched modes). */
+  _tabIdForPty(ptyId) {
+    let found = null;
+    terminalsState.get().terminals.forEach((td, tabId) => {
+      if (found === null && ptyIdOf(td, tabId) === ptyId) found = tabId;
+    });
+    return found;
+  }
+
+  /**
+   * For a remote project, the key its tab's ssh session is known by (tmux
+   * reattaches to it after a drop and after a restart), or null for a local
+   * project, which sends nothing new.
+   */
+  _remoteSessionKey(project, requested = null) {
+    if (!isRemoteProject(project)) return null;
+    return (typeof requested === 'string' && /^[A-Za-z0-9_-]{1,96}$/.test(requested)) ? requested : generateTabId(project.id);
+  }
+
   setScrapingCallback(cb) {
     this._scrapingEventCallback = cb;
   }
@@ -214,6 +268,13 @@ class TerminalManager extends BaseComponent {
       const handler = self._terminalExitHandlers.get(data.id);
       if (handler) handler(data);
     });
+    // Remote tabs only: their ssh lost the connection, the tab stays.
+    if (typeof this._api.terminal.onDisconnected === 'function') {
+      this._api.terminal.onDisconnected((data) => {
+        const tabId = self._tabIdForPty(data && data.id);
+        if (tabId !== null) self._remoteTabs.onDisconnected(tabId, data);
+      });
+    }
   }
 
   /**
@@ -965,7 +1026,9 @@ class TerminalManager extends BaseComponent {
       }
       if (status === 'ready' && previousStatus === 'working') {
         const hooksActive = (() => { try { return require('../../events').getActiveProvider() === 'hooks'; } catch (e) { return false; } })();
-        if (!hooksActive && this._callbacks.onNotification) {
+        // Remote tabs never reach the local hooks server, so their "done"
+        // comes from scraping even when hooks are on.
+        if ((!hooksActive || isRemoteProject(termData.project)) && this._callbacks.onNotification) {
           const projectName = termData.project?.name || termData.name;
           const richCtx = this._terminalContext.get(id);
           let notifTitle = projectName || 'Claude Terminal';
@@ -1417,6 +1480,7 @@ class TerminalManager extends BaseComponent {
     this._lastTerminalData.delete(id);
     this._terminalContext.delete(id);
     this._errorOverlays.delete(closedProjectIndex);
+    this._remoteTabs.detach(id);
 
     if (termData && termData.mode === 'chat') {
       if (termData.chatView) {
@@ -1461,7 +1525,7 @@ class TerminalManager extends BaseComponent {
     if (!sameProjectTerminalId && closedProjectPath) {
       const terminals = terminalsState.get().terminals;
       terminals.forEach((td, termId) => {
-        if (!sameProjectTerminalId && td.project?.path === closedProjectPath) {
+        if (!sameProjectTerminalId && sameProject(td.project, termData.project)) {
           sameProjectTerminalId = termId;
         }
       });
@@ -1528,12 +1592,13 @@ class TerminalManager extends BaseComponent {
 
     const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
 
-    // Remote (SSH) projects get terminals and chat in later slices of the
-    // remote work. Until then refuse with the reason rather than letting main
-    // fall back to a local shell in the home directory.
+    // A remote (SSH) project's terminals run on its host. Its chat comes with
+    // a later slice of the remote work: until then it is refused with the
+    // reason rather than letting main start the local CLI in the home directory.
     if (project && require('./RemoteHostBadge').refuseForRemote(project, mode === 'chat' && runClaude ? 'chat' : 'terminals')) {
       return null;
     }
+    const remoteSessionKey = this._remoteSessionKey(project, options.remoteSessionKey);
 
     if (mode === 'chat' && runClaude) {
       const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
@@ -1556,7 +1621,8 @@ class TerminalManager extends BaseComponent {
       // log is keyed by and the one a trigger is scoped to.
       projectId: project.id,
       projectPath: project.path,
-      ...(resumeSessionId ? { resumeSessionId } : {})
+      ...(resumeSessionId ? { resumeSessionId } : {}),
+      ...(remoteSessionKey ? { sessionKey: remoteSessionKey } : {})
     });
 
     let id;
@@ -1612,7 +1678,8 @@ class TerminalManager extends BaseComponent {
       lastActivityAt: nowIso,
       ...(resumeSessionId ? { claudeSessionId: resumeSessionId } : {}),
       ...(initialPrompt ? { pendingPrompt: initialPrompt } : {}),
-      ...(overrideCwd ? { parentProjectId: project.id } : {})
+      ...(overrideCwd ? { parentProjectId: project.id } : {}),
+      ...(remoteSessionKey ? { remoteSessionKey } : {})
     };
 
     addTerminal(id, termData);
@@ -1666,6 +1733,7 @@ class TerminalManager extends BaseComponent {
     }
 
     document.getElementById('empty-terminals').style.display = 'none';
+    if (remoteSessionKey) this._remoteTabs.attach(id, { project, tabEl: tab, wrapperEl: wrapper, isClaude: !isBasicTerminal });
 
     terminal.open(wrapper);
     attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
@@ -1718,7 +1786,9 @@ class TerminalManager extends BaseComponent {
         const td = getTerminal(id);
         if (td?.project?.id) heartbeat(td.project.id, 'terminal');
       },
-      () => self.closeTerminal(id)
+      remoteSessionKey
+        ? (data) => { self._remoteTabs.onExit(id, data); self.closeTerminal(id); }
+        : () => self.closeTerminal(id)
     );
 
     const storedTermData = getTerminal(id);
@@ -1726,7 +1796,27 @@ class TerminalManager extends BaseComponent {
       storedTermData.handlers = { unregister: () => self._unregisterTerminalHandler(id) };
     }
 
-    if (resumeSessionId) {
+    if (resumeSessionId && remoteSessionKey) {
+      // A remote tab counts from its host being connected, not from the
+      // spawn: a ProxyJump handshake alone can take most of 20 s.
+      this._remoteTabs.armResumeWatchdog(id, {
+        delayMs: 20000,
+        hasOutput: () => (getTerminal(id)?.terminal?.buffer?.active?.length || 0) > 1,
+        onStale: () => {
+          console.warn(`[TerminalManager] Resume watchdog fired for remote terminal ${id} (session ${resumeSessionId}), starting fresh`);
+          self.closeTerminal(id);
+          self.createTerminal(project, {
+            runClaude,
+            cwd: overrideCwd || project.path,
+            skipPermissions,
+            name: customName,
+            mode: explicitMode,
+            initialPrompt,
+            remoteSessionKey,
+          });
+        },
+      });
+    } else if (resumeSessionId) {
       const RESUME_WATCHDOG_MS = 20000;
       let resumeDataReceived = false;
       const checkDataInterval = setInterval(() => {
@@ -2120,7 +2210,7 @@ class TerminalManager extends BaseComponent {
     if (closedProjectPath) {
       const terminals = terminalsState.get().terminals;
       terminals.forEach((td, termId) => {
-        if (!sameProjectTerminalId && td.project?.path === closedProjectPath) {
+        if (!sameProjectTerminalId && sameProject(td.project, termData.project)) {
           sameProjectTerminalId = termId;
         }
       });
@@ -2383,7 +2473,7 @@ class TerminalManager extends BaseComponent {
       const tab = tabsById.get(String(id));
       const wrapper = wrappersById.get(String(id));
       const shouldShow = projectIndex === null || (project && termData.project && (
-        termData.project.path === project.path ||
+        sameProject(termData.project, project) ||
         (termData.parentProjectId && termData.parentProjectId === project.id)
       ));
 
@@ -2457,7 +2547,7 @@ class TerminalManager extends BaseComponent {
     let count = 0;
     const terminals = terminalsState.get().terminals;
     terminals.forEach(termData => {
-      if (termData.project && (termData.project.path === project.path || (termData.parentProjectId && termData.parentProjectId === project.id))) count++;
+      if (termData.project && (sameProject(termData.project, project) || (termData.parentProjectId && termData.parentProjectId === project.id))) count++;
     });
     return count;
   }
@@ -2471,7 +2561,7 @@ class TerminalManager extends BaseComponent {
     let working = 0;
     const terminals = terminalsState.get().terminals;
     terminals.forEach(termData => {
-      if (termData.project && (termData.project.path === project.path || (termData.parentProjectId && termData.parentProjectId === project.id)) && termData.type !== 'fivem' && termData.type !== 'webapp' && termData.type !== 'file' && !termData.isBasic) {
+      if (termData.project && (sameProject(termData.project, project) || (termData.parentProjectId && termData.parentProjectId === project.id)) && termData.type !== 'fivem' && termData.type !== 'webapp' && termData.type !== 'file' && !termData.isBasic) {
         total++;
         if (termData.status === 'working') working++;
       }
@@ -2715,6 +2805,7 @@ class TerminalManager extends BaseComponent {
 
   async _renderSessionsPanel(project, emptyState) {
     const self = this;
+    if (isRemoteProject(project)) return this._renderRemoteSessionsPanel(project, emptyState);
     try {
       const sessions = await this._api.claude.sessions(project.path);
 
@@ -2941,6 +3032,76 @@ class TerminalManager extends BaseComponent {
     }
   }
 
+  /**
+   * The empty state of a remote project. Its transcripts live in the remote
+   * ~/.claude/projects, which the chat slice of the remote work reads over the
+   * channel; until then the panel says where they are rather than showing an
+   * empty list as if there were none.
+   */
+  _renderRemoteSessionsPanel(project, emptyState) {
+    const host = require('../../state/remoteHosts.state').getProjectHost(project);
+    const hostLabel = (host && host.hostLabel) || t('ssh.unknownHost');
+    emptyState.innerHTML = `
+    <div class="sessions-empty-state">
+      <div class="sessions-empty-icon">
+        ${SESSION_SVG_DEFS}
+        <svg width="28" height="28"><use href="#s-chat"/></svg>
+      </div>
+      <p class="sessions-empty-title">${escapeHtml(t('terminals.noTerminals'))}</p>
+      <p class="sessions-empty-hint">${escapeHtml(t('ssh.terminal.historyOnHost', { host: hostLabel }))}</p>
+      <button class="sessions-empty-btn" id="sessions-empty-create">
+        <svg width="15" height="15"><use href="#s-plus"/></svg>
+        ${escapeHtml(t('terminals.newConversation'))}
+      </button>
+    </div>`;
+    const emptyBtn = emptyState.querySelector('#sessions-empty-create');
+    if (emptyBtn) {
+      emptyBtn.onclick = () => {
+        if (this._callbacks.onCreateTerminal) this._callbacks.onCreateTerminal(project);
+      };
+    }
+  }
+
+  /**
+   * Bring back the tabs a remote project had when the app last closed. Called
+   * when the user opens the project, never at startup: nothing may connect
+   * before then (design/remote-ssh.md section 6). A shell tab comes back in the
+   * directory it had, reattached to its tmux session when the host profile
+   * opted into tmux; a Claude tab resumes its conversation when the id is
+   * known. Chat tabs wait for the remote chat to exist.
+   *
+   * @param {Object} project
+   * @returns {Promise<number>} how many tabs were restored
+   */
+  async restoreRemoteTabs(project) {
+    if (!isRemoteProject(project)) return 0;
+    const TerminalSessionService = require('../../services/TerminalSessionService');
+    const saved = TerminalSessionService.takeRemoteTabs(project.id);
+    if (!saved || !Array.isArray(saved.tabs) || saved.tabs.length === 0) return 0;
+    let restored = 0;
+    for (const tab of saved.tabs) {
+      const mode = tab.mode || null;
+      if (mode === 'chat' && !remoteCan(project, 'chat').ok) continue;
+      const cwd = isRemotePath(tab.cwd) ? tab.cwd : project.path;
+      const id = await this.createTerminal(project, {
+        runClaude: !tab.isBasic,
+        cwd,
+        mode,
+        skipPermissions: getSetting('skipPermissions'),
+        resumeSessionId: (!tab.isBasic && tab.claudeSessionId) ? tab.claudeSessionId : null,
+        name: tab.name || null,
+        nameCustom: tab.nameCustom || false,
+        remoteSessionKey: tab.remoteSessionKey || null,
+      });
+      if (id == null) continue;
+      restored++;
+      if (tab.pinned) {
+        try { this.setTabPinned(id, true); } catch (e) { /* ignore */ }
+      }
+    }
+    return restored;
+  }
+
   // ── Resume session ──
 
   async resumeSession(project, sessionId, options = {}) {
@@ -2959,6 +3120,7 @@ class TerminalManager extends BaseComponent {
     }
 
     const xtermPromise = loadXterm();
+    const remoteSessionKey = this._remoteSessionKey(project);
 
     const result = await this._api.terminal.create({
       cwd: resumeCwd || project.path,
@@ -2968,7 +3130,8 @@ class TerminalManager extends BaseComponent {
       accountId: getProjectAccount(project.id),
       // Attribution for the output capture and the terminal_exit_code triggers.
       projectId: project.id,
-      projectPath: project.path
+      projectPath: project.path,
+      ...(remoteSessionKey ? { sessionKey: remoteSessionKey } : {})
     });
 
     let id;
@@ -3019,7 +3182,8 @@ class TerminalManager extends BaseComponent {
       tabId: generateTabId(project.id),
       createdAt: nowIsoResume,
       lastActivityAt: nowIsoResume,
-      ...(resumeCwd ? { parentProjectId: project.id } : {})
+      ...(resumeCwd ? { parentProjectId: project.id } : {}),
+      ...(remoteSessionKey ? { remoteSessionKey } : {})
     };
 
     addTerminal(id, termData);
@@ -3050,6 +3214,7 @@ class TerminalManager extends BaseComponent {
     container.appendChild(wrapper);
 
     document.getElementById('empty-terminals').style.display = 'none';
+    if (remoteSessionKey) this._remoteTabs.attach(id, { project, tabEl: tab, wrapperEl: wrapper, isClaude: true });
 
     terminal.open(wrapper);
     attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
@@ -3085,7 +3250,9 @@ class TerminalManager extends BaseComponent {
         const td = getTerminal(id);
         if (td?.project?.id) heartbeat(td.project.id, 'terminal');
       },
-      () => self.closeTerminal(id)
+      remoteSessionKey
+        ? (data) => { self._remoteTabs.onExit(id, data); self.closeTerminal(id); }
+        : () => self.closeTerminal(id)
     );
 
     const storedResumeTermData = getTerminal(id);
@@ -3141,6 +3308,7 @@ class TerminalManager extends BaseComponent {
 
   async _createTerminalWithPrompt(project, prompt) {
     const xtermPromise = loadXterm();
+    const remoteSessionKey = this._remoteSessionKey(project);
 
     const result = await this._api.terminal.create({
       cwd: project.path,
@@ -3149,7 +3317,8 @@ class TerminalManager extends BaseComponent {
       accountId: getProjectAccount(project.id),
       // Attribution for the output capture and the terminal_exit_code triggers.
       projectId: project.id,
-      projectPath: project.path
+      projectPath: project.path,
+      ...(remoteSessionKey ? { sessionKey: remoteSessionKey } : {})
     });
 
     let id;
@@ -3195,6 +3364,7 @@ class TerminalManager extends BaseComponent {
       tabId: generateTabId(project.id),
       createdAt: nowIsoDebug,
       lastActivityAt: nowIsoDebug,
+      ...(remoteSessionKey ? { remoteSessionKey } : {}),
     };
 
     addTerminal(id, termData);
@@ -3216,6 +3386,7 @@ class TerminalManager extends BaseComponent {
     container.appendChild(wrapper);
 
     document.getElementById('empty-terminals').style.display = 'none';
+    if (remoteSessionKey) this._remoteTabs.attach(id, { project, tabEl: tab, wrapperEl: wrapper, isClaude: true });
 
     terminal.open(wrapper);
     attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
@@ -3266,7 +3437,9 @@ class TerminalManager extends BaseComponent {
         terminal.write(data.data);
         resetOutputSilenceTimer(id);
       },
-      () => self.closeTerminal(id)
+      remoteSessionKey
+        ? (data) => { self._remoteTabs.onExit(id, data); self.closeTerminal(id); }
+        : () => self.closeTerminal(id)
     );
 
     const storedTermData = getTerminal(id);
@@ -3814,7 +3987,7 @@ class TerminalManager extends BaseComponent {
     const visibleTerminals = [];
     allTerminals.forEach((termData, id) => {
       const isVisible = currentFilter === null ||
-        (filterProject && termData.project && termData.project.path === filterProject.path);
+        (filterProject && termData.project && sameProject(termData.project, filterProject));
       if (isVisible) {
         visibleTerminals.push(id);
       }
@@ -4018,6 +4191,8 @@ class TerminalManager extends BaseComponent {
     const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
 
     if (!wrapper || !tab) return;
+    // A remote project has no chat yet: say so instead of killing its PTY first.
+    if (newMode === 'chat' && require('./RemoteHostBadge').refuseForRemote(project, 'chat')) return;
 
     this._modeSwitching.add(id);
     try {
@@ -4131,7 +4306,9 @@ class TerminalManager extends BaseComponent {
       const fitAddon = new FitAddon();
       terminal.loadAddon(fitAddon);
 
+      const remoteSessionKey = this._remoteSessionKey(project, termData.remoteSessionKey);
       const result = await this._api.terminal.create({
+        ...(remoteSessionKey ? { sessionKey: remoteSessionKey } : {}),
         cwd,
         runClaude: true,
         skipPermissions: getSetting('skipPermissions') || false,
@@ -4169,8 +4346,10 @@ class TerminalManager extends BaseComponent {
         terminal,
         fitAddon,
         ptyId,
-        status: 'loading'
+        status: 'loading',
+        ...(remoteSessionKey ? { remoteSessionKey } : {})
       });
+      if (remoteSessionKey) this._remoteTabs.attach(id, { project, tabEl: tab, wrapperEl: wrapper, isClaude: true });
 
       // Re-append rather than create: terminal.open() has just added the
       // emulator's own DOM to the wrapper, and the overlay has to stay the last
@@ -4547,6 +4726,7 @@ class TerminalManager extends BaseComponent {
     this._lastTerminalData.clear();
     this._terminalContext.clear();
     this._tabActivationHistory.clear();
+    this._remoteTabs.destroy();
 
     super.destroy();
   }
@@ -4599,6 +4779,7 @@ module.exports = {
   getApiConsoleTerminal: (projectIndex) => _getInstance().getApiConsoleTerminal(projectIndex),
   writeApiConsole: (projectIndex, data) => _getInstance().writeApiConsole(projectIndex, data),
   switchTerminalMode: (id) => _getInstance().switchTerminalMode(id),
+  restoreRemoteTabs: (project) => _getInstance().restoreRemoteTabs(project),
   setScrapingCallback: (cb) => _getInstance().setScrapingCallback(cb),
   updateTerminalTabName: (id, name, opts) => _getInstance().updateTerminalTabName(id, name, opts),
   setTabPinned: (id, pinned) => _getInstance().setTabPinned(id, pinned),

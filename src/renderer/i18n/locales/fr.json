@@ -4489,6 +4489,20 @@
     }
   },
   "ssh": {
+    "terminal": {
+      "lost": "Connexion à {host} perdue",
+      "waiting": "État de l’hôte : {state}. Cet onglet se rouvre tout seul dès que {host} est de nouveau joignable.",
+      "manual": "État de l’hôte : {state}. Reconnectez-vous quand l’hôte est joignable.",
+      "needsUser": "{reason}. Corrigez-le depuis le badge de l’hôte, puis reconnectez-vous.",
+      "gaveUp": "La connexion a sauté plusieurs fois de suite. Reconnectez-vous quand vous êtes prêt.",
+      "reconnect": "Se reconnecter",
+      "reconnecting": "Reconnexion...",
+      "closeTab": "Fermer l’onglet",
+      "respawnFailed": "Impossible de rouvrir le terminal : {error}",
+      "reconnected": "Reconnecté à {host}",
+      "claudeMissing": "Claude Code est introuvable sur {host}. Installez-le sur cette machine, ou indiquez son chemin dans le profil de l’hôte.",
+      "historyOnHost": "L’historique des conversations de ce projet se trouve sur {host}. Il n’est pas encore listé ici."
+    },
     "openRemoteProject": "Ouvrir un projet distant",
     "modalTitle": "Ouvrir un projet distant",
     "back": "Retour",

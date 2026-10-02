@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 233 test files)
+npm test                 # Run Jest tests (jsdom, 236 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -85,7 +85,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 38 IPC files, 345 handlers total
+├── src/main/ipc/                    # 38 IPC files, 346 handlers total
 ├── src/main/services/               # 38 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 27 utilities
@@ -104,7 +104,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4006 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4018 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
@@ -132,7 +132,7 @@ Remote UI (PWA for mobile)
 
 | File | Handlers | Key Operations |
 |------|---------:|----------------|
-| `terminal.ipc.js` | 4 | Create PTY (node-pty), input, resize, kill |
+| `terminal.ipc.js` | 5 | Create PTY (node-pty), input, resize, kill, and respawn a remote (SSH) tab whose connection dropped. A remote project's PTY is resolved in main from its `ssh-remote://` path (`projectTarget` + `SshHostService.ptyLaunch`); closing a remote tab ends its tmux session |
 | `git.ipc.js` | 69 | Status, branches, pull/push/merge/rebase, clone, stash, cherry-pick, revert, tag, blame, worktree, AI commit message, PR description, inline diff |
 | `chat.ipc.js` | 26 | Agent SDK streaming sessions, permissions, interrupt, model/effort/permission-mode switching, tab name generation, fork/rewind, skill/agent generation, session recap |
 | `github.ipc.js` | 25 | OAuth Device Flow, workflow runs, PRs, issues, reviews, GitHub Enterprise, repo search |
@@ -172,7 +172,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 345 IPC handlers across 38 files.**
+**Total: 346 IPC handlers across 38 files.**
 
 ### Services (`src/main/services/`)
 
@@ -187,7 +187,7 @@ Remote UI (PWA for mobile)
 | `DiscordRpcService.js` | Discord Rich Presence, VSCode-style. Zero-dependency implementation of the Discord IPC protocol over the local client socket (named pipe on Windows, unix socket elsewhere). Only the public application Client ID is needed; nothing leaves the device |
 | `OrphanReaper.js` | Stops what a Claude session leaves spinning: a command that backgrounds work with `&` forks a subshell which keeps the tool shell's whole command line and is re-parented to pid 1 when that shell exits, so nothing collects it. A `ps` sweep every 60 s, restricted to that signature, kills an orphaned childless hot process per pid and an orphaned tool shell whose group is hot as a group. Idle orphans are never touched, and a kill needs the same verdict on two consecutive sweeps. "Hot" is the CPU time accumulated *between* those two sweeps rather than `%CPU`, because Linux reports that as a whole-life average and would read a long-idle process as busy. POSIX only; `start()` is a no-op on win32 |
 | `LinuxDesktopIntegration.js` | Registers/updates an XDG `.desktop` file and icon on every Linux launch, so an AppImage shipped without AppImageLauncher still appears in the application menu and survives the versioned-filename change on each release |
-| `TerminalService.js` | node-pty management, adaptive output batching (4/16/32 ms), Claude CLI launch with `--resume` |
+| `TerminalService.js` | node-pty management, adaptive output batching (4/16/32 ms), Claude CLI launch with `--resume`. A remote (SSH) project takes its own branch before any local check: node-pty runs the system ssh with `-tt` and one remote command `/bin/sh -c <q(script)>` (a login shell in the project directory, tmux when the profile opts in, or `claude` through the login shell), no `existsSync`, no account overlay. ssh exiting 255 is `terminal-disconnected`, never `terminal-exit`, fires no workflow trigger, and `respawn()` brings the tab back under the same id |
 | `ChatService.js` | Claude Agent SDK bridge: streaming input mode, `maxTurns: 100`, permission forwarding, persistent haiku naming session, fork/rewind |
 | `GitHubAuthService.js` | GitHub OAuth Device Flow + API, keytar storage, GitHub Enterprise support (Client ID: `Ov23liYfl42qwDVVk99l`) |
 | `UsageService.js` | Claude usage via OAuth API (`api.anthropic.com/api/oauth/usage`) with PTY fallback, 5 min staleness. A credential store that gives back no usable token parks the account on an **escalating, bounded** backoff (5 min doubling to 1 h), not on `Infinity`: that never recovered, so one unreadable store or one token caught between two CLI rotations froze the chip for the life of the process. `getUsageData().retryAt` carries the next attempt so the tooltip can say "waiting" rather than leaving the user with a chip that stopped |
@@ -353,7 +353,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
-**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray` and `elapsedTimer`; `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards` and `markdownViewer`.
+**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray` and `elapsedTimer`; `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer` and `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab).
 
 Two things make this harder than it looks and set the shape of the modules. `ChatView.js`'s body is a single ~8,600-line closure, so every helper in it closes over the same mutable session state; a unit only comes out as a `createXxx(deps)` factory taking its dependencies explicitly, reading late-bound ones (`getPruner`, `getInputEl`, `getProject`) through getters, and owning its own `destroy()` rather than leaving listeners for `createChatView`'s to remember. And the units have real couplings worth naming rather than hiding: `attachmentTray` reaches the mention rail because an attached file *is* a chip there, and `transcriptSearch` has to suspend the pruner because it walks the mounted tree.
 
@@ -427,7 +427,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4006 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4018 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -543,7 +543,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `discord-theme.css` | 739 | Discord builder theme |
 | `kanban.css` | 692 | Kanban board |
 | `artifacts.css` | 554 | Artifact library |
-| `remote.css` | 498 | SSH remote projects: host badges, Open Remote Project, profile editor |
+| `remote.css` | 597 | SSH remote projects: host badges, Open Remote Project, profile editor, remote terminal tabs |
 | `files.css` | 450 | Files screen |
 | `errorlog.css` | 430 | Error log panel |
 | `cost.css` | 443 | Cost panel |
@@ -697,13 +697,13 @@ Worker); neither is bundled into the desktop app.
 - **Idle animation pausing:** all infinite CSS animations stop while the window is unfocused. On a large transcript a single composited spinner measured ~30% of a core, and every perpetual animation in the app is a "still working" indicator, so freezing them costs the user nothing. **`document.getAnimations()` must never be called on a live document**: it is superlinear in document size, measured in this app at 0 ms / 786 nodes, 534 ms / 21k, 13.4 s / 81k and 97 s / 200k. `IdleAnimationPauser` used to call it on every blur and on a 100 ms debounce after each animation start while blurred, which is where a renderer pegged at a full core for days came from, and why tabbing back into the app froze it for seconds. It now learns each element from its own `animationstart`, reads only that element's computed style, and pauses through the `.ct-anim-idle` class, so both tracking and pausing cost the number of live spinners rather than the number of nodes
 - **Drag-reorder handlers measure before they write:** `dragover` fires on every pointer move, and a `getBoundingClientRect()` that follows a style write in the same document cannot be answered from the cached layout. The four tab-reorder handlers (sidebar rail and its Customize modal in `renderer.js`, `ProjectBar`, `TerminalManager`) each used to write a marker class and then measure, forcing one full synchronous layout per event over a document holding the chat transcript and the file tree, which is what made moving a tab freeze the window for seconds. They now read first and skip every write while the drop position is unchanged, which is most events. `ProjectList` reaches the same place by throttling to 50 ms instead. When adding another reorder surface, follow the same shape
 - **External editor launches report their failure:** `spawn` raises a missing binary asynchronously, so `openInEditor` awaits the child's `spawn`/`error` before answering and the preload bridge is `invoke`, not `send`. Renderer callers go through `src/renderer/utils/editor.js`, which toasts on `success: false`. On macOS a GUI editor whose CLI shim was never installed (the default for VS Code) falls back to `open -a <bundle>`; before this, "Open in editor" was simply a button that did nothing, anywhere in the app
-- **Remote SSH projects** (`design/remote-ssh.md`): a remote project is a `general` project whose `path` is `ssh-remote://<profileId><posix path>` and whose `remote` block holds `{ profileId, path, hostLabel }`. The URI is its identity, deduped exactly and case-sensitively, and it fails closed everywhere nothing was taught about it yet: it is not absolute, so `rendererSecurity` never grants it (and skips the project explicitly anyway), `fs.existsSync` answers false, and the startup git sweep, dashboard preload, missing-path check and session restore all skip it before probing. Nothing connects at startup; opening the project or clicking its badge does. Terminals and chat are refused for remote projects (renderer toast, and again in `terminal-create` / `chat-start`) until their slices land, because `TerminalService` would otherwise fall back to a local shell in the home directory
+- **Remote SSH projects** (`design/remote-ssh.md`): a remote project is a `general` project whose `path` is `ssh-remote://<profileId><posix path>` and whose `remote` block holds `{ profileId, path, hostLabel }`. The URI is its identity, deduped exactly and case-sensitively, and it fails closed everywhere nothing was taught about it yet: it is not absolute, so `rendererSecurity` never grants it (and skips the project explicitly anyway), `fs.existsSync` answers false, and the startup git sweep, dashboard preload, missing-path check and session restore all skip it before probing. Nothing connects at startup; opening the project or clicking its badge does. Terminal tabs and quick actions run on the host over `ssh -tt`, resolved in main from the URI (the renderer never names a host); a dropped connection leaves the tab under a "connection lost" overlay and respawns it when the host is back (Claude tabs with `--resume`, shells in the same directory or reattached to their tmux session), automatic respawns never follow an auth or host key failure, and remote tabs come back from the last run when the project is opened, not at boot. Tab ownership is by project id as soon as a remote project is involved (`sameProject()`), and with hooks on, remote tabs get their events from the scraping provider (their CLI never reaches the local hook server). Chat is still refused for remote projects (renderer toast, and again in `chat-start`) until its slice lands, because the local CLI would otherwise start in the home directory
 - **Security:** `dompurify` for all user-rendered markdown; never inject untrusted HTML into chat/dashboard
 
 ## Testing
 
 ```bash
-npm test                    # Run all 233 unit test files (jsdom environment)
+npm test                    # Run all 236 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -712,23 +712,23 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 233 test files
+- **Framework:** Jest with jsdom, 236 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
   - `core/` - BaseComponent, BasePanel, ApiProvider, ServiceContainer
-  - `events/` - hook session routing, permission-notification suppression by permission mode
+  - `events/` - hook session routing, permission-notification suppression by permission mode (remote tabs and the scraping provider alongside the hooks are in `ui/terminalRemoteTab`)
   - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
   - `i18n/` - i18n, coherence across the 6 locales, unused/missing key usage
   - `integration/` - state persistence
-  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only; Verify host runs the argv main built), the remote project guards on `terminal-create` and `chat-start` (a URI is refused, a local call is unchanged), and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
+  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only; Verify host runs the argv main built), the remote project guards on `terminal-create` and `chat-start` (a remote terminal is resolved in main and never takes a launch context from the renderer, a chat URI is refused, a local call is unchanged), `terminal-respawn`, and the tmux cleanup on `terminal-kill`, and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself), and `SshHostService` (backoff schedule, no retry after auth or host key failures, the status sequence, reads waiting and writes failing fast, the unreadable-store abort, profile validation, and a real handshake against `tests/helpers/fake-ssh.js`)
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself), and `SshHostService` (backoff schedule, no retry after auth or host key failures, the status sequence, reads waiting and writes failing fast, the unreadable-store abort, profile validation, the PTY launch context, and a real handshake against `tests/helpers/fake-ssh.js`), and remote terminals in `TerminalService` (the ssh argv, a cwd round-tripped through a real sh, exit 255 as a disconnect, respawn, tmux, and the local spawn pinned byte for byte)
   - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task, remote paths, remote capabilities, and the remote shell quoting (round-tripped through a real `/bin/sh -c`, and fish/tcsh when installed)
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`, remote projects in `projects.state.js` (case-sensitive URI dedupe, no missing-path flag, no account binding) and `remoteHosts.state.js` (nothing connects at startup or on the restore path, the idle disconnect)
-  - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist), and Open Remote Project (a saved profile carries no secret field, the browser lists directories only, clone names the host by profile id, the created project is a URI-shaped `general` project) with the host badge states
+  - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist), and Open Remote Project (a saved profile carries no secret field, the browser lists directories only, clone names the host by profile id, the created project is a URI-shaped `general` project) with the host badge states, remote terminal tabs (overlay, respawn rules, the resume watchdog keyed on the host being connected, ownership by project id, scraping events with hooks on) and remote quick actions (`$HOME` left literal, the host path, typed once the host answers)
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name), http cache, session search, shell, syntax highlight, tool registry, and the SSH transport: argv builder, frame parser, lanes, `remoteFs` and `projectTarget`, run against a real local sh through `tests/helpers/fake-ssh.js` (Git for Windows' `sh.exe` on Windows, skipped when there is none)
 
 ### Lint (`eslint.config.js`)

@@ -766,6 +766,10 @@ function wireDebugListener() {
 function activateProvider(mode) {
   if (mode === 'hooks') {
     HooksProvider.start();
+    // Remote (SSH) terminal tabs run their CLI on another host, which never
+    // reaches the local hook server: scraping speaks for those tabs, and only
+    // those, while the hooks cover the local ones.
+    ScrapingProvider.start({ remoteOnly: true });
   } else {
     ScrapingProvider.start();
   }
@@ -778,6 +782,7 @@ function activateProvider(mode) {
 function deactivateProvider() {
   if (activeProvider === 'hooks') {
     HooksProvider.stop();
+    ScrapingProvider.stop();
     // No more hook traffic to rearm them, and no more Stop to clear them.
     for (const terminalId of [...idleWatchdogs.keys()]) clearIdleWatchdog(terminalId);
     SessionRouter.reset();

@@ -4489,6 +4489,20 @@
     }
   },
   "ssh": {
+    "terminal": {
+      "lost": "Connection to {host} lost",
+      "waiting": "Host status: {state}. This tab reopens on its own as soon as {host} is reachable again.",
+      "manual": "Host status: {state}. Reconnect once the host is reachable.",
+      "needsUser": "{reason}. Fix it from the host badge, then reconnect.",
+      "gaveUp": "The connection dropped several times in a row. Reconnect when you are ready.",
+      "reconnect": "Reconnect",
+      "reconnecting": "Reconnecting...",
+      "closeTab": "Close tab",
+      "respawnFailed": "Could not reopen the terminal: {error}",
+      "reconnected": "Reconnected to {host}",
+      "claudeMissing": "Claude Code was not found on {host}. Install it there, or set its path in the host profile.",
+      "historyOnHost": "The conversation history of this project lives on {host}. It is not listed here yet."
+    },
     "openRemoteProject": "Open remote project",
     "modalTitle": "Open Remote Project",
     "back": "Back",

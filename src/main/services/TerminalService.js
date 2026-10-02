@@ -8,6 +8,25 @@ const fs = require('fs');
 const pty = require('node-pty');
 const { execFileSync } = require('child_process');
 const terminalCapture = require('./TerminalOutputCapture');
+const sshCommand = require('../utils/sshCommand');
+const {
+  shC,
+  terminalShellScript,
+  terminalClaudeScript,
+  classifySshFailure,
+} = require('../../shared/remote-shell');
+
+/** What `--resume` accepts. Also what keeps a session id from smuggling shell syntax. */
+const RESUME_ID_RE = /^[a-f0-9-]{8,64}$/;
+
+/** ssh's own exit status: the connection or authentication failed, not the remote shell. */
+const SSH_FAILURE_EXIT = 255;
+
+/** How much of a remote PTY's latest output is kept to classify an ssh failure. */
+const REMOTE_TAIL_BYTES = 4096;
+
+/** tmux session keys a tab may ask for. Anything else gets a generated one. */
+const SESSION_KEY_RE = /^[A-Za-z0-9_-]{1,96}$/;
 
 /**
  * Whether a spawned `claude` should carry `--rc`.
@@ -28,6 +47,12 @@ function _remoteControlEnabled() {
 class TerminalService {
   constructor() {
     this.terminals = new Map();
+    /**
+     * Remote terminals whose ssh lost the connection (exit 255), by id, with
+     * what they need to come back under the same id. Local terminals never
+     * land here.
+     */
+    this.disconnected = new Map();
     this.terminalId = 0;
     this.mainWindow = null;
     /**
@@ -69,10 +94,16 @@ class TerminalService {
    *   program instead of the shell. Main-process callers only: the
    *   `terminal-create` IPC handler never forwards it, so the renderer cannot
    *   choose what a PTY runs. Used by the SSH "Verify host" action.
+   * @param {Object|null} [options.remote] - A remote (SSH) project's launch
+   *   context, resolved in main by the terminal IPC from a registered project
+   *   (see `_createRemote`). Never taken from the renderer as-is.
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null, remote = null }) {
     const id = ++this.terminalId;
+    // A remote project takes its own branch before anything below looks at the
+    // local filesystem: its cwd is a URI that never exists here.
+    if (remote) return this._createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote });
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
 
@@ -164,29 +195,7 @@ class TerminalService {
 
     this.terminals.set(id, ptyProcess);
 
-    // Handle data output - adaptive batching to reduce IPC flooding
-    // 4ms flush when idle (responsive typing), 16ms normal, 32ms when flooding
-    let buffer = '';
-    let flushScheduled = false;
-    let lastFlush = Date.now();
-
-    const dataDisposable = ptyProcess.onData(data => {
-      buffer += data;
-      if (!flushScheduled) {
-        flushScheduled = true;
-        const sinceLastFlush = Date.now() - lastFlush;
-        const delay = buffer.length > 10000 ? 32 : sinceLastFlush > 100 ? 4 : 16;
-        setTimeout(() => {
-          this.sendToRenderer('terminal-data', { id, data: buffer });
-          // Persist a rolling tail per project. Buffered and written on its own
-          // timer, so this adds no disk I/O to the render path.
-          terminalCapture.record(ptyProcess._meta?.projectId, buffer);
-          buffer = '';
-          flushScheduled = false;
-          lastFlush = Date.now();
-        }, delay);
-      }
-    });
+    const dataDisposable = this._wireOutput(id, ptyProcess);
 
     // Handle exit
     const exitDisposable = ptyProcess.onExit((evt) => {
@@ -245,6 +254,238 @@ class TerminalService {
   }
 
   /**
+   * Forward a PTY's output to the renderer.
+   * Adaptive batching to reduce IPC flooding: 4ms flush when idle (responsive
+   * typing), 16ms normal, 32ms when flooding.
+   * @returns {{dispose: Function}}
+   */
+  _wireOutput(id, ptyProcess) {
+    let buffer = '';
+    let flushScheduled = false;
+    let lastFlush = Date.now();
+
+    return ptyProcess.onData(data => {
+      buffer += data;
+      if (!flushScheduled) {
+        flushScheduled = true;
+        const sinceLastFlush = Date.now() - lastFlush;
+        const delay = buffer.length > 10000 ? 32 : sinceLastFlush > 100 ? 4 : 16;
+        setTimeout(() => {
+          this.sendToRenderer('terminal-data', { id, data: buffer });
+          // Persist a rolling tail per project. Buffered and written on its own
+          // timer, so this adds no disk I/O to the render path.
+          terminalCapture.record(ptyProcess._meta?.projectId, buffer);
+          buffer = '';
+          flushScheduled = false;
+          lastFlush = Date.now();
+        }, delay);
+      }
+    });
+  }
+
+  // ── Remote (SSH) terminals ─────────────────────────────────────────────────
+  //
+  // design/remote-ssh.md section 5.1. A remote tab is node-pty running the
+  // system ssh with `-tt`, the profile's flags, `--`, the destination, and one
+  // remote command element `/bin/sh -c <q(script)>`. The local process starts
+  // in the local home directory: there is no local cwd to check, and no
+  // account overlay, since the remote host has its own `claude /login`.
+  //
+  // ssh exits 255 when the connection or authentication failed. That is not
+  // the user typing `exit`, so it is reported as `terminal-disconnected`, the
+  // tab stays, and `respawn()` brings it back under the same id once the host
+  // is reachable: a Claude tab with `--resume`, a shell in the same directory
+  // (or reattached to its tmux session when the profile opted into tmux).
+
+  /** The CLI argv for a remote Claude tab: the same flags and session id check as a local one. */
+  _remoteClaudeArgv(ctx) {
+    const argv = [ctx.profile && ctx.profile.remoteClaudePath ? ctx.profile.remoteClaudePath : 'claude'];
+    if (ctx.resumeSessionId && RESUME_ID_RE.test(ctx.resumeSessionId)) argv.push('--resume', ctx.resumeSessionId);
+    if (ctx.skipPermissions) argv.push('--dangerously-skip-permissions');
+    if (_remoteControlEnabled()) argv.push('--rc');
+    return argv;
+  }
+
+  /** The tmux session a shell tab attaches to, or null when tmux does not apply. */
+  _remoteTmuxSession(ctx) {
+    if (ctx.runClaude || !ctx.profile || ctx.profile.tmuxSessions !== true) return null;
+    // Known to be missing: leave tmux out entirely. Unknown (the channel has
+    // not connected yet): the script checks for it on the host.
+    const tools = ctx.capabilities && Array.isArray(ctx.capabilities.tools) ? ctx.capabilities.tools : null;
+    if (tools && !tools.includes('tmux')) return null;
+    return `ct-${ctx.sessionKey}`;
+  }
+
+  /**
+   * The ssh program and argv for a remote tab.
+   * @returns {{ file: string, args: string[], tmuxSession: string|null }}
+   */
+  _remoteSpawnSpec(ctx) {
+    const tmuxSession = this._remoteTmuxSession(ctx);
+    const script = ctx.runClaude
+      ? terminalClaudeScript(ctx.remotePath, this._remoteClaudeArgv(ctx))
+      : terminalShellScript(ctx.remotePath, { tmuxSession, path: ctx.capabilities ? ctx.capabilities.path : null });
+    const sshArgs = sshCommand.buildSshArgs(ctx.profile, {
+      mode: 'pty',
+      remoteCommand: [shC(script)],
+      platform: ctx.platform || process.platform,
+      controlDir: ctx.controlDir || null,
+    });
+    return { file: ctx.command, args: [...(ctx.prefixArgs || []), ...sshArgs], tmuxSession };
+  }
+
+  _createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote }) {
+    const sessionKey = typeof remote.sessionKey === 'string' && SESSION_KEY_RE.test(remote.sessionKey)
+      ? remote.sessionKey
+      : `t${Date.now().toString(36)}${id}`;
+    const ctx = {
+      ...remote,
+      sessionKey,
+      runClaude: Boolean(runClaude),
+      skipPermissions: Boolean(skipPermissions),
+      resumeSessionId: resumeSessionId && RESUME_ID_RE.test(resumeSessionId) ? resumeSessionId : null,
+      projectId: projectId || null,
+      projectPath: projectPath || cwd || null,
+      cwd: cwd || null,
+      size: null,
+    };
+    return this._spawnRemote(id, ctx);
+  }
+
+  _spawnRemote(id, ctx) {
+    let spec;
+    try {
+      if (!ctx.command || !ctx.profile || typeof ctx.remotePath !== 'string') throw new Error('Incomplete remote terminal context');
+      spec = this._remoteSpawnSpec(ctx);
+    } catch (error) {
+      console.error('Failed to build the remote terminal command:', error.message);
+      this.sendToRenderer('terminal-error', { id, error: `Failed to create terminal: ${error.message}` });
+      return { success: false, error: error.message };
+    }
+
+    let ptyProcess;
+    try {
+      ptyProcess = pty.spawn(spec.file, spec.args, {
+        name: 'xterm-256color',
+        cols: (ctx.size && ctx.size.cols) || 120,
+        rows: (ctx.size && ctx.size.rows) || 30,
+        cwd: os.homedir(),
+        env: ctx.env ? { ...process.env, ...ctx.env } : process.env
+      });
+      if (!ptyProcess) throw new Error('PTY process creation returned null');
+    } catch (error) {
+      console.error('Failed to spawn remote terminal:', error);
+      this.sendToRenderer('terminal-error', { id, error: `Failed to create terminal: ${error.message}` });
+      return { success: false, error: error.message };
+    }
+
+    // See create(): one listener keeps node-pty from rethrowing a socket error.
+    ptyProcess.on('error', error => {
+      console.warn(`[TerminalService] PTY ${id} socket error:`, error?.message || error);
+    });
+
+    ctx.tmuxSession = spec.tmuxSession;
+    ptyProcess._meta = {
+      projectId: ctx.projectId,
+      projectPath: ctx.projectPath,
+      command: [spec.file, ...spec.args].join(' ').trim(),
+      remote: { profileId: ctx.profileId || null },
+    };
+    ptyProcess._remote = ctx;
+    ptyProcess._tail = '';
+
+    this.terminals.set(id, ptyProcess);
+
+    const tailDisposable = ptyProcess.onData(data => {
+      ptyProcess._tail = (ptyProcess._tail + data).slice(-REMOTE_TAIL_BYTES);
+    });
+    const dataDisposable = this._wireOutput(id, ptyProcess);
+
+    const exitDisposable = ptyProcess.onExit((evt) => {
+      if (ptyProcess._exited) return;
+      ptyProcess._exited = true;
+      const exitCode = (evt && Number.isFinite(evt.exitCode)) ? evt.exitCode : null;
+      const signal   = (evt && evt.signal != null) ? evt.signal : null;
+      try { ptyProcess.kill(); } catch (e) {}
+      if (this.terminals.get(id) === ptyProcess) this.terminals.delete(id);
+      terminalCapture.flush();
+      if (exitCode === SSH_FAILURE_EXIT) {
+        // The connection dropped, or never came up. Not an exit: the tab
+        // stays, and no terminal_exit_code workflow fires for it.
+        const kind = classifySshFailure(exitCode, ptyProcess._tail) || 'network';
+        this.disconnected.set(id, ctx);
+        this.sendToRenderer('terminal-disconnected', { id, exitCode, kind, profileId: ctx.profileId || null });
+        return;
+      }
+      this.sendToRenderer('terminal-exit', { id, exitCode, signal });
+      if (typeof this.onExitCallback === 'function') {
+        try {
+          this.onExitCallback({
+            terminalId:  id,
+            exitCode,
+            signal,
+            projectId:   ptyProcess._meta?.projectId || null,
+            projectPath: ptyProcess._meta?.projectPath || null,
+            command:     ptyProcess._meta?.command || null,
+          });
+        } catch (cbErr) {
+          console.warn('[TerminalService] onExitCallback error:', cbErr.message);
+        }
+      }
+    });
+
+    ptyProcess._disposables = [tailDisposable, dataDisposable, exitDisposable];
+    return { success: true, id };
+  }
+
+  /**
+   * Bring a disconnected remote terminal back under the same id, so the
+   * renderer's handlers, the tab and its scrollback carry on untouched.
+   *
+   * @param {number} id
+   * @param {object} options
+   * @param {object} options.remote  a fresh launch context from the IPC (the
+   *   profile may have been edited since)
+   * @param {string|null} [options.resumeSessionId]  the conversation a Claude
+   *   tab resumes; defaults to the one it was started with
+   * @returns {{ success: boolean, id?: number, error?: string }}
+   */
+  respawn(id, { remote = null, resumeSessionId = null } = {}) {
+    const prev = this.disconnected.get(id);
+    if (!prev) return { success: false, error: 'This terminal is not waiting to reconnect' };
+    if (this.terminals.has(id)) return { success: false, error: 'This terminal is already running' };
+    const ctx = {
+      ...prev,
+      ...(remote || {}),
+      // What the tab is, as opposed to how to reach its host: always the original.
+      sessionKey: prev.sessionKey,
+      remotePath: prev.remotePath,
+      runClaude: prev.runClaude,
+      skipPermissions: prev.skipPermissions,
+      projectId: prev.projectId,
+      projectPath: prev.projectPath,
+      cwd: prev.cwd,
+      size: prev.size,
+      resumeSessionId: resumeSessionId && RESUME_ID_RE.test(resumeSessionId) ? resumeSessionId : prev.resumeSessionId,
+    };
+    this.disconnected.delete(id);
+    const result = this._spawnRemote(id, ctx);
+    if (!result.success) this.disconnected.set(id, prev);
+    return result;
+  }
+
+  /**
+   * The remote context of a live or disconnected terminal, or null for a
+   * local one. Read by the IPC to re-resolve a respawn and to end a closed
+   * tab's tmux session.
+   */
+  remoteContext(id) {
+    const term = this.terminals.get(id);
+    if (term && term._remote) return term._remote;
+    return this.disconnected.get(id) || null;
+  }
+
+  /**
    * Write data to a terminal
    * @param {number} id - Terminal ID
    * @param {string} data - Data to write
@@ -269,6 +510,8 @@ class TerminalService {
   resize(id, cols, rows) {
     const term = this.terminals.get(id);
     if (term) {
+      // A remote tab respawns at the size it last had.
+      if (term._remote) term._remote.size = { cols, rows };
       try {
         term.resize(cols, rows);
       } catch (e) {
@@ -296,7 +539,13 @@ class TerminalService {
    */
   kill(id) {
     const term = this.terminals.get(id);
-    if (!term) return;
+    if (!term) {
+      // A remote tab waiting to reconnect has no process left, only the
+      // context respawn() would use. Closing it drops that, and says so the
+      // way a live kill does.
+      if (this.disconnected.delete(id)) this.sendToRenderer('terminal-exit', { id });
+      return;
+    }
 
     const pid = term.pid;
     term._exited = true;
@@ -342,6 +591,7 @@ class TerminalService {
       try { term.kill(); } catch (_) {}
     });
     this.terminals.clear();
+    this.disconnected.clear();
 
     // Ensure all process trees are dead on Windows
     if (process.platform === 'win32') {

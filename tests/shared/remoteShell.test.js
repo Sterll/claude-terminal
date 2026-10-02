@@ -5,6 +5,7 @@ const fs = require('fs');
 const { spawnSync, execFileSync } = require('child_process');
 const {
   q, qArgs, assertOneLine, script, cdAnd, gitScript, shC, withPath,
+  terminalShellScript, terminalClaudeScript, tmuxKillScript,
   classifySshFailure, isTerminalFailure,
 } = require('../../src/shared/remote-shell');
 const { findSh } = require('../helpers/fake-ssh');
@@ -179,5 +180,54 @@ describe('classifySshFailure', () => {
     expect(isTerminalFailure('hostkey-unknown')).toBe(true);
     expect(isTerminalFailure('hostkey-changed')).toBe(true);
     for (const kind of ['dns', 'timeout', 'refused', 'network', 'not-installed']) expect(isTerminalFailure(kind)).toBe(false);
+  });
+});
+
+describe('terminal scripts', () => {
+  const LOGIN = 'exec "$' + '{SHELL:-/bin/sh}" -l'; // split: not a template placeholder
+
+  test('a shell tab enters the directory and becomes the login shell, on one line', () => {
+    const line = terminalShellScript("/srv/it's here");
+    expect(line).toBe(`cd -- ${q("/srv/it's here")} && ${LOGIN}`);
+    expect(() => assertOneLine(line)).not.toThrow();
+  });
+
+  test('with a tmux session it attaches or creates it, and falls back to the shell without tmux', () => {
+    const line = terminalShellScript('/srv/app', { tmuxSession: 'ct-tab_p1_9', path: '/usr/local/bin:/usr/bin' });
+    expect(line).toContain('tmux new-session -A -s ct-tab_p1_9');
+    expect(line).toContain('command -v tmux');
+    expect(line).toContain(`PATH=${q('/usr/local/bin:/usr/bin')}`);
+    expect(line.endsWith(`else ${LOGIN}; fi`)).toBe(true);
+  });
+
+  test('a tmux session name outside ct-[A-Za-z0-9_-] is refused', () => {
+    expect(() => terminalShellScript('/srv', { tmuxSession: 'ct-a;reboot' })).toThrow();
+    expect(() => terminalShellScript('/srv', { tmuxSession: 'other' })).toThrow();
+    expect(() => tmuxKillScript('ct-$(id)')).toThrow();
+    expect(tmuxKillScript('ct-tab_1')).toBe('tmux kill-session -t ct-tab_1 2>/dev/null; :');
+  });
+
+  test('a Claude tab needs a command line', () => {
+    expect(() => terminalClaudeScript('/srv', [])).toThrow();
+  });
+
+  (SH ? test : test.skip)('a Claude tab hands the login shell the CLI argv intact', () => {
+    const argv = ['/opt/my claude/claude', '--resume', '0f1e2d3c-aaaa', "it's", '$HOME'];
+    const line = terminalClaudeScript('/srv/app', argv);
+    // Run the remote side through a real sh: `cd` becomes a no-op and the
+    // login shell a printf of the one word it would be given to run.
+    const probe = shC(line).replace('cd -- ', ': ').replace(`${LOGIN} -c `, 'printf %s ');
+    const r = spawnSync(SH, ['-s'], { input: `SHELL=/bin/sh; export SHELL; exec ${probe}\n`, encoding: 'utf8' });
+    expect(r.stdout).toBe(qArgs(argv));
+    // And that word, parsed by a shell, is the argv again.
+    const back = spawnSync(SH, ['-s'], { input: `printf '<%s>' ${r.stdout}\n`, encoding: 'utf8' });
+    expect(back.stdout).toBe(argv.map((a) => `<${a}>`).join(''));
+  });
+
+  (SH ? test : test.skip)('csh and tcsh get -c without -l, which they refuse', () => {
+    const line = terminalClaudeScript('/srv/app', ['claude']);
+    const probe = shC(line).replace('cd -- ', ': ').replace('exec "$SHELL" -c ', 'printf csh:%s ');
+    const r = spawnSync(SH, ['-s'], { input: `SHELL=/bin/tcsh; export SHELL; exec ${probe}\n`, encoding: 'utf8' });
+    expect(r.stdout).toBe("csh:'claude'");
   });
 });

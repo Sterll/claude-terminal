@@ -124,8 +124,8 @@ const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
 // SSH remote projects (design/remote-ssh.md). Not the PWA "remote" above.
 const RemoteProjectModal = require('./src/renderer/ui/components/RemoteProjectModal');
 const { refuseForRemote } = require('./src/renderer/ui/components/RemoteHostBadge');
-const { isRemoteProject } = require('./src/shared/remote-capabilities');
-const { remoteHostsState } = require('./src/renderer/state/remoteHosts.state');
+const { isRemoteProject, sameProject } = require('./src/shared/remote-capabilities');
+const { remoteHostsState, onRemoteProjectOpened, getProjectHost } = require('./src/renderer/state/remoteHosts.state');
 
 // ========== LAZILY-SPLIT PANELS ==========
 //
@@ -510,7 +510,11 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
         if (!project) continue;
         // Remote (SSH) projects restore nothing at startup: their tabs need the
         // host, and nothing may connect before the user opens the project.
-        if (isRemoteProject(project)) continue;
+        // They are held until then (TerminalManager.restoreRemoteTabs).
+        if (isRemoteProject(project)) {
+          require('./src/renderer/services/TerminalSessionService').stashRemoteTabs(projectId, saved);
+          continue;
+        }
         if (!(await fileExists(project.path))) continue;
         if (!saved.tabs || saved.tabs.length === 0) continue;
 
@@ -2322,6 +2326,21 @@ ${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><
 async function showSessionsModal(project) {
   if (!project) return;
 
+  // A remote project's transcripts live on its host, which the remote chat
+  // work reads; until then say where they are rather than "no conversations".
+  if (isRemoteProject(project)) {
+    const hostLabel = getProjectHost(project)?.hostLabel || t('ssh.unknownHost');
+    showModal(t('terminals.resumeConversation') || 'Resume a conversation', `
+      <div class="sessions-modal-empty">
+        <p>${escapeHtml(t('ssh.terminal.historyOnHost', { host: hostLabel }))}</p>
+        <button class="modal-btn primary" id="sessions-modal-remote-new">${escapeHtml(t('terminals.newConversation'))}</button>
+      </div>
+    `);
+    const newBtn = document.getElementById('sessions-modal-remote-new');
+    if (newBtn) newBtn.onclick = () => { closeModal(); createTerminalForProject(project); };
+    return;
+  }
+
   try {
     const sessions = await api.claude.sessions(project.path);
 
@@ -3101,7 +3120,7 @@ let _closeProjectConfirmOpen = false;
 function openTerminalIdsForProject(project) {
   const ids = [];
   terminalsState.get().terminals.forEach((termData, id) => {
-    if (termData.project && (termData.project.path === project.path ||
+    if (termData.project && (sameProject(termData.project, project) ||
       (termData.parentProjectId && termData.parentProjectId === project.id))) {
       ids.push(id);
     }
@@ -3425,7 +3444,7 @@ function switchTerminal(direction) {
   allTerminals.forEach((termData, id) => {
     const isVisible = currentFilter === null ||
       (filterProject && termData.project && (
-        termData.project.path === filterProject.path ||
+        sameProject(termData.project, filterProject) ||
         termData.project.parentRepoProjectId === filterProject.id
       ));
     if (isVisible) {
@@ -5704,6 +5723,12 @@ if (btnNewRemoteProject) btnNewRemoteProject.onclick = () => openRemoteProjectDi
 // Host badges in the sidebar list follow the connection state. ProjectBar
 // subscribes on its own.
 remoteHostsState.subscribe(() => ProjectList.render());
+
+// A remote project's terminal tabs from the last run come back when the user
+// opens it, which is also when its host connects.
+onRemoteProjectOpened((project) => {
+  TerminalManager.restoreRemoteTabs(project).catch((e) => console.error('[SessionRestore] Remote tabs:', e));
+});
 
 // ========== FILTER GIT ACTIONS ==========
 const filterGitActions = document.getElementById('filter-git-actions');

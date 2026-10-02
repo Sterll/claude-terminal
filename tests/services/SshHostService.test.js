@@ -428,3 +428,47 @@ const SH = findSh();
     expect(svc.getStatus(profile.id).state).toBe('idle');
   });
 });
+
+describe('SshHostService terminal PTY launch', () => {
+  let dir;
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-hosts-pty-')); });
+  afterEach(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  const service = (extra = {}) => new SshHostService({
+    dataDir: dir,
+    platform: 'win32',
+    broadcast: () => {},
+    resolveLauncher: async () => ({ command: '/usr/bin/ssh', prefixArgs: [] }),
+    ...extra,
+  });
+
+  test('gives the ssh binary, the stored profile and no capabilities before any connection', async () => {
+    const svc = service();
+    const profile = await svc.saveProfile({ host: 'build.example.com', user: 'yanis', tmuxSessions: true });
+    const launch = await svc.ptyLaunch(profile.id);
+    expect(launch).toMatchObject({
+      profileId: profile.id,
+      command: '/usr/bin/ssh',
+      prefixArgs: [],
+      capabilities: null,
+      controlDir: null,
+      platform: 'win32',
+    });
+    expect(launch.profile).toMatchObject({ host: 'build.example.com', user: 'yanis', tmuxSessions: true });
+  });
+
+  test('an unknown profile or a missing ssh binary is refused', async () => {
+    await expect(service().ptyLaunch('zzzz9999')).rejects.toMatchObject({ code: 'REMOTE_PROFILE_UNKNOWN' });
+    await expect(service().ptyLaunch('../etc')).rejects.toMatchObject({ code: 'INVALID_PROFILE' });
+    const svc = service({ resolveLauncher: async () => null });
+    const profile = await svc.saveProfile({ host: 'build.example.com' });
+    await expect(svc.ptyLaunch(profile.id)).rejects.toMatchObject({ code: 'SSH_NOT_FOUND' });
+  });
+
+  test('ending a tmux session fails fast on a host that is not connected', async () => {
+    const svc = service();
+    const profile = await svc.saveProfile({ host: 'build.example.com' });
+    expect(await svc.killTmuxSession(profile.id, 'ct-tab_r1_1')).toBe(false);
+    expect(svc.getStatus(profile.id).state).toBe('idle');
+  });
+});

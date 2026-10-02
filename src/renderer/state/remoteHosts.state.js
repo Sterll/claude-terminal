@@ -42,7 +42,8 @@ const initialState = {
 const remoteHostsState = new State(initialState);
 
 const _idleTimers = new Map();   // profileId -> timeout handle
-const _holds = new Map();        // profileId -> number of active holds (open dialogs)
+const _holds = new Map();        // profileId -> number of active holds (open dialogs, remote terminal tabs)
+const _openListeners = new Set(); // (project) => void, see onRemoteProjectOpened
 let _unwatch = null;
 
 function _api() {
@@ -216,8 +217,28 @@ async function disconnectHost(profileId) {
 function connectProjectHost(project) {
   const host = getProjectHost(project);
   if (!host || !host.profile) return Promise.resolve(null);
+  _notifyOpened(project);
   if (!AUTO_CONNECT_FROM.has(host.state)) return Promise.resolve(host.status);
   return connectHost(host.profileId);
+}
+
+/**
+ * Be told when the user opens a remote project whose host is configured here,
+ * which is when its saved terminal tabs come back (never at startup). Fired
+ * whatever the host's state: a terminal can still prompt for a password where
+ * the background channel could not authenticate.
+ * @param {(project: Object) => void} listener
+ * @returns {Function} unsubscribe
+ */
+function onRemoteProjectOpened(listener) {
+  _openListeners.add(listener);
+  return () => _openListeners.delete(listener);
+}
+
+function _notifyOpened(project) {
+  for (const listener of [..._openListeners]) {
+    try { listener(project); } catch (e) { console.error('[remoteHosts] project open listener failed:', e); }
+  }
 }
 
 /**
@@ -312,6 +333,7 @@ function _resetForTests() {
   for (const timer of _idleTimers.values()) clearTimeout(timer);
   _idleTimers.clear();
   _holds.clear();
+  _openListeners.clear();
   remoteHostsState.set({ profiles: [], statuses: {}, loaded: false, error: null });
 }
 
@@ -329,6 +351,7 @@ module.exports = {
   connectHost,
   disconnectHost,
   connectProjectHost,
+  onRemoteProjectOpened,
   holdHost,
   saveHostProfile,
   deleteHostProfile,

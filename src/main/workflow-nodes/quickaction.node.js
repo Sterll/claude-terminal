@@ -6,6 +6,7 @@ const path = require('path');
 
 const { resolveVars } = require('./_registry');
 const { findProjectRecord, projectLabel } = require('./_projects');
+const remotePath = require('../../shared/remote-path');
 
 /**
  * Run one of a project's quick actions.
@@ -33,6 +34,11 @@ const { findProjectRecord, projectLabel } = require('./_projects');
  * env vars (which win, as in the UI). Workflow variables resolve in the same
  * pass and rank lowest, so a $BRANCH in a quick action can never be shadowed by
  * an unrelated workflow variable of the same name.
+ *
+ * A remote (SSH) project substitutes the way the UI does for it: $PROJECT_PATH
+ * is the path on the host, $HOME stays literal for the remote shell to expand,
+ * and $BRANCH is empty, because main has no cached remote status and the
+ * project's `.git` is not on this machine to read.
  */
 
 /**
@@ -47,6 +53,9 @@ const { findProjectRecord, projectLabel } = require('./_projects');
  */
 function currentBranch(projectPath) {
   if (!projectPath) return '';
+  // An ssh-remote:// URI is not a local path; path.join would build a local
+  // one out of it.
+  if (remotePath.isRemotePath(projectPath)) return '';
   try {
     const head = fs.readFileSync(path.join(projectPath, '.git', 'HEAD'), 'utf8').trim();
     const ref  = head.match(/^ref:\s*refs\/heads\/(.+)$/);
@@ -54,6 +63,13 @@ function currentBranch(projectPath) {
   } catch {
     return '';
   }
+}
+
+/** The directory of a remote project on its host. */
+function remoteDirOf(project) {
+  if (project.remote && typeof project.remote.path === 'string') return project.remote.path;
+  const parsed = remotePath.tryParse(project.path);
+  return parsed ? parsed.path : '';
 }
 
 /** Flatten the workflow variable container into a plain lookup object. */
@@ -130,12 +146,14 @@ module.exports = {
     const raw = String(quickAction.command || '');
     if (!raw.trim()) throw new Error(`Quick action "${quickAction.name}" has no command`);
 
+    const remote = remotePath.isRemotePath(project.path);
     const scope = {
       ...varsToObject(vars),
-      PROJECT_PATH: project.path || '',
+      PROJECT_PATH: remote ? remoteDirOf(project) : (project.path || ''),
       PROJECT_NAME: projectLabel(project),
       BRANCH:       currentBranch(project.path),
-      HOME:         os.homedir(),
+      // Left as the literal `$HOME` for the remote shell to expand.
+      HOME:         remote ? '$HOME' : os.homedir(),
       ...(project.envVars && typeof project.envVars === 'object' ? project.envVars : {}),
     };
 

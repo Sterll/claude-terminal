@@ -49,7 +49,7 @@ const { EventEmitter } = require('events');
 const { SshLane } = require('../utils/sshChannel');
 const { handshakeScript, parseHandshake } = require('../utils/sshDriver');
 const sshCommand = require('../utils/sshCommand');
-const { shC, withPath, classifySshFailure, isTerminalFailure } = require('../../shared/remote-shell');
+const { shC, withPath, tmuxKillScript, classifySshFailure, isTerminalFailure } = require('../../shared/remote-shell');
 const { isValidProfileId } = require('../../shared/remote-path');
 
 const STORE_VERSION = 1;
@@ -866,6 +866,59 @@ class SshHostService extends EventEmitter {
     if (!launcher) throw serviceError('SSH_NOT_FOUND', 'No OpenSSH client was found on this machine');
     const args = sshCommand.buildSshArgs(profile, { mode: 'verify', platform: this.platform });
     return { file: launcher.command, args: [...(launcher.prefixArgs || []), ...args], destination: sshCommand.displayDestination(profile) };
+  }
+
+  // ── Terminal PTYs ─────────────────────────────────────────────────────────
+
+  /**
+   * The ControlMaster socket directory for processes that cannot share the
+   * channel (terminal PTYs, chat), or null on win32 or when it cannot be made.
+   */
+  controlDir() {
+    return this._controlDir();
+  }
+
+  /**
+   * What a terminal PTY needs to reach a host: the ssh binary, the stored
+   * profile, the ControlMaster directory, and the host's capabilities when a
+   * channel has already connected (null otherwise: a PTY is its own ssh
+   * process and does not wait for the channel, which is what lets a
+   * password-only host work in a terminal).
+   *
+   * Main-process only. The renderer never names a host: the terminal IPC
+   * resolves the profile from a registered project first.
+   *
+   * @param {string} profileId
+   * @returns {Promise<{ profileId: string, profile: object, command: string, prefixArgs: string[], env: object|null, capabilities: object|null, controlDir: string|null, platform: string }>}
+   */
+  async ptyLaunch(profileId) {
+    if (!isValidProfileId(profileId)) throw serviceError('INVALID_PROFILE', 'Invalid profile id');
+    const store = await this.loadStore();
+    const profile = store.profiles.find((p) => p.id === profileId);
+    if (!profile) throw serviceError('REMOTE_PROFILE_UNKNOWN', 'No SSH host profile with this id is configured on this machine');
+    const launcher = await this._launcher(store);
+    if (!launcher) throw serviceError('SSH_NOT_FOUND', 'No OpenSSH client was found on this machine');
+    const host = this.hosts.get(profileId);
+    return {
+      profileId,
+      profile,
+      command: launcher.command,
+      prefixArgs: launcher.prefixArgs || [],
+      env: launcher.env || null,
+      capabilities: host && host.capabilities ? host.capabilities : null,
+      controlDir: this._controlDir(),
+      platform: this.platform,
+    };
+  }
+
+  /**
+   * End a terminal's tmux session after the user closed its tab. Fails fast
+   * rather than connecting a host for it: a session left behind on a host
+   * that was not reachable is the lesser harm.
+   */
+  async killTmuxSession(profileId, tmuxSession) {
+    const res = await this.exec(profileId, tmuxKillScript(tmuxSession), { write: true, timeoutMs: 10000 });
+    return Boolean(res && res.ok);
   }
 
   // ── Profile test ──────────────────────────────────────────────────────────

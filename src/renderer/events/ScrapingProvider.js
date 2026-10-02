@@ -6,22 +6,46 @@
  * - No individual tool:start/tool:end (just claude:working)
  * - No structured data (tool names come from OSC title only)
  * - session:end proxied by terminal exit
+ *
+ * Runs in one of two modes. On its own (hooks off) it reports every terminal
+ * tab. Alongside the hooks provider (`remoteOnly`) it reports only the tabs of
+ * remote (SSH) projects: their CLI runs on another host, never reaches the
+ * local hook server, and would otherwise produce no events at all. Local tabs
+ * keep coming from the hooks, so nothing is reported twice.
  */
 
 const api = window.electron_api;
 const { eventBus, EVENT_TYPES } = require('./ClaudeEventBus');
+const { isRemoteProject } = require('../../shared/remote-capabilities');
 
 // Track which terminals are in a "session" (working at least once)
 const activeSessions = new Set();
 
 let exitUnsubscribe = null;
 
+// Report only remote project tabs (the hooks provider covers the rest).
+let remoteOnly = false;
+
+/** Whether this provider speaks for a terminal in the current mode. */
+function covers(terminalId) {
+  if (!remoteOnly) return true;
+  try {
+    const { getTerminal } = require('../state');
+    return isRemoteProject(getTerminal(terminalId)?.project);
+  } catch (e) {
+    return false;
+  }
+}
+
 /**
  * Resolve projectId from a terminal ID.
  */
 function resolveFromTerminal(terminalId) {
   try {
-    const { getTerminal } = require('../../state');
+    // `../state`: this file is in src/renderer/events. The `../../state` this
+    // used to name does not exist, so every scraping event went out with no
+    // project at all.
+    const { getTerminal } = require('../state');
     const td = getTerminal(terminalId);
     if (td?.project?.id) {
       return {
@@ -38,6 +62,7 @@ function resolveFromTerminal(terminalId) {
  * type: 'working' | 'done' | 'input'
  */
 function handleScrapingEvent(terminalId, type, data) {
+  if (!covers(terminalId)) return;
   const meta = { ...resolveFromTerminal(terminalId), source: 'scraping' };
 
   switch (type) {
@@ -75,7 +100,12 @@ function handleTerminalExit(data) {
   }
 }
 
-function start() {
+/**
+ * @param {{remoteOnly?: boolean}} [options] - remoteOnly: run alongside the
+ *   hooks provider, for remote project tabs only
+ */
+function start(options = {}) {
+  remoteOnly = Boolean(options.remoteOnly);
   // Set scraping callback on TerminalManager
   try {
     const TerminalManager = require('../ui/components/TerminalManager');
@@ -101,6 +131,7 @@ function stop() {
     exitUnsubscribe = null;
   }
   activeSessions.clear();
+  remoteOnly = false;
   console.debug('[ScrapingProvider] Stopped');
 }
 

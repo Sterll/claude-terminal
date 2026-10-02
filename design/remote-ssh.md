@@ -425,40 +425,108 @@ claude.ai Remote Control (`remote-control.ipc.js`).
 
 ### 5.1 Terminals and quick actions
 
-`TerminalService.create` gains a remote branch selected by `projectId` (main
-reads `project.remote`; the renderer sends nothing host-related):
+`TerminalService.create` gains a remote branch selected by the paths it is
+given (main resolves `project.remote`; the renderer sends nothing host-related):
 
+- the `terminal-create` IPC takes the remote branch only when the `cwd` or the
+  `projectPath` it receives is an `ssh-remote://` URI, so a local terminal never
+  reads projects.json or the host store. The URI goes through
+  `projectTarget.resolveTarget` (configured profile, registered project) and
+  `SshHostService.ptyLaunch(profileId)` (ssh binary, stored profile,
+  ControlMaster directory, capabilities when a channel has connected). A remote
+  project with a local `cwd` is refused, and the renderer cannot hand
+  `create()` a launch context of its own: the IPC never forwards a `remote`
+  field;
 - spawn the ssh binary in node-pty with `-tt`, the profile flags,
   `-o ServerAliveInterval=15 -o ServerAliveCountMax=3`, then `--`, the
   destination, and one remote command argument
   `/bin/sh -c <q("cd -- <q(cwd)> && exec \"${SHELL:-/bin/sh}\" -l")>`;
 - a Claude tab runs `exec "${SHELL:-/bin/sh}" -l -c <q(claude args)>` instead, so
   the remote login `PATH` finds `claude`, with the same `resumeSessionId` regex,
-  `--dangerously-skip-permissions` and `--rc` logic as today. The branch is on
-  the remote OS (always POSIX), not on the local `process.platform`;
-- with `tmuxSessions` enabled on the profile and `tmux` present, the shell is
-  `tmux new-session -A -s ct-<tabKey>`, so a dropped connection reattaches to the
-  same shell. Opt-in, because it changes how scrollback behaves;
+  `--dangerously-skip-permissions` and `--rc` logic as today. csh and tcsh refuse
+  `-l` together with `-c`, so a `case` on `${SHELL##*/}` gives them a plain `-c`.
+  `profile.remoteClaudePath` replaces `claude`. The branch is on the remote OS
+  (always POSIX), not on the local `process.platform`. A remote Claude tab that
+  ends with 127 raises "Claude Code was not found on <host>";
+- with `tmuxSessions` enabled on the profile, a shell tab runs
+  `if command -v tmux ...; then exec tmux new-session -A -s ct-<key>; else exec
+  <login shell>; fi`, with the handshake's login `PATH` exported when it is
+  known, so a dropped connection reattaches to the same shell. `<key>` is a tab
+  key from the renderer, checked against `[A-Za-z0-9_-]` (anything else is
+  replaced, never quoted into the name), kept across respawns and saved with
+  the tab, so a restart reattaches too. When the handshake says the host has
+  no tmux, tmux is left out entirely. Closing the tab (not quitting the app)
+  runs `tmux kill-session` on the channel, failing fast rather than connecting
+  a host for it. Claude tabs never use tmux: they resume instead. Opt-in,
+  because it changes how scrollback behaves;
 - no local `existsSync` on the cwd, no `accountEnv` overlay (the remote host has
-  its own `claude /login`);
+  its own `claude /login`); the ssh process starts in the local home directory;
 - ConPTY and Unix PTY resizes already propagate to ssh as window-change events.
+  The last size is remembered, so a respawned PTY opens at it.
 
 Exit code 255 from ssh means the connection or authentication failed, not that
-the user typed `exit`. The terminal emits `terminal-disconnected` instead of
-`terminal-exit`, the tab shows a "connection lost" overlay with the host state,
-and when the host is reachable again it respawns: plain shells reopen in the
-same cwd (state is lost unless tmux was on), Claude tabs respawn with
-`--resume <claudeSessionId>`. The resume watchdog (20 s without output) is keyed
-on "connected" for remote tabs, not on the first byte, since a ProxyJump
-handshake can take that long by itself.
+the user typed `exit`. The terminal emits `terminal-disconnected` (with the
+failure kind, classified from the PTY's last 4 KB of output) instead of
+`terminal-exit`, no `terminal_exit_code` workflow fires, and main keeps what the
+tab needs to come back. The tab shows a "connection lost" overlay with the host
+state and Reconnect / Close buttons, and when the host is connected again
+`terminal-respawn` brings it back **under the same PTY id**, so the renderer's
+handlers, the tab and its scrollback carry on untouched: plain shells reopen in
+the same cwd (state is lost unless tmux was on), Claude tabs respawn with
+`--resume <claudeSessionId>`. The respawn resolves the profile again, so an
+edited profile applies, but the directory and the kind of tab are always the
+original's. Automatic respawns:
+
+- never follow an `auth` or host key failure (the overlay says to fix it from
+  the host badge; the Reconnect button always works, and on a password-only
+  host it is how the password prompt comes back);
+- wait for the host's `connected` state when it is reconnecting, ask an idle or
+  offline host to connect (a tab of it is open), and, when the host still reads
+  `connected` (only this session was cut, or the channel has not noticed yet),
+  try after 1.5 s while asking main to ping the host right away;
+- stop after three within a minute, after which the overlay asks the user.
+
+The resume watchdog (20 s without output) is keyed on "connected" for remote
+tabs, not on the first byte, since a ProxyJump handshake can take that long by
+itself.
+
+While a remote tab is open it holds its host (`holdHost`), so the renderer's
+10-minute idle disconnect does not drop a host whose only user is a terminal.
+
+**Tabs at startup.** The session restore still skips remote projects at boot,
+since nothing may connect then. Their saved tabs are held in memory (and kept
+in the saved file meanwhile) and restored when the user opens the project,
+which is also when its host connects. Chat tabs wait for the remote chat.
+
+**Events.** A remote tab's CLI never reaches the local hook server, so with
+hooks on the scraping provider also runs, for remote tabs only; local tabs keep
+their hook events and nothing is reported twice. Its "done" notification is the
+scraping one even with hooks on. The hook provider never attributes an event to
+a remote project. (The scraping provider used to look the tab up through a
+module path that does not exist, so its events carried no project at all; that
+path is fixed, which gives local scraping events their project too.)
 
 Quick actions create a terminal and type a command into it, so they follow the
 terminal routing. `$HOME` is left literal for the remote shell to expand,
-`$BRANCH` comes from remote git status, `$PROJECT_PATH` is `remote.path`.
+`$BRANCH` comes from the same status map as for a local project (filled in for
+remote projects by the git slice), `$PROJECT_PATH` is `remote.path`. On a remote
+project the command is typed once the tab has printed something, not after a
+fixed 300 ms, because typeahead during ssh authentication could be read by a
+password prompt. The `quickaction` workflow node does the same substitution and
+never reads `.git/HEAD` out of a URI; it hands the command to a terminal tab like
+the UI does, so it works for remote projects and is not on the section 8 list.
 
 Tab ownership comparisons (`termData.project.path === project.path`, about ten
-sites) move to `project.id` where the project object is at hand, which is also
-correct for local projects.
+sites) go through `sameProject()` in `remote-capabilities.js`: by `project.id` as
+soon as a remote project is involved, by path between two local projects. The
+design first said "move to `project.id`" everywhere; the local-to-local case stays
+on the path so local behaviour does not move by a byte. A URI never equals a
+local path, so a local `/home/u/app` and a remote project at `/home/u/app`
+never share tabs either way.
+
+The sessions panel and the sessions modal of a remote project say that its
+history lives on the host, rather than showing an empty list, until the chat
+slice reads it over the channel (5.3).
 
 Password-only hosts: terminals work, because node-pty gives ssh a TTY and
 OpenSSH prompts in the tab itself. Nothing is stored. The channel and chat run
@@ -667,10 +735,12 @@ stateDiagram-v2
   Remote Project dialog. Selection alone does not connect, because the startup
   restore selects the last project too; and the session restore skips remote
   projects entirely, so their tabs come back when the project is opened, not at
-  boot (slice 3 decides how).
+  boot: `remoteHosts.state` tells `onRemoteProjectOpened` listeners, and
+  `TerminalManager.restoreRemoteTabs` recreates the tabs held since startup
+  (5.1).
 - A host no open project uses is disconnected after 10 minutes. "Open" is a
   project bar tab or the selected project; the Open Remote Project dialog holds
-  the host it browses. This lives in the renderer (`remoteHosts.state.js`), which
+  the host it browses, and so does every open remote terminal tab. This lives in the renderer (`remoteHosts.state.js`), which
   is the only side that knows what is open, and is what ends the retry loop for
   a host nobody is looking at.
 - Liveness: `ServerAliveInterval=15`, `ServerAliveCountMax=3` on every ssh
@@ -765,9 +835,9 @@ reason, and nothing fails silently.
 |---------|-----|--------------------|
 | Project-type dashboards and run panels (FiveM, webapp, api, python, minecraft, discord) | Their services spawn local processes and read local files | Remote projects are created as `general`; type panels hidden; run dev servers from a remote terminal or quick action |
 | Parallel tasks and the `parallel_spawn` node | Creates local worktrees and local agents | Disabled with tooltip |
-| Workflow nodes bound to a remote project (`shell`, `git`, `file`, `claude`, `terminal`, `quickaction`, `session_recap`) and `file_change` / `git_event` triggers | Execute and watch locally; `claude.node` would silently fall back to `~` | Hidden in the cwd/project pickers; nodes throw "remote projects are not supported by workflow nodes yet" |
+| Workflow nodes bound to a remote project (`shell`, `git`, `file`, `claude`, `terminal`, `session_recap`) and `file_change` / `git_event` triggers. Not `quickaction`: it hands its command to a terminal tab, which runs on the host (5.1) | Execute and watch locally; `claude.node` would silently fall back to `~` | Hidden in the cwd/project pickers; nodes throw "remote projects are not supported by workflow nodes yet" |
 | Local MCP tools and Claude in Chrome in remote chats | Registered in the local `~/.claude.json` / point at local binaries | Note in the chat header; future path is in-process SDK MCP servers |
-| Hooks event server for remote terminal tabs | The remote CLI never runs the local hook handler; tunnelling would mean editing the remote `~/.claude/settings.json` | Remote terminal tabs use the scraping provider |
+| Hooks event server for remote terminal tabs | The remote CLI never runs the local hook handler; tunnelling would mean editing the remote `~/.claude/settings.json` | Remote terminal tabs use the scraping provider, which runs for them alone alongside the hooks (5.1) |
 | Account binding | The remote host has its own `claude /login` | Account picker disabled with tooltip |
 | Cloud zip upload | Zips a local folder | Disabled; the git-based upload works |
 | Open in Explorer; Open in editor (except VS Code family over Remote-SSH) | Local OS integrations | Disabled with tooltip |

@@ -33,11 +33,9 @@ const CAPABILITIES = Object.freeze({
   accountBinding: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.accountBinding' }),
   // Cloud upload zips a local folder.
   cloudUpload: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.cloudUpload' }),
-  // Not ported yet. Without these rows a remote project would open a local
-  // shell in the home directory (TerminalService falls back to it when the cwd
-  // does not exist), which is acting on local data rather than failing closed.
-  // The terminal and chat slices remove them.
-  terminals: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.notYet' }),
+  // Not ported yet. Without this row a remote chat would start the local CLI
+  // in the home directory, which is acting on local data rather than failing
+  // closed. The chat slice removes it. (Terminals run over ssh and have no row.)
   chat: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.notYet' }),
 });
 
@@ -60,4 +58,24 @@ function can(project, feature, table = CAPABILITIES) {
   return { ok: false, reasonKey: row.reasonKey };
 }
 
-module.exports = { CAPABILITIES, isRemoteProject, can };
+/**
+ * Whether two project objects are the same project, for deciding which tabs
+ * belong to which project.
+ *
+ * As soon as a remote project is involved the answer is by id: a local
+ * `/home/u/app` and a remote project at `/home/u/app` on some host are
+ * different projects whatever their paths look like. Two local projects are
+ * compared by path, exactly as every tab ownership check did before remote
+ * projects existed, so local behaviour does not move.
+ *
+ * @param {object|null} a
+ * @param {object|null} b
+ * @returns {boolean}
+ */
+function sameProject(a, b) {
+  if (!a || !b) return false;
+  if (isRemoteProject(a) || isRemoteProject(b)) return Boolean(a.id) && a.id === b.id;
+  return a.path === b.path;
+}
+
+module.exports = { CAPABILITIES, isRemoteProject, can, sameProject };

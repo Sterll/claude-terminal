@@ -99,6 +99,63 @@ function withPath(pathValue, inner) {
   return script(`PATH=${q(pathValue)}`, 'export PATH', inner);
 }
 
+// ── Terminal scripts (design/remote-ssh.md section 5.1) ─────────────────────
+
+/** The user's login shell as /bin/sh sees it once sshd has set SHELL. */
+// Split so it is not read as a template placeholder.
+const LOGIN_SHELL = '"$' + '{SHELL:-/bin/sh}"';
+
+/** tmux session names the app creates: `ct-` plus a tab key. Checked, so it needs no quoting. */
+const TMUX_SESSION_RE = /^ct-[A-Za-z0-9_-]{1,96}$/;
+
+/**
+ * The script behind a remote shell tab: enter the directory, then become the
+ * user's interactive login shell. With `tmuxSession`, the shell is a tmux
+ * session attached or created under that name, so a dropped connection can
+ * reattach to the same shell; a host without tmux falls back to the plain
+ * login shell rather than failing.
+ *
+ * A directory that no longer exists fails the `cd` and ends the tab: there is
+ * no fallback to the home directory, which would be a shell somewhere the user
+ * did not ask for.
+ *
+ * @param {string} dir  absolute remote path
+ * @param {object} [options]
+ * @param {string|null} [options.tmuxSession]  `ct-<key>`
+ * @param {string|null} [options.path]         login PATH from the handshake, for finding tmux
+ * @returns {string} one line, for `shC()`
+ */
+function terminalShellScript(dir, { tmuxSession = null, path = null } = {}) {
+  const shell = `exec ${LOGIN_SHELL} -l`;
+  if (!tmuxSession) return cdAnd(dir, shell);
+  if (!TMUX_SESSION_RE.test(tmuxSession)) throw shellError('Invalid tmux session name');
+  const tmux = `if command -v tmux >/dev/null 2>&1; then exec tmux new-session -A -s ${tmuxSession}; else ${shell}; fi`;
+  return withPath(path, cdAnd(dir, tmux));
+}
+
+/**
+ * The script behind a remote Claude tab: enter the directory and run the CLI
+ * through the user's login shell, so the login PATH finds `claude` (it usually
+ * lives in ~/.local/bin, which a bare `/bin/sh -c` does not see). csh and tcsh
+ * refuse `-l` together with `-c`, so they get a plain `-c`, which still reads
+ * ~/.cshrc where such users set their PATH.
+ *
+ * @param {string} dir     absolute remote path
+ * @param {string[]} argv  the CLI and its arguments, each one quoted with q()
+ * @returns {string} one line, for `shC()`
+ */
+function terminalClaudeScript(dir, argv) {
+  if (!Array.isArray(argv) || argv.length === 0) throw shellError('The Claude command line is empty');
+  const command = q(qArgs(argv));
+  return cdAnd(dir, `case "\${SHELL##*/}" in csh|tcsh) exec "$SHELL" -c ${command};; *) exec ${LOGIN_SHELL} -l -c ${command};; esac`);
+}
+
+/** Remove a tab's tmux session (the tab was closed on purpose). Never fails the caller. */
+function tmuxKillScript(tmuxSession) {
+  if (!TMUX_SESSION_RE.test(tmuxSession)) throw shellError('Invalid tmux session name');
+  return `tmux kill-session -t ${tmuxSession} 2>/dev/null; :`;
+}
+
 // ── ssh failure classification ──────────────────────────────────────────────
 
 /**
@@ -151,6 +208,10 @@ module.exports = {
   gitScript,
   shC,
   withPath,
+  terminalShellScript,
+  terminalClaudeScript,
+  tmuxKillScript,
+  TMUX_SESSION_RE,
   classifySshFailure,
   isTerminalFailure,
   SSH_FAILURE_KINDS,

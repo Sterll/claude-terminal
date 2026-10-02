@@ -11,6 +11,7 @@
 
 const api = window.electron_api;
 const { eventBus, EVENT_TYPES } = require('./ClaudeEventBus');
+const { isRemoteProject } = require('../../shared/remote-capabilities');
 
 // Session state: normalizedCwd -> { active, startTime }
 const sessions = new Map();
@@ -31,6 +32,12 @@ function normalizePath(p) {
  * of `/w/api-legacy`, and the deepest match wins so a project nested inside
  * another gets its own events rather than its parent's.
  *
+ * Remote (SSH) projects never match. Their CLI runs on another machine and
+ * never reaches this hook server, so a hook event is always a local one, and a
+ * local `/home/u/app` must not be attributed to a remote project that lives
+ * at `/home/u/app` on some host. Remote terminal tabs get their events from
+ * the scraping provider instead (see events/index.js).
+ *
  * @param {string} cwd
  * @returns {{ projectId: string|null, projectPath: string }}
  */
@@ -42,6 +49,7 @@ function resolveProject(cwd) {
     const { projectsState } = require('../state/projects.state');
     const projects = projectsState.get().projects || [];
     for (const p of projects) {
+      if (isRemoteProject(p)) continue;
       const pPath = normalizePath(p.path);
       if (!pPath) continue;
       if (normalized !== pPath && !normalized.startsWith(pPath + '/')) continue;

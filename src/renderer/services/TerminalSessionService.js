@@ -20,6 +20,25 @@ function setSkipExplorerCapture(value) {
   _skipExplorerCapture = value;
 }
 
+// Saved tabs of remote (SSH) projects, held from startup until the user opens
+// the project: nothing may connect before then, so they are not restored at
+// boot. Kept in the saved file meanwhile, or the first save of the session
+// would drop them. projectId -> { tabs, activeCwd }
+const _pendingRemoteTabs = new Map();
+
+/** Hold a remote project's saved tabs until it is opened. */
+function stashRemoteTabs(projectId, saved) {
+  if (!projectId || !saved || !Array.isArray(saved.tabs) || saved.tabs.length === 0) return;
+  _pendingRemoteTabs.set(projectId, { tabs: saved.tabs, activeCwd: saved.activeCwd || null });
+}
+
+/** Hand a remote project's saved tabs over for restoring, once. */
+function takeRemoteTabs(projectId) {
+  const saved = _pendingRemoteTabs.get(projectId) || null;
+  _pendingRemoteTabs.delete(projectId);
+  return saved;
+}
+
 /**
  * Get the session data file path.
  */
@@ -111,6 +130,8 @@ async function saveTerminalSessionsImmediate() {
         name: td.name || null,
         nameCustom: td.nameCustom || false,
         pinned: td.pinned || false,
+        // A remote tab's ssh session key: its tmux session reattaches under it.
+        ...(td.remoteSessionKey ? { remoteSessionKey: td.remoteSessionKey } : {}),
       };
 
       projectSessions[projectId].tabs.push(tab);
@@ -120,6 +141,11 @@ async function saveTerminalSessionsImmediate() {
         projectSessions[projectId].activeCwd = tab.cwd;
         projectSessions[projectId].activeTabIndex = projectSessions[projectId].tabs.length - 1;
       }
+    }
+
+    // Remote projects not opened yet this session keep the tabs they had.
+    for (const [pid, pending] of _pendingRemoteTabs) {
+      if (!projectSessions[pid]) projectSessions[pid] = { tabs: pending.tabs, activeCwd: pending.activeCwd };
     }
 
     // Merge existing explorer state from disk (preserve state for projects not currently active)
@@ -209,4 +235,6 @@ module.exports = {
   clearProjectSessions,
   clearAllSessions,
   setSkipExplorerCapture,
+  stashRemoteTabs,
+  takeRemoteTabs,
 };

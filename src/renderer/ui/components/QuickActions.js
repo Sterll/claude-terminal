@@ -16,6 +16,15 @@ const {
 } = require('../../state');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
+const { isRemoteProject } = require('../../../shared/remote-capabilities');
+const remotePath = require('../../../shared/remote-path');
+
+/** The directory of a remote project on its host. */
+function remoteDirOf(project) {
+  if (project.remote && typeof project.remote.path === 'string') return project.remote.path;
+  const parsed = remotePath.tryParse(project.path);
+  return parsed ? parsed.path : project.path;
+}
 const { createModal, showModal: showModalElement, closeModal } = require('./Modal');
 
 // Icons available for quick actions
@@ -180,11 +189,16 @@ class QuickActions extends BaseComponent {
 
   _substituteVariables(command, project) {
     const branch = this._gitRepoStatus.get(project.id)?.branch || '';
+    // A remote (SSH) project's command runs on its host: the path is the one
+    // there, and $HOME is left for the remote shell to expand rather than
+    // replaced with this machine's home directory. $BRANCH comes from the same
+    // status map, filled in for remote projects once their git status is read.
+    const remote = isRemoteProject(project);
     const vars = {
-      '$PROJECT_PATH': project.path,
+      '$PROJECT_PATH': remote ? remoteDirOf(project) : project.path,
       '$PROJECT_NAME': project.name,
       '$BRANCH': branch,
-      '$HOME': window.electron_nodeModules.os.homedir(),
+      '$HOME': remote ? '$HOME' : window.electron_nodeModules.os.homedir(),
     };
     const envVars = getProjectEnvVars(project.id);
     for (const [key, value] of Object.entries(envVars)) {
@@ -336,9 +350,19 @@ class QuickActions extends BaseComponent {
 
         this._actionTerminals.set(actionId, { terminalId, projectId: project.id });
 
-        setTimeout(() => {
-          this._api.terminal.input({ id: terminalId, data: resolvedCommand + '\r' });
-        }, 300);
+        if (isRemoteProject(project)) {
+          // Typed only once the host has answered: anything typed while ssh is
+          // still authenticating could be read by a password prompt.
+          this._whenTerminalSpeaks(terminalId).then(() => {
+            setTimeout(() => {
+              this._api.terminal.input({ id: terminalId, data: resolvedCommand + '\r' });
+            }, 300);
+          });
+        } else {
+          setTimeout(() => {
+            this._api.terminal.input({ id: terminalId, data: resolvedCommand + '\r' });
+          }, 300);
+        }
 
         const unsubscribe = this._api.terminal.onExit((data) => {
           if (data && data.id === terminalId) {
@@ -355,6 +379,31 @@ class QuickActions extends BaseComponent {
     } catch (error) {
       console.error('Error executing quick action:', error);
     }
+  }
+
+  /**
+   * Resolve on the first output of a terminal, or after `timeoutMs`. A remote
+   * tab's first byte means ssh is through and the remote side is reading.
+   */
+  _whenTerminalSpeaks(terminalId, timeoutMs = 20000) {
+    return new Promise((resolve) => {
+      // Output that arrived before this was asked counts too.
+      const td = require('../../state').getTerminal(terminalId);
+      if (td && td.outputCursor > 0) { resolve(); return; }
+      let done = false;
+      let unsubscribe = null;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (typeof unsubscribe === 'function') unsubscribe();
+        resolve();
+      };
+      const timer = setTimeout(finish, timeoutMs);
+      unsubscribe = this._api.terminal.onData((data) => {
+        if (data && data.id === terminalId) finish();
+      });
+    });
   }
 
   // Required lazily: TerminalManager requires this module back, and resolving

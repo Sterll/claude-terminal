@@ -4489,6 +4489,20 @@
     }
   },
   "ssh": {
+    "terminal": {
+      "lost": "Conexão com {host} perdida",
+      "waiting": "Status do host: {state}. Esta aba reabre sozinha assim que {host} estiver acessível de novo.",
+      "manual": "Status do host: {state}. Reconecte quando o host estiver acessível.",
+      "needsUser": "{reason}. Corrija pelo selo do host e depois reconecte.",
+      "gaveUp": "A conexão caiu várias vezes seguidas. Reconecte quando estiver pronto.",
+      "reconnect": "Reconectar",
+      "reconnecting": "Reconectando...",
+      "closeTab": "Fechar aba",
+      "respawnFailed": "Não foi possível reabrir o terminal: {error}",
+      "reconnected": "Reconectado a {host}",
+      "claudeMissing": "O Claude Code não foi encontrado em {host}. Instale-o lá ou defina o caminho dele no perfil do host.",
+      "historyOnHost": "O histórico de conversas deste projeto fica em {host}. Ele ainda não é listado aqui."
+    },
     "openRemoteProject": "Abrir projeto remoto",
     "modalTitle": "Abrir projeto remoto",
     "back": "Voltar",

@@ -4489,6 +4489,20 @@
     }
   },
   "ssh": {
+    "terminal": {
+      "lost": "Koneksi ke {host} terputus",
+      "waiting": "Status host: {state}. Tab ini akan terbuka kembali dengan sendirinya begitu {host} dapat dijangkau lagi.",
+      "manual": "Status host: {state}. Sambungkan kembali setelah host dapat dijangkau.",
+      "needsUser": "{reason}. Perbaiki dari lencana host, lalu sambungkan kembali.",
+      "gaveUp": "Koneksi terputus beberapa kali berturut-turut. Sambungkan kembali saat Anda siap.",
+      "reconnect": "Sambungkan kembali",
+      "reconnecting": "Menyambungkan kembali...",
+      "closeTab": "Tutup tab",
+      "respawnFailed": "Tidak dapat membuka kembali terminal: {error}",
+      "reconnected": "Tersambung kembali ke {host}",
+      "claudeMissing": "Claude Code tidak ditemukan di {host}. Instal di sana, atau atur path-nya di profil host.",
+      "historyOnHost": "Riwayat percakapan proyek ini ada di {host}. Riwayat itu belum ditampilkan di sini."
+    },
     "openRemoteProject": "Buka proyek jarak jauh",
     "modalTitle": "Buka Proyek Jarak Jauh",
     "back": "Kembali",

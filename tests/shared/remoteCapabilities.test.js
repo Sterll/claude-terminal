@@ -1,4 +1,4 @@
-const { can, isRemoteProject, CAPABILITIES } = require('../../src/shared/remote-capabilities');
+const { can, isRemoteProject, sameProject, CAPABILITIES } = require('../../src/shared/remote-capabilities');
 
 describe('remote-capabilities', () => {
   const local = { id: 'p1', path: 'C:\\code\\app' };
@@ -40,9 +40,34 @@ describe('remote-capabilities', () => {
   });
 
   test('the project-level actions of this slice refuse a remote project and leave a local one alone', () => {
-    for (const feature of ['openInExplorer', 'openInEditor', 'accountBinding', 'cloudUpload', 'terminals', 'chat']) {
+    for (const feature of ['openInExplorer', 'openInEditor', 'accountBinding', 'cloudUpload', 'chat']) {
       expect(can(remote, feature).ok).toBe(false);
       expect(can(local, feature)).toEqual({ ok: true });
     }
+  });
+
+  test('terminals run over ssh, so they are no longer refused', () => {
+    expect(CAPABILITIES.terminals).toBeUndefined();
+    expect(can(remote, 'terminals')).toEqual({ ok: true });
+  });
+
+  describe('sameProject (tab ownership)', () => {
+    test('a local and a remote project at the same POSIX path are different projects', () => {
+      const localApp = { id: 'l1', path: '/home/u/app' };
+      const remoteApp = { id: 'r1', path: 'ssh-remote://abcd1234/home/u/app', remote: { profileId: 'abcd1234', path: '/home/u/app' } };
+      expect(sameProject(localApp, remoteApp)).toBe(false);
+      expect(sameProject(remoteApp, localApp)).toBe(false);
+    });
+
+    test('a remote project is matched by id', () => {
+      expect(sameProject(remote, { ...remote })).toBe(true);
+      expect(sameProject(remote, { ...remote, id: 'other' })).toBe(false);
+    });
+
+    test('two local projects are still compared by path, as before', () => {
+      expect(sameProject({ id: 'a', path: '/w/api' }, { id: 'b', path: '/w/api' })).toBe(true);
+      expect(sameProject({ id: 'a', path: '/w/api' }, { id: 'a', path: '/w/api-legacy' })).toBe(false);
+      expect(sameProject(null, local)).toBe(false);
+    });
   });
 });

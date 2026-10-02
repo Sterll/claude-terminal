@@ -159,8 +159,11 @@ describe('startup restore', () => {
     // fileExists() is asked about its URI or a tab is created for it.
     const src = fs.readFileSync(path.join(__dirname, '../../renderer.js'), 'utf8');
     const loop = src.slice(src.indexOf('// Restore terminal sessions from previous run'));
-    const guard = loop.indexOf('if (isRemoteProject(project)) continue;');
+    // Their saved tabs are held for when the project is opened instead.
+    const guard = loop.indexOf('if (isRemoteProject(project)) {');
     expect(guard).toBeGreaterThan(-1);
+    const held = loop.slice(guard, loop.indexOf('continue;', guard));
+    expect(held).toContain('stashRemoteTabs(projectId, saved)');
     expect(guard).toBeLessThan(loop.indexOf('await fileExists(project.path)'));
     expect(guard).toBeLessThan(loop.indexOf('TerminalManager.createTerminal(project'));
     const sweep = src.slice(src.indexOf('async function checkAllProjectsGitStatus'));
