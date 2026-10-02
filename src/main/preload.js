@@ -375,6 +375,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     deleteProfile: (profileId) => ipcRenderer.invoke('ssh-profile-delete', { profileId }),
     testProfile: (profileId) => ipcRenderer.invoke('ssh-profile-test', { profileId }),
     pickIdentityFile: () => ipcRenderer.invoke('ssh-pick-identity-file'),
+    verifyHost: (profileId) => ipcRenderer.invoke('ssh-verify-host', { profileId }),
     connect: (profileId) => ipcRenderer.invoke('ssh-connect', { profileId }),
     disconnect: (profileId) => ipcRenderer.invoke('ssh-disconnect', { profileId }),
     status: (profileId) => ipcRenderer.invoke('ssh-status', { profileId }),

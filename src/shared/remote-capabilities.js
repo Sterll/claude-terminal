@@ -23,7 +23,23 @@
 const { isRemotePath } = require('./remote-path');
 
 /** @type {Record<string, { remote: boolean, reasonKey: string }>} */
-const CAPABILITIES = Object.freeze({});
+const CAPABILITIES = Object.freeze({
+  // Local OS integrations: there is no local folder to show or to hand to an
+  // editor. VS Code over Remote-SSH comes with the Files slice.
+  openInExplorer: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.openInExplorer' }),
+  openInEditor: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.openInEditor' }),
+  // The remote host has its own `claude /login`; a local account overlay means
+  // nothing there.
+  accountBinding: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.accountBinding' }),
+  // Cloud upload zips a local folder.
+  cloudUpload: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.cloudUpload' }),
+  // Not ported yet. Without these rows a remote project would open a local
+  // shell in the home directory (TerminalService falls back to it when the cwd
+  // does not exist), which is acting on local data rather than failing closed.
+  // The terminal and chat slices remove them.
+  terminals: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.notYet' }),
+  chat: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.notYet' }),
+});
 
 /** True when `project` is a remote project (has a `remote` block or a remote URI path). */
 function isRemoteProject(project) {

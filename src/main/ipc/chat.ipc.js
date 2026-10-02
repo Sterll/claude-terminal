@@ -7,6 +7,7 @@ const { ipcMain, BrowserWindow } = require('electron');
 const chatService = require('../services/ChatService');
 const modelCatalog = require('../services/ModelCatalogService');
 const { sendFeaturePing } = require('../services/TelemetryService');
+const { isRemotePath } = require('../../shared/remote-path');
 
 function broadcast(channel, payload) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -24,6 +25,11 @@ function registerChatHandlers() {
   // Start a new chat session (streaming input mode)
   ipcMain.handle('chat-start', async (_event, params) => {
     try {
+      // A remote (ssh-remote://) cwd would start the local CLI somewhere it
+      // was never meant to run. Refused until remote chat sessions land.
+      if (params && isRemotePath(params.cwd)) {
+        return { success: false, error: 'Chat sessions are not available for remote projects yet' };
+      }
       const sessionId = await chatService.startSession(params);
       return { success: true, sessionId };
     } catch (err) {

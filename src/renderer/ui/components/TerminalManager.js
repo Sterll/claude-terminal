@@ -1528,6 +1528,13 @@ class TerminalManager extends BaseComponent {
 
     const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
 
+    // Remote (SSH) projects get terminals and chat in later slices of the
+    // remote work. Until then refuse with the reason rather than letting main
+    // fall back to a local shell in the home directory.
+    if (project && require('./RemoteHostBadge').refuseForRemote(project, mode === 'chat' && runClaude ? 'chat' : 'terminals')) {
+      return null;
+    }
+
     if (mode === 'chat' && runClaude) {
       const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
       return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag });

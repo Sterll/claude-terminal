@@ -126,6 +126,21 @@ function registerSshHandlers() {
     }
   });
 
+  // "Verify host": OpenSSH's own host key prompt, in a local PTY whose output
+  // the profile editor shows. Main builds the argv from the stored profile;
+  // `terminal-create` cannot be used for this, on purpose, since it never lets
+  // the renderer choose what a PTY runs.
+  ipcMain.handle('ssh-verify-host', async (_event, { profileId } = {}) => {
+    try {
+      const command = await sshHostService.verifyCommand(profileId);
+      const res = require('../services/TerminalService').create({ cwd: os.homedir(), command: { file: command.file, args: command.args } });
+      if (!res || !res.success) return { success: false, error: (res && res.error) || 'Could not start ssh' };
+      return { success: true, id: res.id, destination: command.destination };
+    } catch (e) {
+      return failure(e);
+    }
+  });
+
   // ── Connections ───────────────────────────────────────────────────────────
 
   ipcMain.handle('ssh-connect', async (_event, { profileId } = {}) => {

@@ -29,6 +29,8 @@ const {
 const { getWorkspacesForProject } = require('../../state/workspace.state');
 const { accountsState, getAccountForProject } = require('../../state/accounts.state');
 const { showProjectAccountMenu } = require('./AccountMenu');
+const { buildHostBadgeHtml, projectLocation, onHostBadgeClick } = require('./RemoteHostBadge');
+const { remoteHostsState, connectProjectHost } = require('../../state/remoteHosts.state');
 const { escapeHtml, sanitizeColor } = require('../../utils');
 const { t } = require('../../i18n');
 
@@ -106,6 +108,8 @@ class ProjectBar extends BaseComponent {
     // Tabs are tinted by their account, so a colour or default change has to
     // repaint the bar too.
     this.subscribe(accountsState, () => this.render());
+    // Remote projects carry a host badge coloured by connection state.
+    this.subscribe(remoteHostsState, () => this.render());
     this.render();
   }
 
@@ -179,11 +183,14 @@ class ProjectBar extends BaseComponent {
       ? `<span class="project-tab-missing" title="${escapeHtml(t('projects.pathMissingTitle'))}">!</span>`
       : '';
 
-    return `<div class="project-tab${isActive ? ' active' : ''}${accountColor ? ' has-account' : ''}"${accountStyle} data-project-id="${escapeHtml(project.id)}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" draggable="true" title="${escapeHtml(project.path || project.name)}">
+    // '' for a local project, so its tab markup is unchanged.
+    const hostBadge = buildHostBadgeHtml(project, { compact: true });
+
+    return `<div class="project-tab${isActive ? ' active' : ''}${accountColor ? ' has-account' : ''}"${accountStyle} data-project-id="${escapeHtml(project.id)}" role="tab" aria-selected="${isActive}" tabindex="${isActive ? '0' : '-1'}" draggable="true" title="${escapeHtml(hostBadge ? projectLocation(project) : (project.path || project.name))}">
       ${colorDot}
       <span class="project-tab-icon">${icon}${workspaceBadge}</span>
       <span class="project-tab-name">${escapeHtml(project.name)}</span>
-      ${missing}
+      ${missing}${hostBadge}
       ${sessionBadge}
       <button class="project-tab-close" data-project-id="${escapeHtml(project.id)}" aria-label="${escapeHtml(t('common.close'))}" title="${escapeHtml(t('common.close'))}">
         <svg viewBox="0 0 12 12"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
@@ -196,6 +203,13 @@ class ProjectBar extends BaseComponent {
     if (closeBtn) {
       e.stopPropagation();
       this._close(closeBtn.dataset.projectId);
+      return;
+    }
+
+    const hostBadge = e.target.closest('.remote-host-badge[data-project-id]');
+    if (hostBadge) {
+      e.stopPropagation();
+      onHostBadgeClick(hostBadge.dataset.projectId);
       return;
     }
 
@@ -239,6 +253,9 @@ class ProjectBar extends BaseComponent {
     // Overview is showing: its tab is how you get back to a single project,
     // and clicking the one you were already on has to work.
     if (!this._overviewActive && projectsState.get().selectedProjectFilter === projectIndex) return;
+    // A click on a remote project's tab is what connects its host; the boot
+    // path selects tabs too, but never through here.
+    connectProjectHost(project);
     // The host owns the switch (it also drives the screens), so it opens the tab.
     if (this._callbacks.onSelectProject) this._callbacks.onSelectProject(projectIndex, project);
   }

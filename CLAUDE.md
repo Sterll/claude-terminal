@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 228 test files)
+npm test                 # Run Jest tests (jsdom, 233 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -85,7 +85,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 38 IPC files, 344 handlers total
+├── src/main/ipc/                    # 38 IPC files, 345 handlers total
 ├── src/main/services/               # 38 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 27 utilities
@@ -95,16 +95,16 @@ Electron Renderer Process (Browser)
 ├── renderer.js                      # Entry point (bundled by esbuild -> dist/renderer.bundle.js)
 ├── src/renderer/index.js            # Module loader & initialization
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
-├── src/renderer/state/              # 15 observable state modules
+├── src/renderer/state/              # 16 observable state modules
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
-├── src/renderer/ui/components/      # 20 UI components
+├── src/renderer/ui/components/      # 22 UI components
 ├── src/renderer/ui/panels/          # 26 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3867 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4006 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
@@ -114,7 +114,7 @@ Shared code
 └── src/shared/                      # 23 modules shared between main, renderer and the MCP server
 
 Styles
-└── styles/                          # 31 modular CSS files (~57,000 lines total)
+└── styles/                          # 32 modular CSS files (~57,500 lines total)
 
 MCP Servers (shipped with the app)
 └── resources/mcp-servers/
@@ -167,12 +167,12 @@ Remote UI (PWA for mobile)
 | `telemetry.ipc.js` | 1 | Opt-in anonymous telemetry |
 | `preview.ipc.js` | 1 | Serves ```html markdown blocks over the `ct-preview://` scheme (see below) |
 | `project-types.ipc.js` | 2 | List declarative project-type extensions from `~/.claude-terminal/project-types/`, create that directory |
-| `ssh.ipc.js` | 12 | SSH host profiles (list/save/delete/test, identity file picker), connect/disconnect/status, network-online retry, and the Open Remote Project browser: list directories, mkdir, `git init`. `ssh-clone` goes through `cancellableOperation.handle`, so it is not in the count. Every handler takes a profile id, never a host, user or port |
+| `ssh.ipc.js` | 13 | SSH host profiles (list/save/delete/test, identity file picker), "Verify host" (OpenSSH's own host key prompt in a local PTY whose argv main builds from the stored profile), connect/disconnect/status, network-online retry, and the Open Remote Project browser: list directories, mkdir, `git init`. `ssh-clone` goes through `cancellableOperation.handle`, so it is not in the count. Every handler takes a profile id, never a host, user or port |
 | `fivem.ipc.js` | - | Delegated to `src/project-types/fivem/` |
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 344 IPC handlers across 38 files.**
+**Total: 345 IPC handlers across 38 files.**
 
 ### Services (`src/main/services/`)
 
@@ -237,7 +237,7 @@ Remote UI (PWA for mobile)
 | `claudeConfig.js` | Single guarded read/modify/write boundary for `~/.claude.json`, under a cross-process lock. Refuses to write when the file changed underneath, since the Claude CLI rewrites it continuously |
 | `sdkCli.js` | Locates the bundled Agent SDK CLI binary, including inside `app.asar.unpacked` |
 | `fileLock.js` | Cross-process advisory lock, used by the workflow store and by concurrent settings writers |
-| `rendererSecurity.js` | The privilege boundary for the sandboxed windows. Wraps `ipcMain.handle`/`on` once so every handler answers only the registered main frame at its expected document URL, denies navigation and `window.open`, and gates renderer filesystem access behind an allowlist whose `canonical()` resolves existing ancestors so a new child under a symlink cannot escape. Keeps the credential and startup denials (`.ssh`, `.aws`, `.gnupg`, `.credentials.json`, shell rc files, autostart) above any grant |
+| `rendererSecurity.js` | The privilege boundary for the sandboxed windows. Wraps `ipcMain.handle`/`on` once so every handler answers only the registered main frame at its expected document URL, denies navigation and `window.open`, and gates renderer filesystem access behind an allowlist whose `canonical()` resolves existing ancestors so a new child under a symlink cannot escape. Keeps the credential and startup denials (`.ssh`, `.aws`, `.gnupg`, `.credentials.json`, shell rc files, autostart) above any grant. A remote (SSH) project is never granted: `projectGrantPaths()` skips any project with a `remote` block or an `ssh-remote://` path, worktrees included |
 | `syncBundles.js` | Builds and validates the bounded bundles `SyncEngine` exchanges: resource files, both agent formats and deletion markers |
 | `rendererFiles.js` | Main-process half of the sandboxed renderer's `fs`/`path` bridge. Authorizes every path through `rendererSecurity.permitted()` before touching disk, and refuses a `readFile` whose flag would truncate. Its `PATH_METHODS` list is mirrored in `preload.js` because a sandboxed preload cannot import a shared constant; `tests/security/rendererBridgeSurface.test.js` keeps the two and the renderer's real usage in agreement |
 | `cancellableOperation.js` | Registry behind the cancel/retry affordances: long local operations (database export, clone, scaffolding, large HTTP downloads) register here so the renderer can cancel one by id and retry it from its retained inputs |
@@ -308,6 +308,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 | `accounts.state.js` | Claude accounts, active account, per-project binding, per-account usage |
 | `backgroundTasks.state.js` | Background tasks per session, feeding the chat's tasks drawer |
 | `errorLog.state.js` | Error log entries, level/domain filters, detected patterns |
+| `remoteHosts.state.js` | Mirror of the SSH host profiles and each host's connection state (`ssh-status-changed`), for the remote project badges. Lists only, never connects at startup; `connectProjectHost()` runs when the user opens a remote project, and a host no open project uses is disconnected after 10 minutes. Forwards the window `online` event to main |
 
 ### Services (`src/renderer/services/`)
 
@@ -346,7 +347,9 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 ### UI Components (`src/renderer/ui/components/`)
 
-`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`.
+`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`.
+
+`RemoteProjectModal` is "Open Remote Project" (choose an SSH host, browse its directories, open, create, `git init` or clone a folder) and also hosts the SSH profile editor that Settings → SSH hosts reuses, plus the "Verify host" view, a small xterm running OpenSSH's own host key prompt. `RemoteHostBadge` draws the host label and the state-coloured dot remote projects carry in `ProjectList` and `ProjectBar`, and `refuseForRemote()` turns a capability row of `src/shared/remote-capabilities.js` into a toast so a disabled action never fails silently.
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
@@ -424,7 +427,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 3867 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4006 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -473,12 +476,12 @@ Ids are registered as `ext-<id>` so an extension cannot shadow a built-in, and i
 
 | File | Lines | Purpose |
 |------|------:|---------|
-| `index.html` | 979 | Main app: titlebar, sidebar (customizable + pinned tabs), content panels, modals |
+| `index.html` | 998 | Main app: titlebar, sidebar (customizable + pinned tabs), content panels, modals |
 | `quick-picker.html` | 531 | Command Palette (inline Node script) |
 | `setup-wizard.html` | 1944 | 7-step onboarding with embedded EN/FR/ES/ID/pt-BR translations |
 | `notification.html` | 262 | Custom toast with auto-dismiss progress bar |
 
-## CSS Architecture (`styles/` - 31 files, ~57,000 lines)
+## CSS Architecture (`styles/` - 32 files, ~57,500 lines)
 
 ### CSS Variables (`:root` in `base.css`)
 
@@ -540,6 +543,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `discord-theme.css` | 739 | Discord builder theme |
 | `kanban.css` | 692 | Kanban board |
 | `artifacts.css` | 554 | Artifact library |
+| `remote.css` | 498 | SSH remote projects: host badges, Open Remote Project, profile editor |
 | `files.css` | 450 | Files screen |
 | `errorlog.css` | 430 | Error log panel |
 | `cost.css` | 443 | Cost panel |
@@ -693,12 +697,13 @@ Worker); neither is bundled into the desktop app.
 - **Idle animation pausing:** all infinite CSS animations stop while the window is unfocused. On a large transcript a single composited spinner measured ~30% of a core, and every perpetual animation in the app is a "still working" indicator, so freezing them costs the user nothing. **`document.getAnimations()` must never be called on a live document**: it is superlinear in document size, measured in this app at 0 ms / 786 nodes, 534 ms / 21k, 13.4 s / 81k and 97 s / 200k. `IdleAnimationPauser` used to call it on every blur and on a 100 ms debounce after each animation start while blurred, which is where a renderer pegged at a full core for days came from, and why tabbing back into the app froze it for seconds. It now learns each element from its own `animationstart`, reads only that element's computed style, and pauses through the `.ct-anim-idle` class, so both tracking and pausing cost the number of live spinners rather than the number of nodes
 - **Drag-reorder handlers measure before they write:** `dragover` fires on every pointer move, and a `getBoundingClientRect()` that follows a style write in the same document cannot be answered from the cached layout. The four tab-reorder handlers (sidebar rail and its Customize modal in `renderer.js`, `ProjectBar`, `TerminalManager`) each used to write a marker class and then measure, forcing one full synchronous layout per event over a document holding the chat transcript and the file tree, which is what made moving a tab freeze the window for seconds. They now read first and skip every write while the drop position is unchanged, which is most events. `ProjectList` reaches the same place by throttling to 50 ms instead. When adding another reorder surface, follow the same shape
 - **External editor launches report their failure:** `spawn` raises a missing binary asynchronously, so `openInEditor` awaits the child's `spawn`/`error` before answering and the preload bridge is `invoke`, not `send`. Renderer callers go through `src/renderer/utils/editor.js`, which toasts on `success: false`. On macOS a GUI editor whose CLI shim was never installed (the default for VS Code) falls back to `open -a <bundle>`; before this, "Open in editor" was simply a button that did nothing, anywhere in the app
+- **Remote SSH projects** (`design/remote-ssh.md`): a remote project is a `general` project whose `path` is `ssh-remote://<profileId><posix path>` and whose `remote` block holds `{ profileId, path, hostLabel }`. The URI is its identity, deduped exactly and case-sensitively, and it fails closed everywhere nothing was taught about it yet: it is not absolute, so `rendererSecurity` never grants it (and skips the project explicitly anyway), `fs.existsSync` answers false, and the startup git sweep, dashboard preload, missing-path check and session restore all skip it before probing. Nothing connects at startup; opening the project or clicking its badge does. Terminals and chat are refused for remote projects (renderer toast, and again in `terminal-create` / `chat-start`) until their slices land, because `TerminalService` would otherwise fall back to a local shell in the home directory
 - **Security:** `dompurify` for all user-rendered markdown; never inject untrusted HTML into chat/dashboard
 
 ## Testing
 
 ```bash
-npm test                    # Run all 228 unit test files (jsdom environment)
+npm test                    # Run all 233 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -707,7 +712,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 228 test files
+- **Framework:** Jest with jsdom, 233 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -716,14 +721,14 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
   - `i18n/` - i18n, coherence across the 6 locales, unused/missing key usage
   - `integration/` - state persistence
-  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only), and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
+  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only; Verify host runs the argv main built), the remote project guards on `terminal-create` and `chat-start` (a URI is refused, a local call is unchanged), and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
   - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself), and `SshHostService` (backoff schedule, no retry after auth or host key failures, the status sequence, reads waiting and writes failing fast, the unreadable-store abort, profile validation, and a real handshake against `tests/helpers/fake-ssh.js`)
   - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task, remote paths, remote capabilities, and the remote shell quoting (round-tripped through a real `/bin/sh -c`, and fish/tcsh when installed)
   - `smoke/` - every module parses and loads
-  - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
-  - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist)
+  - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`, remote projects in `projects.state.js` (case-sensitive URI dedupe, no missing-path flag, no account binding) and `remoteHosts.state.js` (nothing connects at startup or on the restore path, the idle disconnect)
+  - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist), and Open Remote Project (a saved profile carries no secret field, the browser lists directories only, clone names the host by profile id, the created project is a URI-shaped `general` project) with the host badge states
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name), http cache, session search, shell, syntax highlight, tool registry, and the SSH transport: argv builder, frame parser, lanes, `remoteFs` and `projectTarget`, run against a real local sh through `tests/helpers/fake-ssh.js` (Git for Windows' `sh.exe` on Windows, skipped when there is none)
 
 ### Lint (`eslint.config.js`)
@@ -856,7 +861,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 
 | Module | Key tools |
 |--------|-----------|
-| `projects.js` | `project_list`, `project_info`, `project_todos` |
+| `projects.js` | `project_list`, `project_info`, `project_todos`. On a remote (SSH) project, `project_info`, `project_todos` and `project_stats` say it lives on its host and is not readable from the MCP server, and `project_create` refuses an `ssh-remote://` path |
 | `timetracking.js` | `time_today`, `time_week`, `time_summary`, `time_project` |
 | `sessions.js` | `session_list`, `session_replay`, `session_search` (cross-project keyword search over past conversations, index-free), `session_recap` (compact "where are we at" digest) |
 | `database.js` | `db_query`, `db_list_tables`, `db_describe_table`, `db_schema_full`, `db_stats`, `db_export` |

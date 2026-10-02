@@ -11,6 +11,8 @@ const { State } = require('./State');
 const { projectsFile, dataDir } = require('../utils/paths');
 const { mergeProjectsData, snapshot, deepEqual } = require('./projects.merge');
 const { t } = require('../i18n');
+const remotePath = require('../../shared/remote-path');
+const { isRemoteProject } = require('../../shared/remote-capabilities');
 
 // Initial state
 const initialState = {
@@ -843,6 +845,9 @@ function toggleFolderCollapse(folderId) {
  *                        or null if input is invalid.
  */
 function addProject(projectData) {
+  if (projectData && (projectData.remote || remotePath.isRemotePath(projectData.path))) {
+    return _addRemoteProject(projectData);
+  }
   if (!projectData || typeof projectData.path !== 'string') return null;
 
   const rawPath = projectData.path.trim();
@@ -887,6 +892,73 @@ function addProject(projectData) {
       f.id === targetFolder.id
         ? { ...f, children: [...(f.children || []), project.id] }
         : f
+    );
+  } else {
+    project.folderId = null;
+    rootOrder = [...state.rootOrder, project.id];
+  }
+
+  projectsState.set({ projects, folders, rootOrder });
+  saveProjects();
+  return project;
+}
+
+/**
+ * Add a project that lives on an SSH host (design/remote-ssh.md section 3.2).
+ *
+ * The path is always the canonical `ssh-remote://<profileId><posix path>` URI,
+ * rebuilt here from the `remote` block rather than trusted as given, and the
+ * type is always `general`: project-type dashboards read local files.
+ *
+ * Dedupe is exact and case-sensitive on that URI. The local rule lowercases,
+ * which is right for Windows paths and wrong for POSIX ones: /home/A and
+ * /home/a are two folders.
+ *
+ * @param {Object} projectData - { name?, folderId?, remote: { profileId, path, hostLabel? } }
+ *   or a `path` that is already a URI
+ * @returns {Object|null}
+ */
+function _addRemoteProject(projectData) {
+  let profileId, posix;
+  try {
+    if (projectData.remote) {
+      profileId = projectData.remote.profileId;
+      posix = remotePath.toPosix(projectData.remote.path);
+    } else {
+      ({ profileId, path: posix } = remotePath.parse(projectData.path.trim()));
+    }
+    if (!remotePath.isValidProfileId(profileId) || typeof posix !== 'string' || !posix.startsWith('/') || posix === '/') return null;
+  } catch (_) {
+    return null;
+  }
+  const uri = remotePath.format(profileId, posix);
+
+  const state = projectsState.get();
+  const existing = state.projects.find(p => p.path === uri);
+  if (existing) return existing;
+
+  const hostLabel = typeof projectData.remote?.hostLabel === 'string' ? projectData.remote.hostLabel.slice(0, 200) : '';
+  const name = (projectData.name || '').trim() || remotePath.basename(posix) || posix;
+  const { remote: _ignored, path: _alsoIgnored, ...rest } = projectData;
+  const project = {
+    id: generateProjectId(),
+    folderId: null,
+    ...rest,
+    type: 'general',
+    name,
+    path: uri,
+    remote: { profileId, path: posix, hostLabel },
+  };
+  // Account bindings do not apply: the remote host has its own claude login.
+  delete project.accountId;
+
+  const projects = [...state.projects, project];
+  let folders = state.folders;
+  let rootOrder = state.rootOrder;
+  const targetFolder = project.folderId ? state.folders.find(f => f.id === project.folderId) : null;
+  if (targetFolder) {
+    folders = state.folders.map(f =>
+      f.id === targetFolder.id ? { ...f, children: [...(f.children || []), project.id] } : f
     );
   } else {
     project.folderId = null;
@@ -1706,6 +1778,9 @@ function setProjectAccount(projectId, accountId) {
  */
 function getProjectAccount(projectId) {
   const project = getProject(projectId);
+  // A remote project runs against the remote host's own claude login, so a
+  // binding (a hand-edited or synced one) has nothing to apply to.
+  if (isRemoteProject(project)) return null;
   return project?.accountId || null;
 }
 
@@ -1864,6 +1939,9 @@ async function checkMissingPaths() {
   const { projects } = projectsState.get();
   const checks = projects.map(async (p) => {
     if (!p.path) return null;
+    // A remote project's URI never exists locally, and probing it would only
+    // ever flag it. Its reachability is the host badge's business.
+    if (isRemoteProject(p)) return null;
     try { await fsp.access(p.path); return null; } catch { return p.id; }
   });
   const results = await Promise.all(checks);

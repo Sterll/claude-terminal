@@ -121,6 +121,11 @@ const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAg
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
 const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
+// SSH remote projects (design/remote-ssh.md). Not the PWA "remote" above.
+const RemoteProjectModal = require('./src/renderer/ui/components/RemoteProjectModal');
+const { refuseForRemote } = require('./src/renderer/ui/components/RemoteHostBadge');
+const { isRemoteProject } = require('./src/shared/remote-capabilities');
+const { remoteHostsState } = require('./src/renderer/state/remoteHosts.state');
 
 // ========== LAZILY-SPLIT PANELS ==========
 //
@@ -503,6 +508,9 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
         const saved = sessionData.projects[projectId];
         const project = projects.find(p => p.id === projectId);
         if (!project) continue;
+        // Remote (SSH) projects restore nothing at startup: their tabs need the
+        // host, and nothing may connect before the user opens the project.
+        if (isRemoteProject(project)) continue;
         if (!(await fileExists(project.path))) continue;
         if (!saved.tabs || saved.tabs.length === 0) continue;
 
@@ -799,6 +807,12 @@ async function checkAllProjectsGitStatus() {
   for (let i = 0; i < projects.length; i += BATCH_SIZE) {
     const batch = projects.slice(i, i + BATCH_SIZE);
     await Promise.all(batch.map(async (project) => {
+      // Remote (SSH) projects are left out of the startup sweep: a dead host
+      // must never slow startup, and their host connects only when opened.
+      if (isRemoteProject(project)) {
+        localState.gitRepoStatus.set(project.id, { isGitRepo: false });
+        return;
+      }
       // Skip projects whose path doesn't exist (e.g. synced from another machine)
       // Use async access() to avoid blocking the renderer thread on slow/network paths
       if (project.path) {
@@ -984,7 +998,7 @@ function refreshDashboardAsync(projectId) {
       DashboardService.renderDashboard(content, project, {
         terminalCount,
         fivemStatus,
-        onOpenFolder: (p) => api.dialog.openInExplorer(p),
+        onOpenFolder: (p) => { if (!refuseForRemote(p, 'openInExplorer')) api.dialog.openInExplorer(p); },
         onOpenClaude: (proj) => {
           createTerminalForProject(proj);
           document.querySelector('[data-tab="claude"]')?.click();
@@ -2521,6 +2535,10 @@ async function cloudUploadProject(projectId) {
   const project = projectsState.get().projects.find(p => p.id === projectId);
   if (!project) return;
 
+  // A remote project has no local folder to zip: say so, before any sync
+  // existsSync on its URI.
+  if (refuseForRemote(project, 'cloudUpload')) return;
+
   // Skip if project directory doesn't exist (e.g. synced from another machine)
   if (project.path && !fs.existsSync(project.path)) return;
 
@@ -2834,6 +2852,8 @@ projectsState.subscribe((state) => {
   for (const id of newIds) {
     if (_skipAutoUploadIds.has(id)) { _skipAutoUploadIds.delete(id); continue; }
     if (cloudUploadStatus.get(id)?.synced) continue;
+    // Nothing to zip for a remote project; do not offer it.
+    if (isRemoteProject(getProject(id))) continue;
     _pendingAutoUploadIds.add(id);
   }
   if (_pendingAutoUploadIds.size > 0) _scheduleAutoUploadPrompt();
@@ -4783,7 +4803,8 @@ function showContextMenuEmpty(x, y) {
   const menu = document.getElementById('context-menu');
   menu.innerHTML = `
     <div class="context-menu-item" data-action="new-folder">${t('contextMenu.newFolder')}</div>
-    <div class="context-menu-item" data-action="new-project">${t('contextMenu.newProject')}</div>`;
+    <div class="context-menu-item" data-action="new-project">${t('contextMenu.newProject')}</div>
+    <div class="context-menu-item" data-action="new-remote-project">${t('ssh.openRemoteProject')}</div>`;
   showContextMenuAt(menu, x, y, { type: 'empty', id: null });
 }
 
@@ -4848,6 +4869,7 @@ async function handleContextAction(action) {
       }
       break;
     case 'new-project': document.getElementById('btn-new-project').click(); break;
+    case 'new-remote-project': openRemoteProjectDialog(); break;
   }
 }
 
@@ -5004,7 +5026,7 @@ async function renderDashboardContent(projectIndex) {
   await DashboardService.renderDashboard(content, project, {
     terminalCount,
     fivemStatus,
-    onOpenFolder: (p) => api.dialog.openInExplorer(p),
+    onOpenFolder: (p) => { if (!refuseForRemote(p, 'openInExplorer')) api.dialog.openInExplorer(p); },
     onOpenClaude: (proj) => {
       createTerminalForProject(proj);
       document.querySelector('[data-tab="claude"]')?.click();
@@ -5660,6 +5682,28 @@ document.getElementById('btn-new-project').onclick = async () => {
 };
 
 document.getElementById('btn-new-folder').onclick = () => promptCreateFolder(null);
+
+// ========== OPEN REMOTE PROJECT (SSH) ==========
+// A project created there is opened straight away: the user just picked it,
+// and its host is already connected by the dialog.
+RemoteProjectModal.setDefaults({
+  onProjectCreated: (project) => {
+    ProjectList.render();
+    const index = getProjectIndex(project.id);
+    if (index !== -1 && index != null) selectProjectFromBar(index);
+  },
+});
+
+function openRemoteProjectDialog() {
+  RemoteProjectModal.openRemoteProjectModal();
+}
+
+const btnNewRemoteProject = document.getElementById('btn-new-remote-project');
+if (btnNewRemoteProject) btnNewRemoteProject.onclick = () => openRemoteProjectDialog();
+
+// Host badges in the sidebar list follow the connection state. ProjectBar
+// subscribes on its own.
+remoteHostsState.subscribe(() => ProjectList.render());
 
 // ========== FILTER GIT ACTIONS ==========
 const filterGitActions = document.getElementById('filter-git-actions');

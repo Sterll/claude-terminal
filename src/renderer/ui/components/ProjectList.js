@@ -60,6 +60,25 @@ const { getWorkspacesForProject } = require('../../state/workspace.state');
 const { isSidebarNavigation } = require('../navigationMode');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 const { matchModel } = require('../../../shared/model-options');
+const { can } = require('../../../shared/remote-capabilities');
+const { buildHostBadgeHtml, projectLocation, onHostBadgeClick } = require('./RemoteHostBadge');
+const { getProjectHost, connectProjectHost, connectHost, disconnectHost } = require('../../state/remoteHosts.state');
+
+/**
+ * Extra class for a menu item a remote project cannot use, '' otherwise, so a
+ * local project's markup is unchanged. The item stays focusable and keeps its
+ * tooltip (a real `disabled` would drop both); the click handler refuses it.
+ */
+function remoteDisabledClass(project, feature) {
+  return can(project, feature).ok ? '' : ' is-disabled';
+}
+
+/** The matching attributes: aria-disabled, the reason as tooltip and data. */
+function remoteDisabledAttrs(project, feature) {
+  const cap = can(project, feature);
+  if (cap.ok) return '';
+  return ` aria-disabled="true" data-reason-key="${escapeHtml(cap.reasonKey)}" title="${escapeHtml(t(cap.reasonKey))}"`;
+}
 
 /**
  * Get drop position based on mouse Y relative to element
@@ -501,12 +520,40 @@ class ProjectList extends BaseComponent {
         ${t('projects.locatePath')}
       </button>`;
     }
+    // Remote (SSH) project: where it lives and what to do about the connection.
+    const remoteHost = getProjectHost(project);
+    if (remoteHost) {
+      const item = (cls, label) => `
+      <button class="more-actions-item ${cls}" data-project-id="${escapeHtml(project.id)}">
+        ${menuIcons.terminal}
+        ${escapeHtml(label)}
+      </button>`;
+      menuItemsHtml += `
+      <div class="more-actions-section-label">${escapeHtml(t('ssh.menu.section', { host: remoteHost.hostLabel || t('ssh.unknownHost') }))}</div>`;
+      if (remoteHost.state === 'unconfigured') {
+        menuItemsHtml += item('accent btn-remote-configure', t('ssh.menu.configure'));
+      } else {
+        if (remoteHost.state === 'hostKeyUnknown') menuItemsHtml += item('accent btn-remote-verify', t('ssh.verify.button'));
+        menuItemsHtml += remoteHost.state === 'connected' || remoteHost.state === 'connecting' || remoteHost.state === 'reconnecting'
+          ? item('btn-remote-disconnect', t('ssh.disconnect'))
+          : item('btn-remote-connect', t('ssh.connect'));
+        menuItemsHtml += item('btn-remote-edit', t('ssh.menu.editHost'));
+      }
+    }
     // Which Claude account this project runs as. Listed with the project's own
     // settings rather than under an action group: it is a property of the
     // project, not something you do to it.
     try {
       const { getAccounts, getAccountForProject } = require('../../state/accounts.state');
-      if (getAccounts().length > 1) {
+      const accountCap = can(project, 'accountBinding');
+      if (getAccounts().length > 1 && !accountCap.ok) {
+        // A remote project runs as the remote host's own claude login.
+        menuItemsHtml += `
+      <div class="more-actions-section-label">${escapeHtml(t('accounts.chooseForProjectTitle') || 'Claude account')}</div>
+      <button class="more-actions-item is-disabled btn-remote-disabled" aria-disabled="true" data-project-id="${escapeHtml(project.id)}" data-reason-key="${escapeHtml(accountCap.reasonKey)}" title="${escapeHtml(t(accountCap.reasonKey))}">
+        ${escapeHtml(t('ssh.menu.remoteLogin'))}
+      </button>`;
+      } else if (getAccounts().length > 1) {
         const account = getAccountForProject(project.id);
         const accountColor = sanitizeColor(account?.color);
         menuItemsHtml += `
@@ -558,11 +605,11 @@ class ProjectList extends BaseComponent {
       ${menuIcons.fileTree}
       ${t('projects.files')}
     </button>
-    <button class="more-actions-item btn-open-folder" data-project-id="${project.id}">
+    <button class="more-actions-item btn-open-folder${remoteDisabledClass(project, 'openInExplorer')}" data-project-id="${project.id}"${remoteDisabledAttrs(project, 'openInExplorer')}>
       ${menuIcons.folderOpen}
       ${t('projects.openFolder')}
     </button>
-    <button class="more-actions-item btn-open-editor" data-project-id="${project.id}">
+    <button class="more-actions-item btn-open-editor${remoteDisabledClass(project, 'openInEditor')}" data-project-id="${project.id}"${remoteDisabledAttrs(project, 'openInEditor')}>
       ${menuIcons.code}
       ${t('projects.openInEditor', { editor: (EDITOR_OPTIONS.find(e => e.value === (getProjectEditor(project.id) || getSetting('editor'))) || EDITOR_OPTIONS[0]).label })}
     </button>`;
@@ -680,7 +727,8 @@ class ProjectList extends BaseComponent {
 
     // Build tooltip lines for compact hover
     let tooltipLines = [];
-    tooltipLines.push(`<div class="project-tooltip-path">${escapeHtml(project.path)}</div>`);
+    // A remote project's path is a URI; show where it actually lives.
+    tooltipLines.push(`<div class="project-tooltip-path">${escapeHtml(projectLocation(project))}</div>`);
     if (gitBranch) {
       tooltipLines.push(`<div class="project-tooltip-branch"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M6 2a4 4 0 0 0-1 7.874V14a1 1 0 0 0 1 1h3a2 2 0 0 1 2 2v.126A4.002 4.002 0 0 0 10 24a4 4 0 0 0 1-7.874V17a4 4 0 0 0-4-4H6V9.874A4.002 4.002 0 0 0 6 2zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4zm5 16a2 2 0 1 1 0-4 2 2 0 0 1 0 4z"/></svg> ${escapeHtml(gitBranch)}</div>`);
     }
@@ -712,9 +760,9 @@ class ProjectList extends BaseComponent {
           ${terminalStats.total > 0 ? `<span class="terminal-count"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
           ${project.isWorktree && project.worktreeBranch ? `<span class="project-worktree-badge" title="Worktree: ${escapeHtml(project.worktreeBranch)}">${escapeHtml(project.worktreeBranch)}</span>` : project.isWorktree ? '<span class="project-worktree-badge" title="Worktree">WT</span>' : ''}
           ${(() => { const pws = getWorkspacesForProject(project.id); return pws.length > 0 ? `<span class="project-workspace-badge" title="${escapeHtml(pws.map(w => w.name).join(', '))}" style="color: ${sanitizeColor(pws[0].color) || 'var(--accent)'}">${escapeHtml(pws[0].icon || t('workspace.badge'))}</span>` : ''; })()}
-          ${pathMissing ? `<span class="path-missing-badge" title="${t('projects.pathMissingTitle')}"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></span>` : ''}
+          ${pathMissing ? `<span class="path-missing-badge" title="${t('projects.pathMissingTitle')}"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></span>` : ''}${buildHostBadgeHtml(project, { compact: true })}
         </div>
-        <div class="project-path">${escapeHtml(project.path)}</div>
+        <div class="project-path">${escapeHtml(projectLocation(project))}</div>
         ${hasTime ? `<div class="project-time">
           <span class="time-today" title="${t('common.today')}">${formatDuration(times.today)}</span>
           <span class="time-separator">\u2022</span>
@@ -1073,6 +1121,32 @@ class ProjectList extends BaseComponent {
       self.closeAllMoreActionsMenus();
     }
 
+    // An action a remote project cannot use: say why instead of doing nothing.
+    if (btn.getAttribute('aria-disabled') === 'true' && btn.dataset.reasonKey) {
+      Toast.showToast({ type: 'info', message: t(btn.dataset.reasonKey) });
+      return;
+    }
+
+    if (btn.classList.contains('btn-remote-connect')) {
+      const host = getProjectHost(getProject(projectId));
+      if (host && host.profileId) connectHost(host.profileId);
+      return;
+    }
+    if (btn.classList.contains('btn-remote-disconnect')) {
+      const host = getProjectHost(getProject(projectId));
+      if (host && host.profileId) disconnectHost(host.profileId);
+      return;
+    }
+    if (btn.classList.contains('btn-remote-configure') || btn.classList.contains('btn-remote-verify')) {
+      onHostBadgeClick(projectId);
+      return;
+    }
+    if (btn.classList.contains('btn-remote-edit')) {
+      const host = getProjectHost(getProject(projectId));
+      if (host && host.profile) require('./RemoteProjectModal').openHostEditor({ profile: host.profile });
+      return;
+    }
+
     if (btn.classList.contains('btn-claude')) {
       const project = getProject(projectId);
       const projectIndex = getProjectIndex(projectId);
@@ -1209,6 +1283,14 @@ class ProjectList extends BaseComponent {
         return;
       }
 
+      // Remote host badge: connect, configure or verify, by state.
+      const hostBadge = target.closest('.remote-host-badge[data-project-id]');
+      if (hostBadge) {
+        e.stopPropagation();
+        onHostBadgeClick(hostBadge.dataset.projectId);
+        return;
+      }
+
       // Tag filter chip click
       const tagChip = target.closest('.tag-filter-option');
       if (tagChip) {
@@ -1227,6 +1309,8 @@ class ProjectList extends BaseComponent {
         // The detail view is closed on this path, so setOpenedProjectId(null)
         // cannot carry the `project_opened` workflow trigger — announce it.
         notifyProjectOpened(projectId);
+        // Opening a remote project is what connects its host (never startup).
+        connectProjectHost(getProject(projectId));
         document.getElementById('project-detail-view').style.display = 'none';
         document.getElementById('terminals-container').style.display = '';
         document.getElementById('terminals-tabs').style.display = '';

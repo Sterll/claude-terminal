@@ -303,6 +303,11 @@ Rules:
   for POSIX ones).
 - `type` stays the project-type plugin field and is forced to `general` for
   remote projects in this iteration. Remoteness is the separate `remote` field.
+  `general` is the spelling the MCP `project_create` tool already writes; the
+  registry resolves it to the general type (whose own id is `standalone`), so
+  no type behaviour is ever loaded for a remote project. `addProject` rebuilds
+  the URI from the `remote` block rather than trusting a given `path`, and
+  drops any `accountId`.
 - The three-way merge in `projects.merge.js` treats `remote` as one field value,
   which is correct: its parts only make sense together.
 - Cloud sync: `SyncEngine._mergeProjectsData` keeps the local `path` for a known
@@ -656,8 +661,18 @@ stateDiagram-v2
   connected --> idle: last remote project closed for 10 min / user disconnects
 ```
 
-- Connections are lazy: nothing connects at startup. A host connects when one of
-  its projects is opened, a tab of it is restored, or the user clicks connect.
+- Connections are lazy: nothing connects at startup. A host connects when the
+  user opens one of its projects (a click on it in the project list or on its
+  project bar tab), clicks its badge or a Connect item, or browses it in the Open
+  Remote Project dialog. Selection alone does not connect, because the startup
+  restore selects the last project too; and the session restore skips remote
+  projects entirely, so their tabs come back when the project is opened, not at
+  boot (slice 3 decides how).
+- A host no open project uses is disconnected after 10 minutes. "Open" is a
+  project bar tab or the selected project; the Open Remote Project dialog holds
+  the host it browses. This lives in the renderer (`remoteHosts.state.js`), which
+  is the only side that knows what is open, and is what ends the retry loop for
+  a host nobody is looking at.
 - Liveness: `ServerAliveInterval=15`, `ServerAliveCountMax=3` on every ssh
   process, plus an app-level ping (`:`) on lane 0 every 20 s with a 10 s timeout.
 - Backoff: 1, 2, 4, 8, 16, then 30 s, for as long as a project of that host is
@@ -687,9 +702,15 @@ stateDiagram-v2
 
 - **Host keys.** `StrictHostKeyChecking` is never set to `no` and
   `UserKnownHostsFile` is never redirected. Under `BatchMode=yes` an unknown host
-  fails; the UI offers "Verify host", which opens a local terminal tab running
-  `ssh -o StrictHostKeyChecking=ask -- <dest> exit` so OpenSSH itself shows the
-  fingerprint and writes `known_hosts`. A changed key gets a blocking warning and
+  fails; the UI offers "Verify host", which runs
+  `ssh -o StrictHostKeyChecking=ask -- <dest> exit` in a local PTY so OpenSSH
+  itself shows the fingerprint and writes `known_hosts`. The PTY is shown in a
+  small xterm inside the profile editor rather than as a terminal tab: the host
+  is usually being added from the Open Remote Project dialog, before any project
+  exists for a tab to belong to. Main builds the argv from the stored profile
+  (`ssh-verify-host` takes a profile id) and hands it to `TerminalService.create`
+  as a `command`, a parameter the `terminal-create` IPC never forwards, so the
+  renderer still cannot choose what a PTY runs. A changed key gets a warning and
   no shortcut.
 - **Renderer cannot choose a destination** (4.1). Every IPC resolves the profile
   from `projectId` or the URI's profile id, then checks containment.
@@ -859,7 +880,11 @@ matching number and table in `CLAUDE.md` in the same commit.
 2. **Remote project model, Open Remote Project, status badges.** Projects state,
    the modal with profile editor and directory browser, host badge and status,
    capability table, `rendererSecurity` skip, startup sweeps skipping remote
-   projects, MCP project tools answering for remote projects.
+   projects, MCP project tools answering for remote projects. Terminals and chat
+   are capability rows (`terminals`, `chat`) refused in the renderer and again
+   in `terminal-create` / `chat-start` until slices 3 and 4 remove them:
+   `TerminalService` falls back to the home directory for a cwd that does not
+   exist, so without the refusal a remote project would open a local shell.
 3. **Terminals and quick actions over ssh**, with reconnect and optional tmux.
 4. **Claude chat via `spawnClaudeCodeProcess` and remote session history.**
 5. **Git over ssh**, including the Git panel, dashboard git sections, stats and

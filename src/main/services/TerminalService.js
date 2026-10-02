@@ -65,9 +65,13 @@ class TerminalService {
    * @param {boolean} options.runClaude - Whether to run Claude CLI on start
    * @param {boolean} options.skipPermissions - Skip permissions flag for Claude
    * @param {string} options.resumeSessionId - Session ID to resume
+   * @param {{file: string, args: string[]}|null} [options.command] - Run this
+   *   program instead of the shell. Main-process callers only: the
+   *   `terminal-create` IPC handler never forwards it, so the renderer cannot
+   *   choose what a PTY runs. Used by the SSH "Verify host" action.
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null }) {
     const id = ++this.terminalId;
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
@@ -102,6 +106,11 @@ class TerminalService {
       }
       shellPath = 'cmd.exe';
       shellArgs = ['/c', ...claudeArgs];
+    }
+
+    if (command && typeof command.file === 'string' && Array.isArray(command.args)) {
+      shellPath = command.file;
+      shellArgs = command.args.map(String);
     }
 
     let ptyProcess;
@@ -149,6 +158,9 @@ class TerminalService {
       projectPath: projectPath || cwd || null,
       command:     [shellPath, ...(shellArgs || [])].join(' ').trim(),
     };
+    // A main-chosen program (the SSH "Verify host" prompt) is app plumbing,
+    // not a user terminal: it must not fire terminal_exit_code workflows.
+    if (command) ptyProcess._meta.internal = true;
 
     this.terminals.set(id, ptyProcess);
 
@@ -189,7 +201,7 @@ class TerminalService {
       terminalCapture.flush();
       this.sendToRenderer('terminal-exit', { id, exitCode, signal });
       // Fire workflow trigger callback (non-blocking)
-      if (typeof this.onExitCallback === 'function') {
+      if (typeof this.onExitCallback === 'function' && !ptyProcess._meta?.internal) {
         try {
           this.onExitCallback({
             terminalId:  id,

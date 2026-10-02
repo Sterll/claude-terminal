@@ -86,3 +86,27 @@ describe('TerminalService.create', () => {
     expect(console.warn).not.toHaveBeenCalled();
   });
 });
+
+describe('TerminalService.create command override (main-process callers only)', () => {
+  const pty = require('node-pty');
+
+  it('runs the given program instead of the shell', () => {
+    const result = terminalService.create({ cwd: null, command: { file: '/usr/bin/ssh', args: ['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit'] } });
+    expect(result.success).toBe(true);
+    const [file, args] = pty.spawn.mock.calls[pty.spawn.mock.calls.length - 1];
+    expect(file).toBe('/usr/bin/ssh');
+    expect(args).toEqual(['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit']);
+  });
+
+  it('without it, the shell argv is what it always was', () => {
+    terminalService.create({ cwd: null });
+    const [file, args] = pty.spawn.mock.calls[pty.spawn.mock.calls.length - 1];
+    if (process.platform === 'win32') {
+      expect(file).toBe('powershell.exe');
+      expect(args).toEqual(['-NoLogo', '-NoProfile']);
+    } else {
+      expect(file).toBe(process.env.SHELL || '/bin/bash');
+      expect(args).toEqual([]);
+    }
+  });
+});

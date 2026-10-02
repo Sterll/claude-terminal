@@ -17,6 +17,7 @@ const registry = require('../../project-types/registry');
 const KanbanPanel = require('../ui/panels/KanbanPanel');
 const Timeline = require('./ProjectTimeline');
 const Brief = require('./dashboard/briefing');
+const { isRemoteProject } = require('../../shared/remote-capabilities');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
@@ -2461,6 +2462,11 @@ async function _preloadAllProjectsInner() {
     await Promise.all(batch.map(async (project) => {
       // Skip if already cached
       if (isCacheValid(project.id)) return;
+
+      // Remote (SSH) projects are not preloaded: their host connects only when
+      // the user opens one, and a synchronous existsSync on a URI would be a
+      // pointless round trip that can only answer false.
+      if (isRemoteProject(project)) return;
 
       // Skip projects whose path doesn't exist (e.g. synced from another machine)
       const { fs: nodeFs } = window.electron_nodeModules;

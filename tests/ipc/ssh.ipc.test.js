@@ -32,8 +32,11 @@ const mockService = {
   exec: jest.fn(async () => ({ ok: true, code: 0, stdout: Buffer.from('Initialized'), stderr: Buffer.alloc(0) })),
   oneShot: jest.fn(async () => ({ ok: true, code: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) })),
   runner: jest.fn(() => ({ exec: (script, opts) => mockRunnerExec(script, opts) })),
+  verifyCommand: jest.fn(async () => ({ file: '/usr/bin/ssh', args: ['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit'], destination: 'yanis@build.example.com' })),
 };
 jest.mock('../../src/main/services/SshHostService', () => mockService);
+const mockTerminalService = { create: jest.fn(() => ({ success: true, id: 42 })) };
+jest.mock('../../src/main/services/TerminalService', () => mockTerminalService);
 
 const { registerSshHandlers, isAllowedCloneUrl } = require('../../src/main/ipc/ssh.ipc');
 const { SshLane } = require('../../src/main/utils/sshChannel');
@@ -59,6 +62,7 @@ describe('ssh.ipc never takes a destination from the renderer', () => {
     ['ssh-profile-test', 'testProfile'],
     ['ssh-profile-delete', 'deleteProfile'],
     ['ssh-status', 'getStatus'],
+    ['ssh-verify-host', 'verifyCommand'],
   ])('%s passes the profile id and nothing else', async (channel, method) => {
     await invoke(channel, { profileId: 'abcd1234', ...smuggled });
     expect(mockService[method]).toHaveBeenCalledWith('abcd1234');
@@ -69,6 +73,21 @@ describe('ssh.ipc never takes a destination from the renderer', () => {
     const params = [...src.matchAll(/async \(_?event, \{([^}]*)\}/g)].map((m) => m[1]);
     expect(params.length).toBeGreaterThan(5);
     for (const p of params) expect(p).not.toMatch(/\b(host|user|port|sshConfigAlias|proxyJump|identityFile|args)\b/);
+  });
+
+  test('verify host runs the argv main built, in a local PTY, and returns its id', async () => {
+    const res = await invoke('ssh-verify-host', { profileId: 'abcd1234', command: { file: 'C:\evil.exe', args: ['/c', 'calc'] } });
+    expect(res).toMatchObject({ success: true, id: 42, destination: 'yanis@build.example.com' });
+    const [opts] = mockTerminalService.create.mock.calls[0];
+    expect(opts.command).toEqual({ file: '/usr/bin/ssh', args: ['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit'] });
+    expect(opts.cwd).toBe(os.homedir());
+  });
+
+  test('verify host with an unknown profile starts nothing', async () => {
+    mockService.verifyCommand.mockRejectedValueOnce(Object.assign(new Error('unknown'), { code: 'REMOTE_PROFILE_UNKNOWN' }));
+    const res = await invoke('ssh-verify-host', { profileId: 'zzzz9999' });
+    expect(res).toMatchObject({ success: false, code: 'REMOTE_PROFILE_UNKNOWN' });
+    expect(mockTerminalService.create).not.toHaveBeenCalled();
   });
 
   test('browse with an unknown profile is refused', async () => {

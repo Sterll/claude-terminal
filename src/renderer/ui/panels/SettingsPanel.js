@@ -1007,6 +1007,7 @@ class SettingsPanel extends BasePanel {
           <button class="settings-tab ${initialTab === 'general' ? 'active' : ''}" data-tab="general">${t('settings.tabGeneral')}</button>
           <button class="settings-tab ${initialTab === 'claude' ? 'active' : ''}" data-tab="claude">${t('settings.tabClaude')}</button>
           <button class="settings-tab ${initialTab === 'github' ? 'active' : ''}" data-tab="github">${t('settings.tabGitHub')}</button>
+          <button class="settings-tab ${initialTab === 'ssh' ? 'active' : ''}" data-tab="ssh">${t('ssh.settings.tab')}</button>
           <button class="settings-tab ${initialTab === 'themes' ? 'active' : ''}" data-tab="themes">${t('settings.tabThemes')}</button>
           <button class="settings-tab ${initialTab === 'shortcuts' ? 'active' : ''}" data-tab="shortcuts">${t('settings.tabShortcuts')}</button>
           <button class="settings-tab ${initialTab === 'library' ? 'active' : ''}" data-tab="library">${t('settings.tabLibrary')}</button>
@@ -1832,6 +1833,15 @@ class SettingsPanel extends BasePanel {
               </div>
             </div>
           </div>
+          <!-- SSH hosts Tab (remote projects) -->
+          <div class="settings-panel ${initialTab === 'ssh' ? 'active' : ''}" data-panel="ssh">
+            <div class="settings-group" data-section="ssh-hosts">
+              <div class="settings-group-title">${t('ssh.settings.title')}</div>
+              <div class="settings-card">
+                <div id="ssh-hosts-settings"></div>
+              </div>
+            </div>
+          </div>
           <!-- Themes Tab -->
           <div class="settings-panel ${initialTab === 'themes' ? 'active' : ''}" data-panel="themes">
             <div class="settings-group">
@@ -1932,6 +1942,14 @@ class SettingsPanel extends BasePanel {
         </div>
       </div>
     `;
+
+    // SSH hosts: the same profile editor the Open Remote Project dialog uses.
+    // It owns its own markup and repaints on profile or status changes.
+    try {
+      require('../components/RemoteProjectModal').renderHostsSettings(container.querySelector('#ssh-hosts-settings'));
+    } catch (e) {
+      console.error('[Settings] SSH hosts section failed to render:', e);
+    }
 
     // Tab switching
     container.querySelectorAll('.settings-tab').forEach(tab => {

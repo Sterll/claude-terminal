@@ -15,6 +15,7 @@ const databaseState = require('./database.state');
 const workspaceState = require('./workspace.state');
 const accountsState = require('./accounts.state');
 const errorLogState = require('./errorLog.state');
+const remoteHostsState = require('./remoteHosts.state');
 
 // Quick picker state (simple, doesn't need a module)
 const quickPickerState = new State({
@@ -70,6 +71,10 @@ async function initializeState() {
   // place before the first render rather than fetched per tab.
   await accountsState.loadAccounts();
   accountsState.watchAccounts();
+  // SSH host profiles and their connection state, for the remote project
+  // badges. Lists only: nothing connects at startup (design/remote-ssh.md 6).
+  await remoteHostsState.loadRemoteHosts();
+  remoteHostsState.watchRemoteHosts();
   Promise.all([loadSkills(), loadAgents(), loadContextPacks(), loadPromptTemplates()]).catch(e => {
     console.error('Error loading skills/agents/library:', e);
   });
@@ -112,6 +117,9 @@ module.exports = {
 
   // Error Log
   ...errorLogState,
+
+  // SSH hosts (remote projects)
+  ...remoteHostsState,
 
   // Simple states
   quickPickerState,

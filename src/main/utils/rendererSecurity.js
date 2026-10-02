@@ -89,6 +89,27 @@ function permitted(file, write = false) {
     return grants.some(item => (!write || item.write) && (target === item.root || item.directory && target.startsWith(item.root + path.sep)));
   } catch { return false; }
 }
+/**
+ * The local folders projects.json asks to grant: every project path and its
+ * worktrees, in file order.
+ *
+ * A remote (SSH) project is skipped explicitly. Its path is an `ssh-remote://`
+ * URI, which `grant()` already ignores because it is not absolute, but the
+ * skip does not lean on that: a remote project whose path was hand-edited into
+ * a bare POSIX path would otherwise grant a local folder, since on Windows
+ * `path.resolve('/home/x')` lands on the current drive, and a remote `/` would
+ * be the whole drive (design/remote-ssh.md section 7.1). Its worktrees are
+ * remote too, so they are skipped with it.
+ */
+function projectGrantPaths(data) {
+  const out = [];
+  for (const project of (data && data.projects) || []) {
+    if (project.remote || (typeof project.path === 'string' && project.path.startsWith('ssh-remote://'))) continue;
+    out.push(project.path);
+    for (const worktree of project.worktrees || []) out.push(worktree.path);
+  }
+  return out;
+}
 function install(ipcMain) {
   // Deliberate: `ipcMain.handle` and `ipcMain.on` are wrapped once, here, so
   // every one of the app's handlers is gated without any of them opting in.
@@ -131,10 +152,7 @@ function install(ipcMain) {
   if (process.resourcesPath) { grant(process.resourcesPath, { write: false }); applicationRoots.push(canonical(process.resourcesPath)); }
   try {
     const projects = JSON.parse(fs.readFileSync(path.join(data, 'projects.json'), 'utf8'));
-    for (const project of projects.projects || []) {
-      grant(project.path);
-      for (const worktree of project.worktrees || []) grant(worktree.path);
-    }
+    for (const file of projectGrantPaths(projects)) grant(file);
   } catch { /* New installations have no projects yet. */ }
   require('./rendererFiles').install(ipcMain, permitted);
   ipcMain.on('fs-authorize', (event, file, write) => { event.returnValue = permitted(file, !!write); });
@@ -144,4 +162,4 @@ function install(ipcMain) {
     catch { event.returnValue = null; }
   });
 }
-module.exports = { install, guardWindow, isTrusted, allowMainDocument, allowMicrophone, grant, permitted };
+module.exports = { install, guardWindow, isTrusted, allowMainDocument, allowMicrophone, grant, permitted, projectGrantPaths };

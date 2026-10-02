@@ -306,6 +306,18 @@ describe('SshHostService profile store', () => {
     expect(await svc.listProfiles()).toEqual([]);
   });
 
+  test('verifyCommand builds the verify argv from the stored profile, never a relaxed check', async () => {
+    const svc = service({ resolveLauncher: async () => ({ command: 'C:\Windows\System32\OpenSSH\ssh.exe', prefixArgs: [] }) });
+    const created = await svc.saveProfile({ host: 'build.example.com', user: 'yanis', port: 2222 });
+    const cmd = await svc.verifyCommand(created.id);
+    expect(cmd.file).toBe('C:\Windows\System32\OpenSSH\ssh.exe');
+    expect(cmd.args).toEqual(expect.arrayContaining(['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit']));
+    expect(cmd.args.join(' ')).not.toMatch(/StrictHostKeyChecking=no|BatchMode=yes|UserKnownHostsFile/);
+    expect(cmd.args.slice(-3)).toEqual(['--', 'build.example.com', 'exit']);
+    expect(cmd.destination).toBe('yanis@build.example.com:2222');
+    await expect(svc.verifyCommand('zzzz9999')).rejects.toMatchObject({ code: 'REMOTE_PROFILE_UNKNOWN' });
+  });
+
   test('a well-formed unknown id is kept, so a synced project can get its host back', async () => {
     const created = await service().saveProfile({ id: 'h7k2m9qa', host: 'build.example.com' });
     expect(created.id).toBe('h7k2m9qa');

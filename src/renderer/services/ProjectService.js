@@ -6,12 +6,22 @@
 const { BaseService } = require('../core/BaseService');
 const { t } = require('../i18n');
 const { showConfirm } = require('../ui/components/Modal');
+const { isRemoteProject } = require('../../shared/remote-capabilities');
 const {
   projectsState, getProject, getProjectIndex,
   addProject, updateProject, deleteProject: deleteProjectState,
   loadProjects, saveProjects,
   setSelectedProjectFilter, setOpenedProjectId
 } = require('../state');
+
+/**
+ * True (after telling the user why) when a remote project cannot use a local
+ * OS integration. Lazy: the badge module pulls in UI, and this service is
+ * loaded on the boot path.
+ */
+function refusedForRemote(project, feature) {
+  return require('../ui/components/RemoteHostBadge').refuseForRemote(project, feature);
+}
 
 function deriveProjectName(folderPath) {
   const cleaned = folderPath.replace(/[\\/]+$/, '');
@@ -61,11 +71,13 @@ class ProjectService extends BaseService {
 
   openInEditor(projectId, editor = 'code') {
     const project = getProject(projectId);
+    if (project && refusedForRemote(project, 'openInEditor')) return;
     if (project) require('../utils/editor').openInEditor(project.path, { editor });
   }
 
   openInExplorer(projectId) {
     const project = getProject(projectId);
+    if (project && refusedForRemote(project, 'openInExplorer')) return;
     if (project) this.api.dialog.openInExplorer(project.path);
   }
 
@@ -99,6 +111,9 @@ class ProjectService extends BaseService {
     const { setGitRepoStatus } = require('../state');
     const projects = projectsState.get().projects;
     for (const project of projects) {
+      // Remote projects are not swept here: their host connects only when the
+      // user opens them, and a URI would only ever answer "not a repo".
+      if (isRemoteProject(project)) continue;
       try {
         const result = await this.api.git.statusQuick({ projectPath: project.path });
         setGitRepoStatus(project.id, result.isGitRepo);

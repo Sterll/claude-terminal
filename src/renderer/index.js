@@ -157,6 +157,8 @@ function _registerMcpProjectListeners(api) {
           console.warn(`[MCP] project:open for unknown project "${projectId}"`);
           return;
         }
+        // A remote (SSH) project has no local folder to hand to an editor.
+        if (require('./ui/components/RemoteHostBadge').refuseForRemote(project, 'openInEditor')) return;
         const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
         // Through the helper like every other call site, so a missing editor
         // toasts here too. An MCP-driven open is the case where the user is

@@ -849,6 +849,25 @@ class SshHostService extends EventEmitter {
     });
   }
 
+  // ── Host key verification ─────────────────────────────────────────────────
+
+  /**
+   * The program and argv of the "Verify host" action: `ssh -o
+   * StrictHostKeyChecking=ask -- <dest> exit`, run in a local PTY so OpenSSH
+   * itself shows the fingerprint, asks, and writes known_hosts. The app never
+   * answers for the user and never touches known_hosts.
+   * @returns {Promise<{ file: string, args: string[], destination: string }>}
+   */
+  async verifyCommand(profileId) {
+    const store = await this.loadStore();
+    const profile = store.profiles.find((p) => p.id === profileId);
+    if (!profile) throw serviceError('REMOTE_PROFILE_UNKNOWN', 'No SSH host profile with this id is configured on this machine');
+    const launcher = await this._launcher(store);
+    if (!launcher) throw serviceError('SSH_NOT_FOUND', 'No OpenSSH client was found on this machine');
+    const args = sshCommand.buildSshArgs(profile, { mode: 'verify', platform: this.platform });
+    return { file: launcher.command, args: [...(launcher.prefixArgs || []), ...args], destination: sshCommand.displayDestination(profile) };
+  }
+
   // ── Profile test ──────────────────────────────────────────────────────────
 
   /**

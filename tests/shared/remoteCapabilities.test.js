@@ -24,4 +24,25 @@ describe('remote-capabilities', () => {
   test('the shipped table is frozen', () => {
     expect(Object.isFrozen(CAPABILITIES)).toBe(true);
   });
+
+  test('every shipped row has a reason translated in all six locales', () => {
+    const lookup = (obj, key) => key.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+    const rows = Object.entries(CAPABILITIES);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const locale of ['en', 'fr', 'es', 'id', 'zh-CN', 'pt-BR']) {
+      const strings = require(`../../src/renderer/i18n/locales/${locale}.json`);
+      for (const [feature, row] of rows) {
+        expect(row.remote).toBe(false);
+        const text = lookup(strings, row.reasonKey);
+        if (typeof text !== 'string' || !text) throw new Error(`${locale}: ${feature} -> ${row.reasonKey} is missing`);
+      }
+    }
+  });
+
+  test('the project-level actions of this slice refuse a remote project and leave a local one alone', () => {
+    for (const feature of ['openInExplorer', 'openInEditor', 'accountBinding', 'cloudUpload', 'terminals', 'chat']) {
+      expect(can(remote, feature).ok).toBe(false);
+      expect(can(local, feature)).toEqual({ ok: true });
+    }
+  });
 });
