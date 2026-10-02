@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 219 test files)
+npm test                 # Run Jest tests (jsdom, 228 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -85,10 +85,10 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 37 IPC files, 332 handlers total
-├── src/main/services/               # 37 services
+├── src/main/ipc/                    # 38 IPC files, 344 handlers total
+├── src/main/services/               # 38 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 22 utilities
+├── src/main/utils/                  # 27 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
 Electron Renderer Process (Browser)
@@ -111,7 +111,7 @@ Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 20 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 23 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 31 modular CSS files (~57,000 lines total)
@@ -167,11 +167,12 @@ Remote UI (PWA for mobile)
 | `telemetry.ipc.js` | 1 | Opt-in anonymous telemetry |
 | `preview.ipc.js` | 1 | Serves ```html markdown blocks over the `ct-preview://` scheme (see below) |
 | `project-types.ipc.js` | 2 | List declarative project-type extensions from `~/.claude-terminal/project-types/`, create that directory |
+| `ssh.ipc.js` | 12 | SSH host profiles (list/save/delete/test, identity file picker), connect/disconnect/status, network-online retry, and the Open Remote Project browser: list directories, mkdir, `git init`. `ssh-clone` goes through `cancellableOperation.handle`, so it is not in the count. Every handler takes a profile id, never a host, user or port |
 | `fivem.ipc.js` | - | Delegated to `src/project-types/fivem/` |
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 332 IPC handlers across 37 files.**
+**Total: 344 IPC handlers across 38 files.**
 
 ### Services (`src/main/services/`)
 
@@ -214,6 +215,7 @@ Remote UI (PWA for mobile)
 | `CostService.js` | Prices what Claude Code consumed on this machine at API list rates (`src/shared/model-pricing.js`), from the transcripts under `~/.claude/projects`. The transcripts do not record the account, so attribution is rebuilt, most specific first: the account a chat session started on (`ChatService` reports it at `init`), the project's binding, then whichever account held the machine-wide login at that moment, from a timeline `AccountManager.onLiveChange` feeds. That timeline only starts when this service first runs; older work goes to the account live at that point and is reported as `estimatedCost`. Claude Code writes one message several times while it streams, the early copies with a partial `output_tokens`, so every counter keeps its maximum rather than its first value. First scan reads in 4 MB chunks and yields between them; later ones read only the bytes appended since. `getQuotaEstimate` answers who is using a shared account: the weekly percentage counts every person on it and this machine sees only its own spend, but over any stretch the percentage rose by at least that spend divided by the price of 1%. Each pair of recorded readings (`cost/usage-samples.json`, one per `UsageService` fetch) therefore gives a floor on that price, widened by one point for whole-percent rounding; the best floor bounds this machine's share from above and everyone else's from below. It is exact over any stretch where only this machine worked, and is never a guess: with a single reading it says it cannot separate the shares yet |
 | `ProjectTypeExtensionService.js` | Discovers third-party project types in `~/.claude-terminal/project-types/`. Reads and validates a declarative manifest and hands the renderer inert JSON — it never `require()`s what it finds, in either process. Off by default, per-extension opt-in on top, and it never rejects: a broken extension yields one entry in `problems[]` and nothing else. Design note: `design/project-type-extensions.md` |
 | `FivemService.js` | Re-export (delegated to `src/project-types/fivem`) |
+| `SshHostService.js` | Remote SSH hosts (design: `design/remote-ssh.md`). Owns `remote-hosts.json` (atomic write, `.bak`, `REMOTE_HOSTS_UNREADABLE` on a parse failure, never synced, no free-form ssh option), a pool of up to three channel lanes per profile, the handshake capabilities (login PATH, git, claude), and the connection state machine broadcast as `ssh-status-changed`. Backoff 1, 2, 4, 8, 16, then 30 s; never retries an auth or host key failure; reads wait for a reconnect within their own timeout, writes fail fast with `reason: 'disconnected'`. Nothing connects at startup |
 
 ### Windows (`src/main/windows/`)
 
@@ -251,6 +253,11 @@ Remote UI (PWA for mobile)
 | `machineId.js` | Stable machine identifier (telemetry + relay) |
 | `zipProject.js` | Zip project for cloud upload (`archiver`) |
 | `formatDuration.js` | Duration formatting helper |
+| `sshCommand.js` | System OpenSSH discovery (System32 OpenSSH, then `where.exe`; `/usr/bin/ssh`, then `command -v`) and the argv builder: `--` right before the destination, `BatchMode=yes` for every non-interactive process, keepalives, ControlMaster on POSIX clients only, `-A` only when the profile opts in, never `StrictHostKeyChecking=no` |
+| `sshDriver.js` | The POSIX sh driver sent over stdin on every lane (never written to the remote disk), the handshake script and its parser. The protocol is documented at the top of the file |
+| `sshChannel.js` | One lane of the command channel: ready-marker scan past rc noise, a pure frame parser, FIFO queue, per-request timeout and `maxBuffer`, cancellation by process-group kill on a sibling lane, PUT uploads |
+| `remoteFs.js` | File-system operations as one-line scripts over a lane (`stat`, `readdir` in one round trip, capped reads, atomic writes, `listFiles`, `grep`), plus the remote read/write blocklist |
+| `projectTarget.js` | `resolveTarget()`, the one place a path forks between local and remote. A local path comes back untouched; an `ssh-remote://` URI resolves only with a configured profile and inside a project registered in projects.json |
 
 ### Workflow Engine (`src/main/workflow-nodes/`)
 
@@ -556,7 +563,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost`
+`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost` | `ssh`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -576,6 +583,8 @@ Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guard
 │   ├── index.json                     # Global knowledge entry metadata
 │   └── entries/<slug>.md              # One markdown file per entry
 ├── session-pins.json                  # Pinned sessions
+├── remote-hosts.json                  # SSH host profiles (main process only, never synced, no secrets)
+├── ssh/                               # ControlMaster sockets, mode 0700 (POSIX clients only)
 ├── parallel-runs.json                 # Parallel task run history
 ├── accounts/                          # Snapshots of the CLI credential store, one per named account
 ├── artifacts/
@@ -689,7 +698,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 219 unit test files (jsdom environment)
+npm test                    # Run all 228 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -698,7 +707,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 219 test files
+- **Framework:** Jest with jsdom, 228 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -707,15 +716,15 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
   - `i18n/` - i18n, coherence across the 6 locales, unused/missing key usage
   - `integration/` - state persistence
-  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
+  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only), and the external-editor launch (the macOS bundle fallback, and the failure that has to come back as `success: false` rather than as a console line)
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, and the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself)
-  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself), and `SshHostService` (backoff schedule, no retry after auth or host key failures, the status sequence, reads waiting and writes failing fast, the unreadable-store abort, profile validation, and a real handshake against `tests/helpers/fake-ssh.js`)
+  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task, remote paths, remote capabilities, and the remote shell quoting (round-tripped through a real `/bin/sh -c`, and fish/tcsh when installed)
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
   - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist)
-  - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name), http cache, session search, shell, syntax highlight, tool registry
+  - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name), http cache, session search, shell, syntax highlight, tool registry, and the SSH transport: argv builder, frame parser, lanes, `remoteFs` and `projectTarget`, run against a real local sh through `tests/helpers/fake-ssh.js` (Git for Windows' `sh.exe` on Windows, skipped when there is none)
 
 ### Lint (`eslint.config.js`)
 

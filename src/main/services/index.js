@@ -20,6 +20,7 @@ const databaseService = require('./DatabaseService');
 const parallelTaskService = require('./ParallelTaskService');
 const discordRpcService = require('./DiscordRpcService');
 const orphanReaper = require('./OrphanReaper');
+const sshHostService = require('./SshHostService');
 
 /**
  * Initialize all services with main window reference
@@ -395,6 +396,9 @@ function cleanupServices() {
   workflowService.destroy();
   discordRpcService.destroy();
   orphanReaper.stop();
+  // SSH channel lanes and one-shot execs. Nothing connects at startup, so this
+  // only has work to do when a remote host was used in this session.
+  sshHostService.disposeAll();
   try { require('./AccountManager').stopCredentialWatch(); } catch (_) { /* non-critical */ }
   databaseService.disconnectAll().catch(() => {});
   _stopMcpTriggerPolling();
@@ -428,6 +432,7 @@ module.exports = {
   minecraftService,
   remoteServer,
   workflowService,
+  sshHostService,
   initializeServices,
   cleanupServices
 };

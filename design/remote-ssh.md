@@ -102,7 +102,9 @@ On darwin/linux those spawns get `-o ControlMaster=auto -o
 ControlPath=~/.claude-terminal/ssh/cm-%C -o ControlPersist=60` (directory
 created `0700`), so a new terminal tab skips the handshake. On win32 they are
 plain `ssh` spawns; a terminal tab paying one handshake when it opens is
-acceptable, a git call paying one is not.
+acceptable, a git call paying one is not. The channel lanes carry the same
+options on POSIX clients, which is what lets a lane ride on a master that a
+password-authenticated terminal opened (section 5.1).
 
 ### 2.3 Channel protocol
 
@@ -141,16 +143,35 @@ In outline:
      of both files. Lengths are computed with `$(( $(wc -c <file) ))`, which
      also strips the padding BSD `wc` adds. Output is binary safe because it is
      length-prefixed, not delimited.
-   - `PUT <id> <bytes>` followed by base64 lines and a `.` terminator, read with
-     the `read` builtin into a temp file and decoded with whichever of
-     `base64 -d`, `base64 -D` or `openssl base64 -d` the handshake found. Used
-     for small writes only (editor saves up to 256 KB). Larger transfers go
-     through a one-shot exec (below), where stdin is exclusive and no framing is
-     needed.
+   - `PUT <id> <bytes>` followed by base64 lines (64 characters, which
+     `openssl base64 -d` needs) and a `.` terminator, read with the `read`
+     builtin into a temp file and decoded with whichever of `base64 -d`,
+     `base64 -D` or `openssl base64 -d` the driver found at startup. One script
+     line follows the terminator and runs exactly like a `REQ`, with the
+     decoded bytes on its stdin; a byte count that does not match fails the
+     request (exit 95) instead of running it on truncated data. Used for small
+     writes only (editor saves up to 256 KB). Larger transfers go through a
+     one-shot exec (below), where stdin is exclusive and no framing is needed.
+   - `PATH <id>` followed by one line: export it in the driver for every later
+     request on that lane. This is how the login `PATH` the handshake captured
+     reaches lanes opened after it.
    - `BYE`: exit cleanly.
 4. The driver enables `set -m` when the shell supports it so each request runs in
    its own process group, which is what makes cancellation able to reach the
    `git` a request started and not just its subshell.
+5. The whole driver is one `{ ... }` group, and the client sends nothing after
+   it until the ready marker has arrived. POSIX requires a shell reading its
+   script from a pipe not to read past the command it is executing, but older
+   dash releases read stdin in blocks. With the group, the shell has parsed the
+   entire driver before it prints the marker, so the only bytes such a shell
+   can have buffered are the driver's own, and every request is read by the
+   `read` builtin, which never over-reads.
+6. The driver restores the user's umask for each request (its own `umask 077`
+   protects its temp directory, not the user's files) and defines helpers the
+   request scripts share: `ct_timeout`, and `ct_stat` / `ct_statL`, which pick
+   GNU/busybox `stat -c` or BSD `stat -f` once at startup. Guessing per call
+   would be wrong as well as slow: GNU reads `stat -f` as "file system status"
+   and prints something else entirely.
 
 **Handshake.** The first request on lane 0 collects, in one round trip:
 `uname -s`, `$HOME`, `$SHELL`, the login shell's `PATH` (captured with
@@ -628,7 +649,7 @@ stateDiagram-v2
   connecting --> unsupported: not POSIX / no /bin/sh
   connecting --> reconnecting: network, dns, timeout, refused
   connected --> reconnecting: lane exit 255 or ping timeout
-  reconnecting --> connecting: backoff elapsed / resume / online
+  reconnecting --> connected: a retry (backoff elapsed / resume / online) succeeds
   reconnecting --> offline: user cancels
   authFailed --> connecting: user retries
   hostKeyUnknown --> connecting: user verified the key in a terminal
@@ -640,7 +661,10 @@ stateDiagram-v2
 - Liveness: `ServerAliveInterval=15`, `ServerAliveCountMax=3` on every ssh
   process, plus an app-level ping (`:`) on lane 0 every 20 s with a 10 s timeout.
 - Backoff: 1, 2, 4, 8, 16, then 30 s, for as long as a project of that host is
-  open. An immediate attempt on `powerMonitor` `resume` and on the renderer's
+  open. Retries stay in `reconnecting` (with `detail.attempt` and `retryAt`)
+  rather than passing through `connecting` on each attempt, so the badge does
+  not flicker between two states every few seconds; `connecting` is only the
+  first attempt after `idle`, or after the user retries a stopped state. An immediate attempt on `powerMonitor` `resume` and on the renderer's
   `online` event.
 - **No automatic retry** on `authFailed`, `hostKeyUnknown`, `hostKeyChanged` or
   `unsupported`: retrying an auth failure can lock an account (fail2ban,

@@ -3,7 +3,7 @@
  * Minimal entry point that bootstraps the modular architecture
  */
 
-const { app, globalShortcut, session, ipcMain } = require('electron');
+const { app, globalShortcut, session, ipcMain, powerMonitor } = require('electron');
 const rendererSecurity = require('./src/main/utils/rendererSecurity');
 rendererSecurity.install(ipcMain);
 
@@ -409,6 +409,15 @@ function bootstrapApp() {
 
     // Serve ```html markdown previews over ct-preview://
     require('./src/main/ipc/preview.ipc').registerPreviewProtocol();
+
+    // Back from sleep: SSH hosts waiting out a reconnect backoff retry now,
+    // and connected ones are pinged, since a suspended TCP connection is
+    // usually dead without anyone having noticed yet.
+    powerMonitor.on('resume', () => {
+      try { require('./src/main/services/SshHostService').onResume(); } catch (e) {
+        console.warn('[SSH] resume retry failed:', e.message);
+      }
+    });
 
     initializeApp();
   });

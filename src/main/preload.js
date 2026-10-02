@@ -366,6 +366,26 @@ contextBridge.exposeInMainWorld('electron_api', {
     ensureDir: () => ipcRenderer.invoke('project-types:ensure-dir'),
   },
 
+  // ==================== SSH (remote projects) ====================
+  // Every call names a host by profile id; main reads host, user, port and
+  // options from its own remote-hosts.json. See design/remote-ssh.md.
+  ssh: {
+    listProfiles: () => ipcRenderer.invoke('ssh-profiles-list'),
+    saveProfile: (profile) => ipcRenderer.invoke('ssh-profile-save', profile),
+    deleteProfile: (profileId) => ipcRenderer.invoke('ssh-profile-delete', { profileId }),
+    testProfile: (profileId) => ipcRenderer.invoke('ssh-profile-test', { profileId }),
+    pickIdentityFile: () => ipcRenderer.invoke('ssh-pick-identity-file'),
+    connect: (profileId) => ipcRenderer.invoke('ssh-connect', { profileId }),
+    disconnect: (profileId) => ipcRenderer.invoke('ssh-disconnect', { profileId }),
+    status: (profileId) => ipcRenderer.invoke('ssh-status', { profileId }),
+    networkOnline: () => ipcRenderer.send('ssh-network-online'),
+    browse: (profileId, path) => ipcRenderer.invoke('ssh-browse', { profileId, path }),
+    mkdir: (profileId, path) => ipcRenderer.invoke('ssh-mkdir', { profileId, path }),
+    init: (profileId, path) => ipcRenderer.invoke('ssh-init', { profileId, path }),
+    clone: (params) => ipcRenderer.invoke('ssh-clone', params),
+    onStatusChanged: createListener('ssh-status-changed'),
+  },
+
   // ==================== KNOWLEDGE (global memory) ====================
   knowledge: {
     list: () => ipcRenderer.invoke('knowledge-list'),

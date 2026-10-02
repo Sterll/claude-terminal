@@ -44,6 +44,7 @@ const { registerAccountsHandlers } = require('./accounts.ipc');
 const { registerDiscordRpcHandlers } = require('./discord-rpc.ipc');
 const { registerPreviewHandlers } = require('./preview.ipc');
 const { registerProjectTypeHandlers } = require('./project-types.ipc');
+const { registerSshHandlers } = require('./ssh.ipc');
 
 /**
  * Register all IPC handlers
@@ -99,6 +100,7 @@ function registerAllHandlers(mainWindow) {
   registerDiscordRpcHandlers();
   registerPreviewHandlers();
   registerProjectTypeHandlers();
+  registerSshHandlers();
 
   // Wire terminal PTY exits → workflow triggers (no circular dep)
   const terminalService = require('../services/TerminalService');
