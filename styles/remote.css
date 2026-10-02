@@ -682,3 +682,32 @@
   opacity: 0.6;
   cursor: progress;
 }
+
+/* ── Git over ssh ─────────────────────────────────────────────────────────── */
+
+/* The Git panel while the host is away: a status line, not "not a repo". */
+.git-remote-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.git-remote-banner p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Dashboard of a remote project whose host is not connected. */
+.dashboard-remote-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+}

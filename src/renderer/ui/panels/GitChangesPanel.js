@@ -488,6 +488,15 @@ class GitChangesPanel extends BasePanel {
     this._state.projectPath = effectivePath;
     this._gitChangesProject.textContent = `- ${project.name}`;
 
+    // A remote (SSH) project whose host is away: say so instead of waiting out
+    // a request, and reload on our own once the host answers. An idle host is
+    // asked anyway: opening the panel is a user action, and main connects it.
+    const remoteHost = this._remoteHost(project);
+    if (remoteHost && remoteHost.state !== 'connected' && remoteHost.state !== 'idle') {
+      this._showRemoteBanner(project, remoteHost);
+      return;
+    }
+
     this._gitChangesList.innerHTML = `<div class="git-changes-loading">${t('gitChanges.loading')}</div>`;
 
     try {
@@ -495,6 +504,12 @@ class GitChangesPanel extends BasePanel {
         this.api.git.statusDetailed({ projectPath: effectivePath }),
         this.api.git.infoFull(effectivePath).catch(() => null)
       ]);
+
+      if (!status.success && status.reason === 'disconnected') {
+        // The host dropped: this says nothing about the repository.
+        this._showRemoteBanner(project, this._remoteHost(project));
+        return;
+      }
 
       if (!status.success) {
         this._gitChangesList.innerHTML = `<div class="git-changes-empty"><p>${t('gitChanges.errorStatus', { message: status.error })}</p></div>`;
@@ -511,6 +526,54 @@ class GitChangesPanel extends BasePanel {
     } catch (e) {
       this._gitChangesList.innerHTML = `<div class="git-changes-empty"><p>${t('gitChanges.errorStatus', { message: e.message })}</p></div>`;
     }
+  }
+
+  /** The host of a remote project (state, label), or null for a local one. */
+  _remoteHost(project) {
+    const { getProjectHost } = require('../../state/remoteHosts.state');
+    return getProjectHost(project);
+  }
+
+  /**
+   * "Reconnecting to <host>" in place of the change list. A host that needs
+   * the user (auth, host key, offline...) names its state instead, since
+   * waiting will not bring it back.
+   */
+  _showRemoteBanner(project, host) {
+    const { stateLabel } = require('../components/RemoteHostBadge');
+    const label = (host && host.hostLabel) || (project.remote && project.remote.hostLabel) || t('ssh.unknownHost');
+    const state = (host && host.state) || 'reconnecting';
+    const waiting = state === 'reconnecting' || state === 'connecting' || state === 'connected' || state === 'idle';
+    const text = waiting
+      ? t('ssh.git.reconnecting', { host: label })
+      : t('ssh.git.disconnected', { host: label, state: stateLabel(state) });
+    this._state.files = [];
+    this._state.selectedFiles.clear();
+    this._gitChangesList.innerHTML = `<div class="git-changes-empty git-remote-banner" role="status" data-state="${escapeHtml(state)}"><span class="ssh-state-dot state-${escapeHtml(state)}" aria-hidden="true"></span><p>${escapeHtml(text)}</p></div>`;
+    if (this._gitChangesStats) this._gitChangesStats.innerHTML = '';
+    this._watchHostReconnect(project.id);
+  }
+
+  /** Reload once the project's host is connected again, if the panel still shows that project. */
+  _watchHostReconnect(projectId) {
+    if (this._hostWatch && this._hostWatch.projectId === projectId) return;
+    this._stopHostWatch();
+    const { remoteHostsState, getProjectHost } = require('../../state/remoteHosts.state');
+    const off = remoteHostsState.subscribe(() => {
+      const project = this._getProject(projectId);
+      const host = project ? getProjectHost(project) : null;
+      if (!host || this._state.projectId !== projectId) { this._stopHostWatch(); return; }
+      if (host.state !== 'connected') return;
+      this._stopHostWatch();
+      if (this._gitChangesPanel && this._gitChangesPanel.classList.contains('active')) this.loadGitChanges();
+    });
+    this._hostWatch = { projectId, off };
+  }
+
+  _stopHostWatch() {
+    if (!this._hostWatch) return;
+    try { this._hostWatch.off(); } catch (_) { /* already gone */ }
+    this._hostWatch = null;
   }
 
   _renderGitChanges() {

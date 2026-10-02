@@ -4677,6 +4677,13 @@
       "tab": "Host SSH",
       "title": "Host SSH",
       "intro": "Host untuk proyek jarak jauh. Disimpan hanya di mesin ini, tidak pernah disinkronkan, dan dijangkau dengan klien OpenSSH sistem. Tidak ada kata sandi atau frasa sandi yang disimpan."
+    },
+    "git": {
+      "reconnecting": "Menghubungkan ulang ke {host}... Perubahan akan muncul lagi begitu host merespons.",
+      "disconnected": "{host} tidak terhubung ({state}). Perbaiki dari lencana host untuk melihat repositori ini lagi.",
+      "dashboardOffline": "{host} tidak terhubung: menampilkan angka terakhir yang diketahui. Angka diperbarui saat host kembali.",
+      "worktreePathOnHost": "Path absolut di {host}",
+      "worktreePathInvalid": "Masukkan path absolut di host jarak jauh, diawali dengan /."
     }
   }
 }

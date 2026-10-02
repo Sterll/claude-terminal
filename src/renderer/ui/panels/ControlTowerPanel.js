@@ -153,6 +153,20 @@ function _extractFile(toolInput) {
 }
 
 async function _getProjectBranch(projectPath) {
+  // A remote (SSH) project has no local .git to read: ask git on its host,
+  // and only while that host is connected (a card must never connect one).
+  const remotePathLib = require('../../../shared/remote-path');
+  const remote = remotePathLib.tryParse(projectPath);
+  if (remote) {
+    try {
+      const { getHostStatus } = require('../../state/remoteHosts.state');
+      if (getHostStatus(remote.profileId).state !== 'connected') return null;
+      const branch = await window.electron_api.git.currentBranch({ projectPath });
+      return typeof branch === 'string' && branch ? branch : null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const { fileExists, fsp } = require('../../utils/fs-async');
     const path = window.electron_nodeModules.path;
@@ -2229,4 +2243,4 @@ function cleanup() {
   _panelRootEl = null;
 }
 
-module.exports = { init, loadPanel, cleanup };
+module.exports = { init, loadPanel, cleanup, _getProjectBranch };

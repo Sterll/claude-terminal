@@ -1,0 +1,2382 @@
+{
+  "execGitResult array": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "execGitResult string": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "execGit": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-1"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "spawnGit": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "checkout",
+        "main"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "spawnGit options": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "push"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 10,
+        "timeout": 5000,
+        "signal": false
+      }
+    }
+  ],
+  "getBranches": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-r",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getBranches fetch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "fetch",
+        "--all",
+        "--prune"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-r",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getCurrentBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "checkoutBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "checkout",
+        "feat/x"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "getGitInfo": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-1",
+        "--format=%H|%s|%an|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getGitInfoFull": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-1",
+        "--format=%H|%s|%an|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-list",
+        "--count",
+        "HEAD"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--abbrev-ref",
+        "main@{upstream}"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-5",
+        "--format=%h|%s|%an|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "list",
+        "--format=%gd|%s|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "describe",
+        "--tags",
+        "--abbrev=0"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "shortlog",
+        "-sn",
+        "--all",
+        "--no-merges"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-r",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-1",
+        "--format=%ar",
+        "v1.0.0"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-list",
+        "v1.0.0..HEAD",
+        "--count"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getGitInfoFull fetch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--abbrev-ref",
+        "HEAD"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-1",
+        "--format=%H|%s|%an|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-list",
+        "--count",
+        "HEAD"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "fetch",
+        "--quiet"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-5",
+        "--format=%h|%s|%an|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "list",
+        "--format=%gd|%s|%ar"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "describe",
+        "--tags",
+        "--abbrev=0"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "shortlog",
+        "-sn",
+        "--all",
+        "--no-merges"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--abbrev-ref",
+        "main@{upstream}"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-r",
+        "--format=%(refname:short)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "-1",
+        "--format=%ar",
+        "v1.0.0"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "get-url",
+        "origin"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-list",
+        "v1.0.0..HEAD",
+        "--count"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getGitStatusQuick": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitPull": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "pull",
+        "--rebase",
+        "--stat"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitPush": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "push"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitPushBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "push",
+        "-u",
+        "origin",
+        "main"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitMerge": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "merge",
+        "dev"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitMergeAbort": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "merge",
+        "--abort"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitMergeContinue": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "merge",
+        "--continue"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "getMergeConflicts": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--name-only",
+        "--diff-filter=U"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "isMergeInProgress": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--git-dir"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "countLinesOfCode": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "ls-files"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 52428800,
+        "timeout": 10000,
+        "signal": false
+      }
+    }
+  ],
+  "getProjectStats": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "ls-files"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 52428800,
+        "timeout": 10000,
+        "signal": false
+      }
+    }
+  ],
+  "getGitStatusDetailed": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--numstat"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--cached",
+        "--numstat"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitStageFiles": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "add",
+        "--",
+        "a b.js",
+        "it's.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitCommit": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "commit",
+        "-m",
+        "a message"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "createBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "checkout",
+        "-b",
+        "feat/y"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "deleteBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-d",
+        "old"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "deleteBranch force": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-D",
+        "old"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "getCommitHistory": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "--skip=1",
+        "-2",
+        "--format=%H%x1e%h%x1e%s%x1e%an%x1e%ae%x1e%ar%x1e%aI%x1e%P%x1e%D",
+        "--all",
+        "b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getFileDiff staged": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--cached",
+        "--",
+        "src/a.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getFileDiffResult": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--",
+        "src/a.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getCommitDetail": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "show",
+        "--stat",
+        "--format=commit %H%nAuthor: %an <%ae>%nDate:   %aI%n%n    %s%n%n    %b",
+        "abc1234"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "cherryPick": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "cherry-pick",
+        "abc1234"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "revertCommit": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "revert",
+        "--no-edit",
+        "abc1234"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitUnstageFiles": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "restore",
+        "--staged",
+        "--",
+        "a.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "stashApply": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "apply",
+        "stash@{0}"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "stashDrop": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "drop",
+        "stash@{1}"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitStashSave message": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "push",
+        "-m",
+        "wip"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitStashSave bare": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "getWorktrees": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "worktree",
+        "list",
+        "--porcelain"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "createWorktree newBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "add",
+        "-b",
+        "n",
+        "<REPO>/wt",
+        "main"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "createWorktree branch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "add",
+        "<REPO>/wt",
+        "b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "createWorktree bare": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "add",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "removeWorktree": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "remove",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "removeWorktree force": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "remove",
+        "--force",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "removeWorktree unlock": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "remove",
+        "--force",
+        "--force",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "lockWorktree reason": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "lock",
+        "--reason",
+        "why",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "signal": false
+      }
+    }
+  ],
+  "lockWorktree": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "lock",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "signal": false
+      }
+    }
+  ],
+  "unlockWorktree": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "unlock",
+        "<REPO>/wt"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "signal": false
+      }
+    }
+  ],
+  "pruneWorktrees": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "worktree",
+        "prune"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "signal": false
+      }
+    }
+  ],
+  "detectWorktree": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--git-dir"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--git-common-dir"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "diffWorktreeBranches": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "a...b",
+        "--",
+        "f.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "diffWorktreeBranchesWithStats": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--numstat",
+        "a...b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "--name-status",
+        "a...b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "resolveConflict": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "checkout",
+        "--ours",
+        "--",
+        "f.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    },
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "add",
+        "--",
+        "f.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "getBranchOrphanCommitCount": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "b",
+        "--not",
+        "--remotes",
+        "--exclude=b",
+        "--branches",
+        "--oneline"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "deleteRemoteBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "push",
+        "origin",
+        "--delete",
+        "b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitFetch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "fetch",
+        "origin",
+        "--prune"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "renameBranch": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "branch",
+        "-m",
+        "a",
+        "b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitRebase": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rebase",
+        "main"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitRebaseAbort": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rebase",
+        "--abort"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitRebaseContinue": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rebase",
+        "--continue"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getFileHistory": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "--skip=0",
+        "-n",
+        "5",
+        "--pretty=format:%H|%an|%aI|%s",
+        "--",
+        "f.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getCommitFileDiffs": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff-tree",
+        "--no-commit-id",
+        "-r",
+        "--numstat",
+        "abc1234"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getCommitFileDiff": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "diff",
+        "abc1234~1",
+        "abc1234",
+        "--",
+        "f.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitBlame": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "blame",
+        "--porcelain",
+        "--",
+        "f.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getTags": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "tag",
+        "-l",
+        "--sort=-creatordate",
+        "--format=%(refname:short)|%(creatordate:iso-strict)|%(subject)"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "createTag annotated": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "tag",
+        "-a",
+        "v1",
+        "-m",
+        "msg",
+        "abc1234"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "createTag light": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "tag",
+        "v1"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "deleteTag": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "tag",
+        "-d",
+        "v1"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "pushTag": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "push",
+        "origin",
+        "v1"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "pushAllTags": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "push",
+        "origin",
+        "--tags"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "getRemotes": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "-v"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitDiscardFiles": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "status",
+        "--porcelain",
+        "-z",
+        "--",
+        "a.js"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "stashPop": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "pop",
+        "stash@{0}"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "stashShow": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "stash",
+        "show",
+        "-p",
+        "stash@{0}"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitAmendCommit message": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "commit",
+        "--amend",
+        "-m",
+        "m"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "gitAmendCommit bare": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "commit",
+        "--amend",
+        "--no-edit"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "isRebaseInProgress": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "rev-parse",
+        "--git-dir"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "gitReset": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "reset",
+        "--hard",
+        "HEAD~2"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "searchCommitHistory": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "log",
+        "--skip=0",
+        "-30",
+        "--format=%H%x1e%h%x1e%s%x1e%an%x1e%ae%x1e%ar%x1e%aI%x1e%P%x1e%D",
+        "--grep=x",
+        "-i",
+        "-Sy",
+        "--all",
+        "b"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "signal": false
+      }
+    }
+  ],
+  "addRemote": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "add",
+        "o",
+        "https://example.com/r.git"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ],
+  "removeRemote": [
+    {
+      "file": "git",
+      "args": [
+        "-c",
+        "safe.directory=<REPO>",
+        "-c",
+        "protocol.ext.allow=never",
+        "remote",
+        "remove",
+        "o"
+      ],
+      "opts": {
+        "cwd": "<REPO>",
+        "encoding": "utf8",
+        "maxBuffer": 1048576,
+        "timeout": 15000,
+        "signal": false
+      }
+    }
+  ]
+}

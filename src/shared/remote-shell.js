@@ -80,12 +80,31 @@ function cdAnd(dir, command) {
 }
 
 /**
+ * Exit status of a remote script whose working directory does not exist, so
+ * the caller can tell "no such folder" (`reason: 'nodir'`) from a git failure:
+ * `cd` itself exits 1 or 2 depending on the shell, which git also uses.
+ */
+const NODIR_EXIT = 96;
+
+/** `[ -d <dir> ] || exit 96; ` - the prefix that makes a missing directory recognisable. */
+function requireDir(dir) {
+  return `[ -d ${q(dir)} ] || exit ${NODIR_EXIT}`;
+}
+
+/**
  * Run git in a repository with prompts off and the `ext::` transport refused.
+ * A missing directory exits NODIR_EXIT before git runs.
+ *
+ * `GIT_TERMINAL_PROMPT=0 exec git` exports the assignment into git's
+ * environment: POSIX leaves assignments before a special built-in unspecified
+ * in general, but bash, dash, busybox ash and ksh all export them for `exec`
+ * with a command, which is the only form used here.
+ *
  * @param {string} dir      absolute remote path
  * @param {string[]} args   git arguments
  */
 function gitScript(dir, args) {
-  return cdAnd(dir, `GIT_TERMINAL_PROMPT=0; export GIT_TERMINAL_PROMPT; exec git -c protocol.ext.allow=never ${qArgs(args)}`);
+  return assertOneLine(`${requireDir(dir)}; ${cdAnd(dir, `GIT_TERMINAL_PROMPT=0 exec git -c protocol.ext.allow=never ${qArgs(args)}`)}`);
 }
 
 /** The one-element remote command handed to ssh for PTYs, chat and one-shot execs. */
@@ -206,6 +225,8 @@ module.exports = {
   script,
   cdAnd,
   gitScript,
+  requireDir,
+  NODIR_EXIT,
   shC,
   withPath,
   terminalShellScript,

@@ -125,6 +125,7 @@ const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
 const RemoteProjectModal = require('./src/renderer/ui/components/RemoteProjectModal');
 const { refuseForRemote } = require('./src/renderer/ui/components/RemoteHostBadge');
 const { isRemoteProject, sameProject } = require('./src/shared/remote-capabilities');
+const remotePathLib = require('./src/shared/remote-path');
 const { remoteHostsState, onRemoteProjectOpened, getProjectHost } = require('./src/renderer/state/remoteHosts.state');
 
 // ========== LAZILY-SPLIT PANELS ==========
@@ -866,7 +867,40 @@ async function checkAllProjectsGitStatus() {
   }
 }
 
+/**
+ * Fill in the git status of remote projects when their host connects. Tracks
+ * each host's last state, so a status broadcast that changes nothing (a retry
+ * timer, a capabilities refresh) does not query again.
+ */
+function watchRemoteGitStatus() {
+  const lastState = new Map(); // profileId -> state
+  remoteHostsState.subscribe(() => {
+    const projects = projectsState.get().projects || [];
+    const nowConnected = new Set();
+    const seen = new Set();
+    for (const project of projects) {
+      const host = getProjectHost(project);
+      if (!host || !host.profileId || seen.has(host.profileId)) continue;
+      seen.add(host.profileId);
+      if (host.state === 'connected' && lastState.get(host.profileId) !== 'connected') nowConnected.add(host.profileId);
+      lastState.set(host.profileId, host.state);
+    }
+    if (nowConnected.size === 0) return;
+    for (const project of projects) {
+      const host = getProjectHost(project);
+      if (host && nowConnected.has(host.profileId)) checkProjectGitStatus(project);
+    }
+  });
+}
+
 async function checkProjectGitStatus(project) {
+  // A remote project is only asked while its host is connected: a read on a
+  // host that is not would connect it (or wait on it), and that is the user's
+  // call. watchRemoteGitStatus() fills it in once the host is up.
+  if (isRemoteProject(project) && getProjectHost(project)?.state !== 'connected') {
+    localState.gitRepoStatus.set(project.id, { isGitRepo: false });
+    return;
+  }
   try {
     const result = await api.git.statusQuick({ projectPath: project.path });
     const status = { isGitRepo: result.isGitRepo };
@@ -1996,7 +2030,8 @@ async function openNewWorktreeModal(project) {
       <div class="worktree-existing-list">
         ${existingWorktrees.map(wt => {
           const branchLabel = wt.detached ? wt.head?.substring(0, 7) : (wt.branch || '?');
-          const shortPath = wt.path.replace(/\\/g, '/').split('/').slice(-2).join('/');
+          const wtDisplay = isRemoteProject(project) ? (remotePathLib.tryParse(wt.path)?.path || wt.path) : wt.path;
+          const shortPath = wtDisplay.replace(/\\/g, '/').split('/').slice(-2).join('/');
           return `<button class="worktree-existing-item" data-wt-path="${escapeHtml(wt.path)}" data-wt-branch="${escapeHtml(branchLabel)}">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><path stroke-linecap="round" stroke-linejoin="round" d="M6 3v12m0 0a3 3 0 100 6 3 3 0 000-6zm12-6a3 3 0 100-6 3 3 0 000 6zm0 0c0 4.5-1.5 6-6 6"/></svg>
             <span class="worktree-existing-branch">${escapeHtml(branchLabel)}</span>
@@ -2066,11 +2101,14 @@ async function openNewWorktreeModal(project) {
     createBtn.disabled = true;
     createBtn.innerHTML = `<span class="worktree-btn-spinner"></span>${t('projects.worktreeCreating')}`;
 
-    // Worktree path: sibling folder named <project>-<branch> (slashes → dashes)
-    const basePath = window.electron_nodeModules.path.dirname(project.path);
+    // Worktree path: sibling folder named <project>-<branch> (slashes → dashes).
+    // A remote project's path is an ssh-remote:// URI: POSIX rules on its host,
+    // never the local path module (win32 here would make a drive path of it).
     const safeBranch = branchName.replace(/[/\\:*?"<>|]/g, '-');
-    const projectBase = window.electron_nodeModules.path.basename(project.path);
-    const worktreePath = window.electron_nodeModules.path.join(basePath, `${projectBase}-${safeBranch}`);
+    const pathOps = isRemoteProject(project) ? remotePathLib : window.electron_nodeModules.path;
+    const basePath = pathOps.dirname(project.path);
+    const projectBase = pathOps.basename(project.path);
+    const worktreePath = pathOps.join(basePath, `${projectBase}-${safeBranch}`);
 
     const result = await api.git.worktreeCreate({
       projectPath: project.path,
@@ -5735,6 +5773,11 @@ if (btnNewRemoteProject) btnNewRemoteProject.onclick = () => openRemoteProjectDi
 // Host badges in the sidebar list follow the connection state. ProjectBar
 // subscribes on its own.
 remoteHostsState.subscribe(() => ProjectList.render());
+
+// The startup git sweep leaves remote projects out, so a dead host never slows
+// startup (design/remote-ssh.md 5.4). Their status, branch included, is filled
+// in when their host reaches `connected`, each time it does.
+watchRemoteGitStatus();
 
 // A remote project's terminal tabs from the last run come back when the user
 // opens it, which is also when its host connects.

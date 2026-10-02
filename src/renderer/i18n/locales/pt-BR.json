@@ -4677,6 +4677,13 @@
       "tab": "Hosts SSH",
       "title": "Hosts SSH",
       "intro": "Hosts para projetos remotos. Ficam salvos apenas nesta máquina, nunca são sincronizados e são acessados pelo cliente OpenSSH do sistema. Nenhuma senha ou frase secreta é salva."
+    },
+    "git": {
+      "reconnecting": "Reconectando a {host}... As alterações voltam a aparecer assim que o host responder.",
+      "disconnected": "{host} não está conectado ({state}). Corrija pelo selo do host para ver este repositório de novo.",
+      "dashboardOffline": "{host} não está conectado: mostrando os últimos números conhecidos. Eles se atualizam quando o host voltar.",
+      "worktreePathOnHost": "Caminho absoluto em {host}",
+      "worktreePathInvalid": "Informe um caminho absoluto no host remoto, começando com /."
     }
   }
 }

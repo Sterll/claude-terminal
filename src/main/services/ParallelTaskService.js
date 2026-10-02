@@ -10,7 +10,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
-const { createWorktree, removeWorktree, FORCE_UNLOCK, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit } = require('../utils/git');
+const { createWorktree, removeWorktree, FORCE_UNLOCK, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit, execGitCallback } = require('../utils/git');
 const chatService = require('./ChatService');
 
 /**
@@ -163,7 +163,9 @@ class ParallelTaskService {
       // Delete associated branches
       for (const branch of branches) {
         await new Promise(resolve => {
-          require('child_process').execFile('git', ['-c', `safe.directory=${projectPath.replace(/\\/g, '/')}`, 'branch', '-D', branch], { cwd: projectPath, timeout: 10000 }, () => resolve());
+          // Through the routed primitive, so no git call can bypass the
+          // remote fork; for a local project the argv is the one it always was.
+          execGitCallback(projectPath, ['-c', `safe.directory=${projectPath.replace(/\\/g, '/')}`], ['branch', '-D', branch], { timeout: 10000 }, () => resolve());
         });
       }
 
@@ -777,7 +779,7 @@ class ParallelTaskService {
           // Force delete via raw command if normal delete fails
           console.warn('[cancelMerge] branch -D failed, retrying with execFile');
           await new Promise(resolve => {
-            require('child_process').execFile('git', ['branch', '-D', mergeBranch], { cwd: projectPath, timeout: 10000 }, (err) => {
+            execGitCallback(projectPath, [], ['branch', '-D', mergeBranch], { timeout: 10000 }, (err) => {
               if (err) console.error('[cancelMerge] force delete failed:', err.message);
               resolve();
             });

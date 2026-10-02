@@ -4677,6 +4677,13 @@
       "tab": "Hosts SSH",
       "title": "Hosts SSH",
       "intro": "Hosts para proyectos remotos. Se guardan solo en este equipo, nunca se sincronizan y se alcanzan con el cliente OpenSSH del sistema. No se guarda ninguna contraseña ni frase de paso."
+    },
+    "git": {
+      "reconnecting": "Reconectando con {host}... Los cambios vuelven a aparecer en cuanto el host responda.",
+      "disconnected": "{host} no está conectado ({state}). Corrígelo desde la insignia del host para volver a ver este repositorio.",
+      "dashboardOffline": "{host} no está conectado: se muestran las últimas cifras conocidas. Se actualizan cuando el host vuelva.",
+      "worktreePathOnHost": "Ruta absoluta en {host}",
+      "worktreePathInvalid": "Introduce una ruta absoluta en el host remoto que empiece por /."
     }
   }
 }

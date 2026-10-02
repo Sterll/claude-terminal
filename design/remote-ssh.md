@@ -664,46 +664,124 @@ does).
 ### 5.4 Git
 
 The two primitives in `src/main/utils/git.js` route on `isRemotePath(cwd)`
-before the existing `fs.existsSync(cwd)` bail-out:
+before the existing `fs.existsSync(cwd)` bail-out, and so does a third one,
+`execGitCallback`, which keeps the `execFile` callback contract:
 
-- remote command: `cd -- <q(remotePath)> && GIT_TERMINAL_PROMPT=0 exec git
-  -c protocol.ext.allow=never <q(args)...>`; `safeDirArgs` is skipped (it is a
-  local Windows ownership workaround that reads `.git` with `fs`);
-- a failed `cd` maps to `reason:'nodir'`, exit 127 to `'enoent'`, the transport
-  being down to a new `'disconnected'` reason; the `{ ok, output, reason, error }`
-  and `{ success, output, error, reason }` contracts are otherwise unchanged;
-- requests are registered so `killAllGitProcesses` at quit cancels them and
-  closes the lanes;
-- a 2 s TTL cache keyed on `(profileId, remotePath, args)` covers read-only
-  commands used by polling (`status`, `rev-parse`, `branch`), invalidated by any
-  write command on the same repository.
+- remote command: `[ -d <q(remotePath)> ] || exit 96; cd -- <q(remotePath)> &&
+  GIT_TERMINAL_PROMPT=0 exec git -c protocol.ext.allow=never <q(args)...>`;
+  `safeDirArgs` is skipped (it is a local Windows ownership workaround that
+  reads `.git` with `fs`). The `[ -d ]` prefix is an addition to the first
+  draft: `cd` exits 1 or 2 depending on the shell, which git also uses, so a
+  dedicated status (96, `NODIR_EXIT` in remote-shell) is what lets a missing
+  directory be told apart from a git failure;
+- exit 96 maps to `reason:'nodir'`, exit 127 to `'enoent'`, the transport being
+  down to a new `'disconnected'` reason, a channel timeout to `'timeout'`; the
+  `{ ok, output, reason, error }` and `{ success, output, error, reason }`
+  contracts are otherwise unchanged. A URI the resolver refuses (unknown
+  profile, outside every registered project) is `'nodir'` and never reaches the
+  host;
+- every request is registered, and `killAllGitProcesses` at quit aborts them
+  all: the caller gets `reason:'cancelled'` at once, whether or not the
+  transport noticed, and the channel kills the remote process group. Closing
+  the lanes stays `SshHostService.disposeAll()`'s job in the same quit path;
+- a 2 s TTL cache keyed on `(profileId, remotePath, argv)` covers **every**
+  read-only command, not only `status`, `rev-parse` and `branch`: the Git panel,
+  the file explorer and the dashboard ask overlapping questions, and the cost
+  of a stale answer is bounded by the TTL either way. Concurrent identical
+  reads share one request. Any write on the host drops that host's whole cache
+  (per host rather than per repository, because worktrees of one repository
+  are different paths) before and after it runs, and a read that was in flight
+  while a write ran is not kept. Only answers from the repository are cached
+  (success, or a git failure such as "not a repository"); a timeout or a dropped
+  connection is retried next time. What counts as a read is an allowlist
+  (`isReadOnlyGitCommand`): anything unrecognised is a write, since a write
+  fails fast while reconnecting and a read waits, and guessing "read" wrongly is
+  the dangerous direction.
 
-Local-fs helpers become pure git, which then serves both kinds identically:
+Every direct `execFile('git', ...)` outside the primitives is folded in:
+`createWorktree`, `removeWorktree`, `lockWorktree`, `unlockWorktree`,
+`pruneWorktrees` and `countLinesOfCode` call `execGitCallback`, and so do
+ParallelTaskService's two `branch -D`. For a local path `execGitCallback` is
+exactly the `execFile('git', [...prefix, ...args], { cwd, ...options })` they
+made before, and `tests/utils/gitLocalArgv.test.js` pins the local argv and
+options of every exported git function against a snapshot recorded before any
+of this was written.
+
+Local-fs helpers get remote-only pure-git variants (the local implementations
+stay as they are, to honour "local behaviour unchanged"):
 `isMergeInProgress` via `git rev-parse -q --verify MERGE_HEAD`,
-`isRebaseInProgress` via `git rev-parse --git-path rebase-merge` plus a stat,
-`detectWorktree` via `rev-parse --path-format=absolute`, and the untracked part
-of `gitDiscardFiles` via `git clean -f -d -- <paths>`. These replacements apply
-to remote targets only; the local implementations stay as they are, to honour
-"local behaviour unchanged".
+`isRebaseInProgress` via `git rev-parse --git-path rebase-merge` and
+`rebase-apply` plus a test, in one request, and the untracked part of
+`gitDiscardFiles` via `git clean -f -d -- <paths>`. `detectWorktree` keeps the
+plain `rev-parse --git-dir` / `--git-common-dir` calls and resolves their
+answers with POSIX rules against the remote path, rather than relying on
+`--path-format=absolute`, which git only has since 2.31.
+
+Worktrees:
+
+- paths returned by `git worktree list` are re-wrapped as URIs on the same host
+  and never `grant()`ed (`git-worktree-list` skips `rendererSecurity` for a
+  remote project entirely); a worktree argument must be a URI on the project's
+  own host, and `/` is refused;
+- a worktree usually sits next to its project, outside every registered root,
+  yet a terminal, a chat or the Git panel opened in it must resolve. git.js
+  therefore tells `projectTarget` which roots belong to one repository, from
+  git's own answers only (a listing, or a successful `worktree add`), never from
+  the renderer; a path inside such a root resolves like the registered project
+  of the same repository. When a path is in no known root, the resolver asks
+  `git worktree list` of that host's registered projects once, and only on an
+  already open connection: resolving a path must never be what connects a host.
 
 Specific handlers:
 
-- `git-clone` for remote: `git clone --progress -- <url> <remotePath>` as a
-  one-shot exec streaming progress. The local GitHub token is **not** shipped to
-  the remote command line (visible in `ps`); the remote host's own credentials
-  or a forwarded agent are used. The URL allowlist (`https://`, `git@host:`)
-  applies.
-- Commit message generation reads untracked file heads with one batched remote
-  request instead of local `stat`/`readFile`.
-- `project-stats` runs one remote command
-  (`git ls-files -z | ... | xargs -0 wc -l`, `find` fallback), cached.
-- `scan-todos` runs `git grep -n -I -E '<pattern>'` (fallback `grep -rnI`) and
-  classifies lines locally with the existing regexes.
-- Worktree paths returned by git are re-wrapped as URIs and never `grant()`ed.
-- Pull/push run with the remote host's credentials.
-- GitHub API calls (PRs, CI pill) stay local; they only need the remote URL.
-- Startup git sweep skips remote projects and fills them in when their host
-  connects, so a dead host never slows startup.
+- every git IPC handler whose `projectPath` is a URI resolves it through
+  `projectTarget` first, in one wrapper around `ipcMain.handle` (also handed to
+  the cancellable operations), and answers a refusal in that handler's own
+  result shape (`null`, `false`, `0`, `{ isWorktree: false }`, `{ error: true }`
+  or `{ success: false }`) before git.js, and so before any ssh process, is
+  reached;
+- `git-clone` to a URI destination clones on the host through the same
+  `cloneOnHost` the Open Remote Project browser uses (`git clone --progress --
+  <url> <remotePath>` as a one-shot exec streaming progress). The local GitHub
+  token is **not fetched at all** for it, so it can be in neither the remote
+  command line (visible in `ps`) nor its environment; the remote host's own
+  credentials or a forwarded agent are used. The browser's stricter allowlist
+  applies (`https://` and `git@host:` only, plain `http://` refused);
+- commit message generation reads every untracked file head with one batched
+  remote request (`readUntrackedHeads`: a directory, a "large" marker over
+  500 KB, or the first 3000 bytes, length-prefixed so binary content cannot
+  break the framing) and formats them exactly as the local stat/readFile path;
+- `project-stats` runs one remote command (`git ls-files`, `find` outside a
+  repository, filtered by extension, `xargs -0 wc -l`), cached for a minute in
+  main. Each file counts `wc -l + 1` lines, which is what the local
+  `content.split('\n').length` counts, so local and remote figures compare.
+  The same request returns the root listing and the `package.json`
+  dependencies, from which the dashboard derives the project-type badge it
+  cannot read from the host's files;
+- `scan-todos` runs `git grep -n -I -i --untracked -E` over the scanned
+  extensions with the ignored directories excluded by pathspec (fallback
+  `grep -rnI --include --exclude-dir` outside a repository), capped, and
+  classifies the lines locally with the existing regexes, the same 50-entry cap
+  and the same depth limit. `project-init-git` initialises a registered remote
+  project on its host; `project-scaffold` refuses a remote destination;
+- pull/push run with the remote host's credentials; GitHub API calls (PRs, CI
+  pill) stay local, they only need the remote URL;
+- the startup git sweep skips remote projects and fills them in, branch
+  included, each time their host reaches `connected`, so a dead host never slows
+  startup. `checkProjectGitStatus` leaves a remote project alone while its host
+  is not connected, since a read would otherwise connect it;
+- the Git panel shows "reconnecting to <host>" for `reason:'disconnected'`, and
+  straight away for a host already known to be reconnecting (or the host's
+  state, when it needs the user), then loads on its own once the host is
+  connected. An idle host is asked anyway: opening the panel is a user action;
+- the dashboard of a remote project whose host is not connected shows its last
+  known data, from memory or `~/.claude-terminal/remote-cache/<projectId>/dashboard.json`,
+  with a note, asks the host nothing, and renders again once it connects. A
+  host that drops in the middle of a load keeps the previous git answer and
+  figures rather than repainting the project as "not a repository";
+- the Control Tower reads a remote project's branch with `git.currentBranch`
+  on its host, only while connected, never from `.git/HEAD`; the Discord
+  presence subtitle does not ask a host at all for a remote session.
 
 ### 5.5 Files
 
@@ -962,7 +1040,10 @@ three levels.
      `ingestInitResult` not called; stderr piped; the local options object is
      deep-equal to today's.
    - `git.js`: a URI routes to the remote executor mock with the quoted script;
-     local paths keep the existing tests green unchanged.
+     local paths keep the existing tests green unchanged, and the local argv of
+     every exported command is pinned against a recorded snapshot. The scripts
+     themselves (quoting, stats, TODO grep, untracked heads, clean) also run
+     through a real local sh against real repositories.
    - `claude.ipc` readers over an in-memory fs adapter loaded from the existing
      jsonl fixtures, local and remote producing identical results.
    - `rendererSecurity`: a remote project yields no grant; `permitted()` refuses

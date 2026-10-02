@@ -4677,6 +4677,13 @@
       "tab": "SSH 主机",
       "title": "SSH 主机",
       "intro": "远程项目使用的主机。仅保存在此设备上，从不同步，并通过系统 OpenSSH 客户端连接。不保存任何密码或密钥口令。"
+    },
+    "git": {
+      "reconnecting": "正在重新连接 {host}...主机响应后变更会重新显示。",
+      "disconnected": "{host} 未连接（{state}）。请通过主机徽标修复后再查看此仓库。",
+      "dashboardOffline": "{host} 未连接：显示最近一次的数据。主机恢复后会自动刷新。",
+      "worktreePathOnHost": "{host} 上的绝对路径",
+      "worktreePathInvalid": "请输入远程主机上以 / 开头的绝对路径。"
     }
   }
 }

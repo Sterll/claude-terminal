@@ -4677,6 +4677,13 @@
       "tab": "SSH hosts",
       "title": "SSH hosts",
       "intro": "Hosts for remote projects. They are stored on this machine only, never synced, and reached with your system OpenSSH client. No password or passphrase is stored."
+    },
+    "git": {
+      "reconnecting": "Reconnecting to {host}... The changes show up again as soon as the host answers.",
+      "disconnected": "{host} is not connected ({state}). Fix it from the host badge to see this repository again.",
+      "dashboardOffline": "{host} is not connected: showing the last known figures. They refresh once the host is back.",
+      "worktreePathOnHost": "Absolute path on {host}",
+      "worktreePathInvalid": "Enter an absolute path on the remote host, starting with /."
     }
   }
 }

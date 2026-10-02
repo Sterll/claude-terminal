@@ -4677,6 +4677,13 @@
       "tab": "Hôtes SSH",
       "title": "Hôtes SSH",
       "intro": "Les hôtes des projets distants. Ils sont enregistrés sur cette machine uniquement, jamais synchronisés, et joints avec le client OpenSSH du système. Aucun mot de passe ni phrase secrète n'est enregistré."
+    },
+    "git": {
+      "reconnecting": "Reconnexion à {host}... Les modifications réapparaissent dès que l'hôte répond.",
+      "disconnected": "{host} n'est pas connecté ({state}). Corrigez-le depuis le badge de l'hôte pour revoir ce dépôt.",
+      "dashboardOffline": "{host} n'est pas connecté : derniers chiffres connus. Ils se mettent à jour dès le retour de l'hôte.",
+      "worktreePathOnHost": "Chemin absolu sur {host}",
+      "worktreePathInvalid": "Saisissez un chemin absolu sur l'hôte distant, commençant par /."
     }
   }
 }

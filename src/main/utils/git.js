@@ -75,6 +75,9 @@ const GIT_FAILURE_MESSAGES = {
   timeout: 'Git command timed out',
   nodir: 'Directory not found',
   badargs: 'Git command was built incorrectly',
+  // Remote (SSH) projects only: the host's connection is down. Never produced
+  // for a local path.
+  disconnected: 'The remote host is not connected',
 };
 
 /** Failures caused by the environment rather than by the repository state. */
@@ -140,6 +143,11 @@ function isGitUnavailable(result) {
  * @returns {{isGitRepo: false, gitUnavailable?: boolean, unavailableReason?: string, message?: string}}
  */
 function notAGitRepo(result) {
+  // A remote host that is down says nothing about the repository: say so, so
+  // the UI can show "reconnecting" instead of "not a git repository".
+  if (result && result.reason === 'disconnected') {
+    return { isGitRepo: false, disconnected: true, reason: 'disconnected', message: describeGitFailure(result) };
+  }
   if (!isGitUnavailable(result)) return { isGitRepo: false };
   return {
     isGitRepo: false,
@@ -173,6 +181,502 @@ function _logGitFailure(cwd, argsArray, reason, error) {
   }
 }
 
+// ── Remote (SSH) projects ───────────────────────────────────────────────────
+//
+// A project path that is an `ssh-remote://` URI runs its git on the remote
+// host, through the persistent command channel of its host profile
+// (design/remote-ssh.md section 5.4). The fork happens in the primitives
+// below, *before* the local `fs.existsSync` bail-out, so every function in this
+// file serves both kinds with the same result contracts. For a local path
+// nothing here runs: the local code path is byte for byte what it was, which
+// tests/utils/gitLocalArgv.test.js pins against a recorded argv snapshot.
+//
+// - The remote command is `[ -d <dir> ] || exit 96; cd -- <dir> &&
+//   GIT_TERMINAL_PROMPT=0 exec git -c protocol.ext.allow=never <args...>`,
+//   every argument quoted by remote-shell's q(). safe.directory is not added:
+//   it is a local Windows ownership workaround that reads `.git` with fs.
+// - Failures map onto the local reasons: a missing directory is 'nodir', exit
+//   127 is 'enoent', the transport being down is 'disconnected' (new, remote
+//   only), a timeout is 'timeout'.
+// - Read-only commands are cached for 2 s per (host, directory, argv), and
+//   concurrent identical reads share one request, so the Git panel and the
+//   file explorer polling the same status do not each pay a round trip. Any
+//   write on the host drops that host's cache, before and after it runs.
+// - Every request is registered, so killAllGitProcesses() at quit cancels them.
+
+const remotePath = require('../../shared/remote-path');
+const remoteShell = require('../../shared/remote-shell');
+
+const REMOTE_READ_TTL_MS = 2000;
+const REMOTE_CACHE_MAX = 500;
+
+/** Subcommands that never change the repository. */
+const READ_ONLY_COMMANDS = new Set([
+  'status', 'rev-parse', 'log', 'diff', 'show', 'describe', 'rev-list', 'shortlog', 'ls-files',
+  'grep', 'blame', 'diff-tree', 'merge-base', 'cat-file', 'for-each-ref', 'ls-tree', 'show-ref',
+  'name-rev', 'var', 'version', 'check-ignore',
+]);
+
+const BRANCH_LIST_FLAG = /^(-r|-a|-l|-v|-vv|--all|--remotes|--list|--show-current|--verbose|--no-color|--format=.*|--sort=.*|--merged(=.*)?|--no-merged(=.*)?|--contains(=.*)?|--points-at(=.*)?)$/;
+
+/**
+ * True when a git argv only reads the repository. Anything not recognised is
+ * a write: a write fails fast while the host reconnects and is never
+ * replayed, a read waits for the connection, so guessing "read" wrongly is
+ * the dangerous direction.
+ * @param {string[]} args
+ * @returns {boolean}
+ */
+function isReadOnlyGitCommand(args) {
+  if (!Array.isArray(args)) return false;
+  let i = 0;
+  while (i < args.length && (args[i] === '-c' || args[i] === '-C')) i += 2;
+  const verb = args[i];
+  const rest = args.slice(i + 1);
+  if (READ_ONLY_COMMANDS.has(verb)) return true;
+  switch (verb) {
+    case 'branch': return rest.every((a) => BRANCH_LIST_FLAG.test(a));
+    case 'remote': return rest.length === 0 || ['-v', 'get-url', 'show'].includes(rest[0]);
+    case 'stash': return rest[0] === 'list' || rest[0] === 'show';
+    case 'tag': return rest.length === 0 || rest.includes('-l') || rest.includes('--list');
+    case 'worktree': return rest[0] === 'list';
+    case 'config': return rest.some((a) => ['--get', '--get-all', '--get-regexp', '--list', '-l'].includes(a));
+    default: return false;
+  }
+}
+
+let _remoteExecutorOverride = null;
+let _remoteNow = () => Date.now();
+const _remoteReadCache = new Map();   // key -> { at, result } | { pending }
+const _remoteGenerations = new Map(); // profileId -> number, bumped by every write
+const _remoteControllers = new Set(); // AbortControllers of in-flight remote requests
+
+/**
+ * How a remote request reaches its host: resolve the URI (profile known, path
+ * inside a registered project, or this throws) then run one script on the
+ * profile's channel. Injectable for tests.
+ */
+function _remoteExecutor() {
+  if (_remoteExecutorOverride) return _remoteExecutorOverride;
+  return {
+    resolve: (uri) => require('./projectTarget').resolveTarget(uri),
+    exec: (target, script, options) => require('../services/SshHostService').exec(target.profileId, script, options),
+    isConnected: (profileId) => require('../services/SshHostService').getStatus(profileId).state === 'connected',
+  };
+}
+
+function _toText(value) {
+  if (value === null || value === undefined) return '';
+  return Buffer.isBuffer(value) ? value.toString('utf8') : String(value);
+}
+
+function _toBuffer(value) {
+  if (Buffer.isBuffer(value)) return value;
+  return Buffer.from(value === null || value === undefined ? '' : String(value), 'utf8');
+}
+
+/**
+ * Map a channel result onto the local reasons.
+ * @returns {{ ok: boolean, code: number|null, stdout: string, stderr: string, stdoutBuffer: Buffer, reason: string|null, error: string|null }}
+ */
+function _mapRemoteResult(res) {
+  const stdoutBuffer = _toBuffer(res && res.stdout);
+  const stdout = stdoutBuffer.toString('utf8');
+  const stderr = _toText(res && res.stderr);
+  const code = res && typeof res.code === 'number' ? res.code : null;
+  if (res && res.ok) return { ok: true, code: 0, stdout, stderr, stdoutBuffer, reason: null, error: null };
+  const transport = res && res.reason;
+  let reason;
+  let error = null;
+  if (transport === 'disconnected') reason = 'disconnected';
+  else if (transport === 'timeout') reason = 'timeout';
+  else if (transport === 'cancelled') { reason = 'cancelled'; error = 'Operation cancelled'; }
+  else if (transport === 'maxbuffer') { reason = 'exit'; error = 'Git output exceeded the buffer limit'; }
+  else if (transport === 'invalid') { reason = 'badargs'; error = (res && res.error) || null; }
+  else if (transport) reason = 'exit';
+  else if (code === remoteShell.NODIR_EXIT) reason = 'nodir';
+  else if (code === 127) reason = 'enoent';
+  else reason = 'exit';
+  if (error === null) {
+    const text = stderr.trim();
+    if (text && reason !== 'nodir') error = text;
+    else if (reason === 'exit' && code !== null) error = `git exited with code ${code}`;
+    else error = GIT_FAILURE_MESSAGES[reason] || 'Git command failed';
+  }
+  return { ok: false, code, stdout, stderr, stdoutBuffer, reason, error };
+}
+
+function _remoteFailure(reason, error) {
+  return { ok: false, code: null, stdout: '', stderr: '', stdoutBuffer: Buffer.alloc(0), reason, error: error || GIT_FAILURE_MESSAGES[reason] || 'Git command failed' };
+}
+
+/** One request, no cache: resolve, build, run, map. Never rejects. */
+async function _remoteRunUncached(uri, build, { readOnly, timeout, maxBuffer, signal }) {
+  if (signal && signal.aborted) return _remoteFailure('cancelled', 'Operation cancelled');
+  const executor = _remoteExecutor();
+  let target;
+  try {
+    target = await executor.resolve(uri);
+  } catch (e) {
+    // Unknown profile, a path outside every registered project, an unreadable
+    // projects.json: fail closed, the way a local path that does not exist does.
+    return _remoteFailure('nodir', e && e.message);
+  }
+  if (!target || target.kind !== 'remote') return _remoteFailure('nodir');
+  let script;
+  try {
+    script = build(target.remotePath, target);
+  } catch (e) {
+    return _remoteFailure('badargs', e && e.message);
+  }
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener('abort', onAbort, { once: true });
+  _remoteControllers.add(controller);
+  // A cancel must answer now, whether or not the transport notices the signal.
+  const cancelled = new Promise((resolve) => {
+    controller.signal.addEventListener('abort', () => resolve({ ok: false, reason: 'cancelled' }), { once: true });
+  });
+  let res;
+  try {
+    res = await Promise.race([
+      Promise.resolve().then(() => executor.exec(target, script, { write: !readOnly, timeoutMs: timeout, maxBuffer, signal: controller.signal })),
+      cancelled,
+    ]);
+  } catch (e) {
+    res = { ok: false, reason: 'disconnected', error: e && e.message };
+  } finally {
+    _remoteControllers.delete(controller);
+    if (signal) signal.removeEventListener('abort', onAbort);
+  }
+  if (controller.signal.aborted && !(res && res.ok)) res = { ok: false, reason: 'cancelled' };
+  return _mapRemoteResult(res);
+}
+
+/** A write is about to run (or just ran) on this host: nothing cached for it is current any more. */
+function _invalidateRemoteHost(profileId) {
+  if (!profileId) return;
+  _remoteGenerations.set(profileId, (_remoteGenerations.get(profileId) || 0) + 1);
+  const prefix = `${profileId}\u0000`;
+  for (const key of [..._remoteReadCache.keys()]) {
+    if (key.startsWith(prefix)) _remoteReadCache.delete(key);
+  }
+}
+
+function _copyResult(result) {
+  return { ...result };
+}
+
+/**
+ * Run a script for a remote project path, with the read cache.
+ * @param {string} uri
+ * @param {object} spec
+ * @param {Array}  [spec.cacheKey]  identity of a cacheable read; omit to never cache
+ * @param {boolean} spec.readOnly
+ * @param {(dir: string, target: object) => string} spec.build
+ * @param {number} spec.timeout
+ * @param {number} [spec.maxBuffer]
+ * @param {AbortSignal} [spec.signal]
+ */
+function _remoteRun(uri, { cacheKey, readOnly, build, timeout, maxBuffer = 1024 * 1024, signal }) {
+  const parsed = remotePath.tryParse(uri);
+  const profileId = parsed ? parsed.profileId : null;
+  const options = { readOnly, timeout, maxBuffer, signal };
+  if (!readOnly) {
+    _invalidateRemoteHost(profileId);
+    return _remoteRunUncached(uri, build, options).then((result) => {
+      _invalidateRemoteHost(profileId);
+      return result;
+    });
+  }
+  // A caller with its own signal may cancel; sharing its request would cancel
+  // everyone else's too.
+  if (!parsed || !cacheKey || signal) return _remoteRunUncached(uri, build, options);
+
+  const key = `${profileId}\u0000${parsed.path}\u0000${JSON.stringify(cacheKey)}`;
+  const hit = _remoteReadCache.get(key);
+  if (hit) {
+    if (hit.pending) return hit.pending.then(_copyResult);
+    if (_remoteNow() - hit.at < REMOTE_READ_TTL_MS) return Promise.resolve(_copyResult(hit.result));
+    _remoteReadCache.delete(key);
+  }
+  if (_remoteReadCache.size >= REMOTE_CACHE_MAX) _remoteReadCache.clear();
+  const generation = _remoteGenerations.get(profileId) || 0;
+  const entry = {};
+  entry.pending = _remoteRunUncached(uri, build, options).then((result) => {
+    if (_remoteReadCache.get(key) === entry) {
+      // Only an answer from the repository is worth keeping ("not a repo" is
+      // one); a timeout or a dropped connection must be retried, and a write
+      // that started meanwhile makes the answer stale.
+      const answered = result.ok || result.reason === 'exit';
+      if (answered && (_remoteGenerations.get(profileId) || 0) === generation) {
+        _remoteReadCache.set(key, { at: _remoteNow(), result });
+      } else {
+        _remoteReadCache.delete(key);
+      }
+    }
+    return result;
+  });
+  _remoteReadCache.set(key, entry);
+  return entry.pending.then(_copyResult);
+}
+
+/** git on the host of a remote project path. */
+function _remoteGit(uri, argsArray, { timeout, maxBuffer, signal } = {}) {
+  return _remoteRun(uri, {
+    cacheKey: argsArray,
+    readOnly: isReadOnlyGitCommand(argsArray),
+    build: (dir) => remoteShell.gitScript(dir, argsArray),
+    timeout,
+    maxBuffer,
+    signal,
+  });
+}
+
+/**
+ * `execFile('git', ...)` with the callback contract, routed like the two
+ * primitives. For a local path this is exactly
+ * `execFile('git', [...prefix, ...args], { cwd, ...options }, callback)`, the
+ * call the worktree commands, countLinesOfCode and ParallelTaskService used to
+ * make directly; for a remote path it is the same git command on the host,
+ * with an Error carrying `code` (the exit status, or the reason) and `reason`.
+ *
+ * @param {string} cwd
+ * @param {string[]|(() => string[])} localPrefix  argv before the git command, local only (safe.directory)
+ * @param {string[]} args
+ * @param {object} options     execFile options, minus cwd
+ * @param {Function} callback  (error, stdout, stderr)
+ */
+function execGitCallback(cwd, localPrefix, args, options, callback) {
+  if (remotePath.isRemotePath(cwd)) {
+    _remoteGit(cwd, args, { timeout: options.timeout || 120000, maxBuffer: options.maxBuffer || 1024 * 1024 }).then((r) => {
+      if (r.ok) { callback(null, r.stdout, r.stderr); return; }
+      const error = new Error(r.error || 'Git command failed');
+      error.code = r.code !== null ? r.code : r.reason;
+      error.reason = r.reason;
+      callback(error, r.stdout, r.stderr);
+    });
+    return null;
+  }
+  const prefix = typeof localPrefix === 'function' ? localPrefix() : localPrefix;
+  return execFile('git', [...prefix, ...args], { cwd, ...options }, callback);
+}
+
+// ── Remote project scans: stats, TODOs, untracked heads ─────────────────────
+
+/** Extensions countLinesOfCode counts, local and remote alike. */
+const LOC_EXTENSIONS = ['.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.lua', '.css', '.scss', '.html', '.json', '.md', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.php', '.rb', '.swift', '.kt'];
+const LOC_IGNORED_DIRS = ['node_modules', '.git', 'dist', 'build', 'vendor'];
+
+const STATS_MARK_ENTRIES = '@@CT-STATS-ENTRIES@@';
+const STATS_MARK_PACKAGE = '@@CT-STATS-PACKAGE@@';
+const STATS_MARK_LINES = '@@CT-STATS-LINES@@';
+const REMOTE_STATS_TTL_MS = 60000;
+const REMOTE_STATS_MAX_FILES = 20000;
+const _remoteStatsCache = new Map(); // uri -> { at, result }
+
+/** The one-line script behind remote project stats (exported for the real-sh test). */
+function remoteStatsScript(dir) {
+  const { q, requireDir, NODIR_EXIT } = remoteShell;
+  const extPattern = `\\.(${LOC_EXTENSIONS.map((e) => e.slice(1)).join('|')})$`;
+  const prune = LOC_IGNORED_DIRS.map((d) => `! -path ${q(`*/${d}/*`)}`).join(' ');
+  return remoteShell.script(
+    requireDir(dir),
+    `cd -- ${q(dir)} || exit ${NODIR_EXIT}`,
+    `printf '%s\\n' ${q(STATS_MARK_ENTRIES)}`,
+    'ls -A 2>/dev/null | head -n 2000',
+    `printf '%s\\n' ${q(STATS_MARK_PACKAGE)}`,
+    'if [ -f package.json ]; then head -c 262144 package.json; fi',
+    `printf '\\n%s\\n' ${q(STATS_MARK_LINES)}`,
+    `{ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git -c core.quotePath=false ls-files; else find . -type f ${prune}; fi; } 2>/dev/null | grep -i -E ${q(extPattern)} | head -n ${REMOTE_STATS_MAX_FILES} | tr '\\n' '\\000' | xargs -0 wc -l 2>/dev/null`,
+    'exit 0',
+  );
+}
+
+/** Parse the output of remoteStatsScript() into countLinesOfCode's shape plus the type-detection extras. */
+function parseRemoteStats(stdout) {
+  const text = String(stdout || '');
+  const entriesAt = text.indexOf(`${STATS_MARK_ENTRIES}\n`);
+  const packageAt = text.indexOf(`\n${STATS_MARK_PACKAGE}\n`);
+  const linesAt = text.lastIndexOf(`\n${STATS_MARK_LINES}\n`);
+  const result = { total: 0, files: 0, byExtension: {}, rootEntries: [], packageDeps: [] };
+  if (entriesAt < 0 || packageAt < entriesAt || linesAt < packageAt) return result;
+
+  result.rootEntries = text.slice(entriesAt + STATS_MARK_ENTRIES.length + 1, packageAt).split('\n').filter(Boolean);
+
+  const pkgText = text.slice(packageAt + STATS_MARK_PACKAGE.length + 2, linesAt);
+  if (pkgText.trim()) {
+    try {
+      const pkg = JSON.parse(pkgText);
+      result.packageDeps = [...Object.keys(pkg.dependencies || {}), ...Object.keys(pkg.devDependencies || {})];
+    } catch (_) { /* unreadable package.json: no dependency markers */ }
+  }
+
+  for (const line of text.slice(linesAt + STATS_MARK_LINES.length + 2).split('\n')) {
+    const match = line.match(/^\s*(\d+)\s+(.+)$/);
+    if (!match) continue;
+    const name = match[2].replace(/^\.\//, '');
+    // `wc` prints a "total" per batch xargs runs; no counted file can be called
+    // that, since every one of them carries an extension.
+    if (name === 'total') continue;
+    const ext = path.posix.extname(name).toLowerCase();
+    if (!LOC_EXTENSIONS.includes(ext)) continue;
+    // The local count is content.split('\n').length, one more than wc's
+    // newline count; keep the two kinds of project comparable.
+    const lines = parseInt(match[1], 10) + 1;
+    result.total += lines;
+    result.files++;
+    if (!result.byExtension[ext]) result.byExtension[ext] = { files: 0, lines: 0 };
+    result.byExtension[ext].files++;
+    result.byExtension[ext].lines += lines;
+  }
+  return result;
+}
+
+/** Remote lines of code, root listing and package.json deps, in one request, cached for a minute. */
+async function _remoteProjectStats(uri) {
+  const cached = _remoteStatsCache.get(uri);
+  if (cached && _remoteNow() - cached.at < REMOTE_STATS_TTL_MS) return { ...cached.result };
+  const r = await _remoteRun(uri, { readOnly: true, timeout: 30000, maxBuffer: 8 * 1024 * 1024, build: remoteStatsScript });
+  if (!r.ok) return { total: 0, files: 0, byExtension: {}, rootEntries: [], packageDeps: [], reason: r.reason };
+  const result = parseRemoteStats(r.stdout);
+  if (_remoteStatsCache.size >= 100) _remoteStatsCache.clear();
+  _remoteStatsCache.set(uri, { at: _remoteNow(), result });
+  return { ...result };
+}
+
+const TODO_MAX_LINES = 400;
+
+/**
+ * Candidate TODO lines of a remote project: `git grep` (tracked and untracked,
+ * .gitignore honoured), or `grep -rnI` outside a repository. The caller
+ * classifies them with its own regexes, exactly as for a local scan.
+ *
+ * @param {string} uri
+ * @param {object} options
+ * @param {string[]} options.extensions  e.g. ['.js', '.py']
+ * @param {string[]} options.ignoreDirs
+ * @param {number}   [options.maxDepth]  directories below the root, as the local scan
+ * @returns {Promise<{ ok: boolean, reason: string|null, error?: string, lines: Array<{ file: string, line: number, text: string }> }>}
+ */
+async function grepTodoCandidates(uri, { extensions, ignoreDirs, maxDepth = 5 } = {}) {
+  const { q, requireDir, NODIR_EXIT } = remoteShell;
+  const exts = (extensions || []).filter((e) => /^\.[A-Za-z0-9]+$/.test(e));
+  const dirs = (ignoreDirs || []).filter((d) => /^[A-Za-z0-9_.-]+$/.test(d));
+  const pattern = '(TODO|FIXME|HACK|XXX)';
+  const build = (dir) => {
+    const gitSpecs = [...exts.map((e) => q(`*${e}`)), ...dirs.map((d) => q(`:(exclude,glob)**/${d}/**`))].join(' ');
+    const grepSpecs = [...exts.map((e) => `--include=${q(`*${e}`)}`), ...dirs.map((d) => `--exclude-dir=${q(d)}`)].join(' ');
+    return remoteShell.script(
+      requireDir(dir),
+      `cd -- ${q(dir)} || exit ${NODIR_EXIT}`,
+      `{ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git -c core.quotePath=false grep -n -I -i --untracked -E -e ${q(pattern)} -- ${gitSpecs}; else grep -rnI -i -E -e ${q(pattern)} ${grepSpecs} .; fi; } 2>/dev/null | cut -c 1-2000 | head -n ${TODO_MAX_LINES}`,
+      'exit 0',
+    );
+  };
+  const r = await _remoteRun(uri, { cacheKey: ['@todos', ...exts, '|', ...dirs], readOnly: true, timeout: 30000, maxBuffer: 2 * 1024 * 1024, build });
+  if (!r.ok) return { ok: false, reason: r.reason, error: r.error, lines: [] };
+  const lines = [];
+  for (const raw of r.stdout.split('\n')) {
+    const match = raw.match(/^(.+?):(\d+):(.*)$/);
+    if (!match) continue;
+    const file = match[1].replace(/^\.\//, '');
+    if (file.split('/').length - 1 > maxDepth) continue;
+    lines.push({ file, line: parseInt(match[2], 10), text: match[3] });
+  }
+  return { ok: true, reason: null, lines };
+}
+
+const HEAD_MAX_PATHS = 200;
+
+/** A relative path a remote head read may name: inside the work tree, nothing the quoting refuses. */
+function _isSafeRelativePath(p) {
+  if (typeof p !== 'string' || !p || p.startsWith('/') || remotePath.hasControlChars(p)) return false;
+  return !p.split('/').some((segment) => segment === '..');
+}
+
+/**
+ * First bytes of untracked files in a remote work tree, in one request, for
+ * commit-message generation. Mirrors the local stat + readFile: a directory,
+ * a file over `sizeLimit`, or the first `maxBytes` bytes of a file.
+ *
+ * @param {string} uri
+ * @param {string[]} relPaths  paths relative to the work tree
+ * @param {object} [options]
+ * @returns {Promise<Map<string, { kind: 'dir'|'file'|'large'|'missing', size?: number, content?: string }>>}
+ */
+async function readUntrackedHeads(uri, relPaths, { maxBytes = 3000, sizeLimit = 500000, signal } = {}) {
+  const out = new Map();
+  const wanted = (relPaths || []).filter(_isSafeRelativePath).slice(0, HEAD_MAX_PATHS);
+  for (const p of relPaths || []) out.set(p, { kind: 'missing' });
+  if (wanted.length === 0) return out;
+  const { q, requireDir, NODIR_EXIT } = remoteShell;
+  const build = (dir) => remoteShell.script(
+    requireDir(dir),
+    `cd -- ${q(dir)} || exit ${NODIR_EXIT}`,
+    'i=0',
+    `for f in ${wanted.map((p) => q(p)).join(' ')}; do if [ -d "./$f" ]; then printf 'D %s\\n' "$i"; elif [ -f "./$f" ]; then s=$(wc -c < "./$f" 2>/dev/null | tr -d ' '); [ -n "$s" ] || s=0; if [ "$s" -gt ${Number(sizeLimit)} ]; then printf 'L %s %s\\n' "$i" "$s"; else n=$s; [ "$n" -gt ${Number(maxBytes)} ] && n=${Number(maxBytes)}; printf 'F %s %s %s\\n' "$i" "$s" "$n"; head -c "$n" "./$f" 2>/dev/null; printf '\\n'; fi; else printf 'M %s\\n' "$i"; fi; i=$((i+1)); done`,
+  );
+  const r = await _remoteRun(uri, { readOnly: true, timeout: 15000, maxBuffer: 4 * 1024 * 1024, signal, build });
+  if (!r.ok) return out;
+  const buf = r.stdoutBuffer;
+  let pos = 0;
+  while (pos < buf.length) {
+    const eol = buf.indexOf(0x0a, pos);
+    if (eol < 0) break;
+    const header = buf.slice(pos, eol).toString('utf8').split(' ');
+    pos = eol + 1;
+    const index = parseInt(header[1], 10);
+    const name = wanted[index];
+    if (name === undefined) break;
+    if (header[0] === 'D') out.set(name, { kind: 'dir' });
+    else if (header[0] === 'L') out.set(name, { kind: 'large', size: parseInt(header[2], 10) || 0 });
+    else if (header[0] === 'M') out.set(name, { kind: 'missing' });
+    else if (header[0] === 'F') {
+      const size = parseInt(header[2], 10) || 0;
+      const n = parseInt(header[3], 10) || 0;
+      // A file that changed size between the two reads would misalign every
+      // following record: stop there, the rest stay "missing".
+      if (buf[pos + n] !== 0x0a) break;
+      out.set(name, { kind: 'file', size, content: buf.slice(pos, pos + n).toString('utf8') });
+      pos += n + 1;
+    } else {
+      break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Ask git for the worktrees of the remote projects of a profile, so the path
+ * resolver learns their roots (it calls this once when a remote path is in no
+ * registered project). Bounded: a few projects, and only while connected.
+ * @param {string} profileId
+ * @param {string[]} projectUris
+ */
+async function discoverRemoteWorktrees(profileId, projectUris) {
+  // Only on an open connection: resolving a path must never be what makes the
+  // app connect to a host, nor wait on one that is down.
+  const executor = _remoteExecutor();
+  if (typeof executor.isConnected === 'function' && !executor.isConnected(profileId)) return;
+  const uris = (projectUris || []).filter((u) => {
+    const parsed = remotePath.tryParse(u);
+    return parsed && parsed.profileId === profileId;
+  }).slice(0, 5);
+  await Promise.all(uris.map((uri) => getWorktrees(uri).catch(() => [])));
+}
+
+/** Cancel every in-flight remote git request. */
+function _cancelRemoteRequests() {
+  if (_remoteControllers.size === 0) return 0;
+  const count = _remoteControllers.size;
+  for (const controller of [..._remoteControllers]) {
+    try { controller.abort(); } catch (_) { /* already settled */ }
+  }
+  _remoteControllers.clear();
+  return count;
+}
+
 /**
  * Execute a git command and report *why* it failed.
  * This is the primitive; execGit() is the string|null wrapper over it.
@@ -199,6 +703,16 @@ function execGitResult(cwd, args, timeout = 10000, signal) {
     return Promise.resolve({ ok: false, output: '', reason: 'badargs', error });
   }
   const argsArray = Array.isArray(args) ? args : args.split(' ');
+
+  // Remote (SSH) project: same contract, run on the host. Decided before the
+  // existsSync bail-out, which a URI would always fail.
+  if (remotePath.isRemotePath(cwd)) {
+    return _remoteGit(cwd, argsArray, { timeout, maxBuffer: 1024 * 1024, signal }).then((r) => {
+      if (r.ok) return { ok: true, output: r.stdout.trimEnd(), reason: null, error: null };
+      _logGitFailure(cwd, argsArray, r.reason, r.error);
+      return { ok: false, output: '', reason: r.reason, error: r.error };
+    });
+  }
 
   return new Promise((resolve) => {
     // Early bail if directory doesn't exist (e.g. projects synced from another machine)
@@ -269,6 +783,13 @@ function execGit(cwd, args, timeout = 10000, signal) {
  */
 function spawnGit(cwd, args, opts = {}) {
   const { maxBuffer = 1024 * 1024, timeout = 15000 } = opts;
+  if (remotePath.isRemotePath(cwd)) {
+    return _remoteGit(cwd, args, { timeout, maxBuffer }).then((r) => {
+      if (r.ok) return { success: true, output: r.stdout || r.stderr || '' };
+      _logGitFailure(cwd, args, r.reason, r.error);
+      return { success: false, error: r.error || describeGitFailure({ reason: r.reason }), reason: r.reason };
+    });
+  }
   return new Promise((resolve) => {
     let settled = false;
     // `reason` is additive - existing callers only read success/output/error.
@@ -748,6 +1269,12 @@ async function getMergeConflicts(projectPath) {
  * @returns {Promise<boolean>} - True if merge in progress
  */
 async function isMergeInProgress(projectPath) {
+  // Remote: ask git itself rather than stat a local path. MERGE_HEAD only
+  // exists during a merge, and rev-parse resolves it in worktrees as well.
+  if (remotePath.isRemotePath(projectPath)) {
+    const result = await execGitResult(projectPath, ['rev-parse', '-q', '--verify', 'MERGE_HEAD']);
+    return result.ok && result.output.length > 0;
+  }
   // Use git rev-parse to find the correct git dir (works for both regular repos and worktrees)
   const gitDir = await execGit(projectPath, 'rev-parse --git-dir');
   if (!gitDir) return false;
@@ -776,12 +1303,14 @@ function gitClone(repoUrl, targetPath, options = {}) {
  * @returns {Promise<Object>} - Lines count by type
  */
 async function countLinesOfCode(projectPath) {
-  const extensions = ['.js', '.ts', '.jsx', '.tsx', '.vue', '.py', '.lua', '.css', '.scss', '.html', '.json', '.md', '.go', '.rs', '.java', '.c', '.cpp', '.h', '.php', '.rb', '.swift', '.kt'];
+  const extensions = LOC_EXTENSIONS;
+
+  // Remote: one request on the host, never one per file.
+  if (remotePath.isRemotePath(projectPath)) return _remoteProjectStats(projectPath);
 
   // Try git ls-files first (fast, reads from index)
   const gitResult = await new Promise((resolve) => {
-    const fullArgs = [...safeDirArgs(projectPath), 'ls-files'];
-    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 * 50, timeout: 10000 }, (error, stdout) => {
+    execGitCallback(projectPath, () => safeDirArgs(projectPath), ['ls-files'], { encoding: 'utf8', maxBuffer: 1024 * 1024 * 50, timeout: 10000 }, (error, stdout) => {
       if (error || !stdout.trim()) {
         resolve(null);
         return;
@@ -921,6 +1450,20 @@ async function countLinesFromFilesystem(projectPath, extensions) {
 async function getProjectStats(projectPath) {
   const linesData = await countLinesOfCode(projectPath);
 
+  if (remotePath.isRemotePath(projectPath)) {
+    // Remote extras: the root listing and package.json dependencies feed the
+    // dashboard's project-type badge, which cannot read the host's files.
+    return {
+      lines: linesData.total,
+      files: linesData.files,
+      byExtension: linesData.byExtension,
+      remote: true,
+      rootEntries: linesData.rootEntries || [],
+      packageDeps: linesData.packageDeps || [],
+      ...(linesData.reason ? { reason: linesData.reason } : {}),
+    };
+  }
+
   return {
     lines: linesData.total,
     files: linesData.files,
@@ -973,6 +1516,9 @@ async function getGitStatusDetailed(projectPath) {
           gitUnavailable: true,
           unavailableReason: statusResult.reason,
         };
+      }
+      if (statusResult.reason === 'disconnected') {
+        return { success: false, error: describeGitFailure(statusResult), reason: 'disconnected' };
       }
       return { success: false, error: 'Not a git repository' };
     }
@@ -1286,13 +1832,58 @@ function parseWorktreeListOutput(output) {
 }
 
 /**
+ * The POSIX path a remote worktree argument names. It must be a URI on the
+ * project's own host: a worktree of a repository cannot live on another
+ * machine, and a bare path would be read as local by every other layer.
+ * @param {string} projectPath - ssh-remote:// URI of the project
+ * @param {string} worktreePath - ssh-remote:// URI of the worktree
+ * @returns {string}
+ */
+function _remoteWorktreeArg(projectPath, worktreePath) {
+  const project = remotePath.parse(projectPath);
+  const tree = remotePath.tryParse(worktreePath);
+  if (!tree || tree.profileId !== project.profileId) {
+    throw new Error('Worktree path must be on the same remote host as the project');
+  }
+  if (tree.path === '/') throw new Error('Refusing to use the remote root as a worktree');
+  return tree.path;
+}
+
+/**
+ * Tell the remote path resolver that these directories are worktrees of one
+ * repository, so a terminal, chat or git call opened in one of them resolves
+ * like the project it belongs to (design/remote-ssh.md section 5.4). Main-side
+ * only: the roots come from git's own answers, never from the renderer.
+ */
+function _noteRemoteWorktreeRoots(profileId, roots) {
+  try {
+    const target = require('./projectTarget');
+    if (typeof target.noteWorktreeRoots === 'function') target.noteWorktreeRoots(profileId, roots);
+  } catch (_) { /* resolution simply stays limited to registered projects */ }
+}
+
+/**
  * List all worktrees for a repository
  * @param {string} projectPath - Path to any worktree or the main repo
  * @returns {Promise<Array>} - List of worktree objects
  */
 async function getWorktrees(projectPath) {
   const output = await execGit(projectPath, 'worktree list --porcelain');
-  return parseWorktreeListOutput(output);
+  const worktrees = parseWorktreeListOutput(output);
+  if (!remotePath.isRemotePath(projectPath)) return worktrees;
+
+  // Remote: git answers with POSIX paths on the host. Hand them back as URIs on
+  // the same host, so no layer can mistake one for a local folder.
+  const { profileId } = remotePath.parse(projectPath);
+  const wrapped = [];
+  for (const tree of worktrees) {
+    if (typeof tree.path !== 'string' || !tree.path.startsWith('/')) continue;
+    try {
+      wrapped.push({ ...tree, path: remotePath.format(profileId, remotePath.toPosix(tree.path)) });
+    } catch (_) { /* a path the URI form cannot carry is left out */ }
+  }
+  _noteRemoteWorktreeRoots(profileId, wrapped.map((tree) => remotePath.parse(tree.path).path));
+  return wrapped;
 }
 
 /**
@@ -1308,26 +1899,44 @@ async function getWorktrees(projectPath) {
 function createWorktree(projectPath, worktreePath, options = {}) {
   return new Promise((resolve) => {
     const { branch, newBranch, startPoint } = options;
+    const remote = remotePath.isRemotePath(projectPath);
+    let treeArg = worktreePath;
+    if (remote) {
+      try { treeArg = _remoteWorktreeArg(projectPath, worktreePath); } catch (e) { resolve({ success: false, error: e.message }); return; }
+    }
     const args = ['worktree', 'add'];
 
     if (newBranch) {
-      args.push('-b', newBranch, worktreePath);
+      args.push('-b', newBranch, treeArg);
       if (startPoint) args.push(startPoint);
     } else if (branch) {
-      args.push(worktreePath, branch);
+      args.push(treeArg, branch);
     } else {
-      args.push(worktreePath);
+      args.push(treeArg);
     }
 
-    const fullArgs = [...safeDirArgs(projectPath), ...args];
-    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    execGitCallback(projectPath, () => safeDirArgs(projectPath), args, { encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         resolve({ success: false, error: stderr || error.message });
       } else {
+        if (remote) {
+          const { profileId, path: projectDir } = remotePath.parse(projectPath);
+          _noteRemoteWorktreeRoots(profileId, [projectDir, treeArg]);
+        }
         resolve({ success: true, output: stderr || stdout || 'Worktree created' });
       }
     });
   });
+}
+
+/** The worktree argument as git on the right machine reads it, or an error result. */
+function _worktreeTarget(projectPath, worktreePath) {
+  if (!remotePath.isRemotePath(projectPath)) return { arg: worktreePath };
+  try {
+    return { arg: _remoteWorktreeArg(projectPath, worktreePath) };
+  } catch (e) {
+    return { error: { success: false, error: e.message } };
+  }
 }
 
 /**
@@ -1345,12 +1954,13 @@ function createWorktree(projectPath, worktreePath, options = {}) {
  */
 function removeWorktree(projectPath, worktreePath, force = false) {
   return new Promise((resolve) => {
+    const tree = _worktreeTarget(projectPath, worktreePath);
+    if (tree.error) { resolve(tree.error); return; }
     const level = Math.min(force === true ? 1 : Math.max(0, Math.floor(Number(force) || 0)), FORCE_UNLOCK);
     const args = ['worktree', 'remove'];
     for (let i = 0; i < level; i++) args.push('--force');
-    args.push(worktreePath);
-    const fullArgs = [...safeDirArgs(projectPath), ...args];
-    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+    args.push(tree.arg);
+    execGitCallback(projectPath, () => safeDirArgs(projectPath), args, { encoding: 'utf8', maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         resolve({ success: false, error: stderr || error.message });
       } else {
@@ -1369,11 +1979,12 @@ function removeWorktree(projectPath, worktreePath, force = false) {
  */
 function lockWorktree(projectPath, worktreePath, reason = '') {
   return new Promise((resolve) => {
+    const tree = _worktreeTarget(projectPath, worktreePath);
+    if (tree.error) { resolve(tree.error); return; }
     const args = ['worktree', 'lock'];
     if (reason) args.push('--reason', reason);
-    args.push(worktreePath);
-    const fullArgs = [...safeDirArgs(projectPath), ...args];
-    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
+    args.push(tree.arg);
+    execGitCallback(projectPath, () => safeDirArgs(projectPath), args, { encoding: 'utf8' }, (error, stdout, stderr) => {
       if (error) {
         resolve({ success: false, error: stderr || error.message });
       } else {
@@ -1391,8 +2002,9 @@ function lockWorktree(projectPath, worktreePath, reason = '') {
  */
 function unlockWorktree(projectPath, worktreePath) {
   return new Promise((resolve) => {
-    const fullArgs = [...safeDirArgs(projectPath), 'worktree', 'unlock', worktreePath];
-    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
+    const tree = _worktreeTarget(projectPath, worktreePath);
+    if (tree.error) { resolve(tree.error); return; }
+    execGitCallback(projectPath, () => safeDirArgs(projectPath), ['worktree', 'unlock', tree.arg], { encoding: 'utf8' }, (error, stdout, stderr) => {
       if (error) {
         resolve({ success: false, error: stderr || error.message });
       } else {
@@ -1409,8 +2021,7 @@ function unlockWorktree(projectPath, worktreePath) {
  */
 function pruneWorktrees(projectPath) {
   return new Promise((resolve) => {
-    const fullArgs = [...safeDirArgs(projectPath), 'worktree', 'prune'];
-    execFile('git', fullArgs, { cwd: projectPath, encoding: 'utf8' }, (error, stdout, stderr) => {
+    execGitCallback(projectPath, () => safeDirArgs(projectPath), ['worktree', 'prune'], { encoding: 'utf8' }, (error, stdout, stderr) => {
       if (error) {
         resolve({ success: false, error: stderr || error.message });
       } else {
@@ -1432,6 +2043,22 @@ async function detectWorktree(projectPath) {
   ]);
 
   if (!gitDir || !commonDir) return { isWorktree: false };
+
+  // Remote: the two directories are POSIX paths on the host, resolved against
+  // the remote directory with POSIX rules (path.resolve is win32 here), and the
+  // main repository comes back as a URI on the same host.
+  if (remotePath.isRemotePath(projectPath)) {
+    const { profileId, path: dir } = remotePath.parse(projectPath);
+    const absolute = (p) => (p.startsWith('/') ? path.posix.normalize(p) : path.posix.join(dir, p));
+    const normGit = absolute(gitDir).replace(/\/+$/, '');
+    const normCommon = absolute(commonDir).replace(/\/+$/, '');
+    if (normGit === normCommon) return { isWorktree: false };
+    try {
+      return { isWorktree: true, mainRepoPath: remotePath.format(profileId, path.posix.dirname(normCommon)) };
+    } catch (_) {
+      return { isWorktree: false };
+    }
+  }
 
   const normGit = path.resolve(projectPath, gitDir).replace(/\\/g, '/');
   const normCommon = path.resolve(projectPath, commonDir).replace(/\\/g, '/');
@@ -1535,6 +2162,10 @@ async function getBranchOrphanCommitCount(projectPath, branch) {
  * Called during app shutdown to prevent orphaned git processes.
  */
 function killAllGitProcesses() {
+  // Remote requests run on a host, not in a local child: cancelling them is
+  // what stops them (the channel kills the remote process group).
+  const remote = _cancelRemoteRequests();
+  if (remote > 0) console.log(`[Git] Cancelled ${remote} remote git request(s)`);
   if (_activeProcesses.size === 0) return;
   console.log(`[Git] Killing ${_activeProcesses.size} active git process(es)`);
   for (const child of _activeProcesses) {
@@ -1745,6 +2376,17 @@ async function gitDiscardFiles(projectPath, files) {
     if (!result.success) return result;
   }
 
+  // Remote: the untracked paths go through `git clean` on the host, which
+  // removes files and directories alike and never reaches outside the work
+  // tree. The local branch below keeps its fs removal unchanged.
+  if (remotePath.isRemotePath(projectPath)) {
+    if (untrackedFiles.length > 0) {
+      const clean = await spawnGit(projectPath, ['clean', '-f', '-d', '--', ...untrackedFiles]);
+      if (!clean.success) return clean;
+    }
+    return { success: true, output: `Discarded ${files.length} file(s)` };
+  }
+
   // Remove untracked files with git clean
   for (const f of untrackedFiles) {
     try {
@@ -1816,6 +2458,21 @@ async function gitAmendCommit(projectPath, message) {
  * @returns {Promise<boolean>} - True if rebase in progress
  */
 async function isRebaseInProgress(projectPath) {
+  // Remote: `git rev-parse --git-path` names the two rebase directories
+  // (worktree-aware), and the host checks whether either exists, in one request.
+  if (remotePath.isRemotePath(projectPath)) {
+    const result = await _remoteRun(projectPath, {
+      cacheKey: ['@rebase-in-progress'],
+      readOnly: true,
+      timeout: 10000,
+      build: (dir) => remoteShell.script(
+        remoteShell.requireDir(dir),
+        `cd -- ${remoteShell.q(dir)} || exit ${remoteShell.NODIR_EXIT}`,
+        'm=$(git rev-parse --git-path rebase-merge 2>/dev/null) && a=$(git rev-parse --git-path rebase-apply 2>/dev/null) && { [ -e "$m" ] || [ -e "$a" ]; }',
+      ),
+    });
+    return result.ok;
+  }
   const gitDir = await execGit(projectPath, 'rev-parse --git-dir');
   if (!gitDir) return false;
   const resolvedGitDir = path.resolve(projectPath, gitDir);
@@ -2019,5 +2676,25 @@ module.exports = {
   gitReset,
   searchCommitHistory,
   addRemote,
-  removeRemote
+  removeRemote,
+  // Remote (SSH) projects
+  execGitCallback,
+  isReadOnlyGitCommand,
+  remoteStatsScript,
+  parseRemoteStats,
+  grepTodoCandidates,
+  readUntrackedHeads,
+  discoverRemoteWorktrees,
+  /** Test seams: inject the remote executor and the clock, reset the caches. */
+  _remoteInternals: {
+    setExecutor(executor) { _remoteExecutorOverride = executor || null; },
+    setNow(fn) { _remoteNow = fn || (() => Date.now()); },
+    reset() {
+      _remoteReadCache.clear();
+      _remoteGenerations.clear();
+      _remoteStatsCache.clear();
+      _remoteControllers.clear();
+    },
+    pending: () => _remoteControllers.size,
+  },
 };

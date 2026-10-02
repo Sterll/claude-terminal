@@ -73,6 +73,43 @@ function absolutePath(value) {
   return normalized;
 }
 
+/**
+ * Clone into a new directory on a host, streaming git's progress. Shared by
+ * the Open Remote Project browser (`ssh-clone`) and `git-clone` given an
+ * ssh-remote:// destination. The remote host's own credentials (or a
+ * forwarded agent) are used: the local GitHub token never goes onto a remote
+ * command line, where `ps` would show it, nor into its environment. The URL
+ * allowlist applies, and the destination must not exist yet.
+ *
+ * @param {{ profileId: string, url: string, path: string, signal?: AbortSignal, progress?: Function }} params
+ * @returns {Promise<{ success: boolean, path?: string, error?: string }>}
+ */
+async function cloneOnHost({ profileId, url, path: dir, signal, progress }) {
+  if (!isAllowedCloneUrl(url)) return { success: false, error: 'Only https:// and git@ URLs are allowed' };
+  const target = await resolveBrowseTarget(profileId, absolutePath(dir));
+  await requireConnected(target.profileId);
+  const script = [
+    `if [ -e ${q(target.remotePath)} ]; then echo 'Destination already exists' >&2; exit 17; fi`,
+    'GIT_TERMINAL_PROMPT=0',
+    'export GIT_TERMINAL_PROMPT',
+    `exec git -c protocol.ext.allow=never clone --progress -- ${q(url)} ${q(target.remotePath)}`,
+  ].join('; ');
+  const res = await sshHostService.oneShot(target.profileId, script, {
+    signal,
+    timeoutMs: 30 * 60 * 1000,
+    onStderr: (chunk) => {
+      const text = chunk.toString('utf8');
+      const message = text.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean).pop();
+      if (message && progress) progress({ message });
+    },
+  });
+  if (!res.ok) {
+    const stderr = res.stderr ? res.stderr.toString('utf8').trim().split(/\r?\n/).slice(-3).join('\n') : '';
+    return { success: false, error: res.reason ? `Clone ${res.reason}` : (stderr || `git clone failed with exit code ${res.code}`) };
+  }
+  return { success: true, path: target.remotePath };
+}
+
 function registerSshHandlers() {
   // ── Profiles ──────────────────────────────────────────────────────────────
 
@@ -220,34 +257,10 @@ function registerSshHandlers() {
     }
   });
 
-  // Clone into a new directory on the host, streaming git's progress. The
-  // remote host's own credentials (or a forwarded agent) are used: the local
-  // GitHub token never goes onto a remote command line, where `ps` would show it.
-  operations.handle(ipcMain, 'ssh-clone', async (_event, { profileId, url, path: dir } = {}, signal, progress) => {
-    if (!isAllowedCloneUrl(url)) return { success: false, error: 'Only https:// and git@ URLs are allowed' };
-    const target = await resolveBrowseTarget(profileId, absolutePath(dir));
-    await requireConnected(target.profileId);
-    const script = [
-      `if [ -e ${q(target.remotePath)} ]; then echo 'Destination already exists' >&2; exit 17; fi`,
-      'GIT_TERMINAL_PROMPT=0',
-      'export GIT_TERMINAL_PROMPT',
-      `exec git -c protocol.ext.allow=never clone --progress -- ${q(url)} ${q(target.remotePath)}`,
-    ].join('; ');
-    const res = await sshHostService.oneShot(target.profileId, script, {
-      signal,
-      timeoutMs: 30 * 60 * 1000,
-      onStderr: (chunk) => {
-        const text = chunk.toString('utf8');
-        const message = text.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean).pop();
-        if (message) progress({ message });
-      },
-    });
-    if (!res.ok) {
-      const stderr = res.stderr ? res.stderr.toString('utf8').trim().split(/\r?\n/).slice(-3).join('\n') : '';
-      return { success: false, error: res.reason ? `Clone ${res.reason}` : (stderr || `git clone failed with exit code ${res.code}`) };
-    }
-    return { success: true, path: target.remotePath };
-  });
+  // Clone into a new directory on the host, streaming git's progress (see cloneOnHost).
+  operations.handle(ipcMain, 'ssh-clone', async (_event, { profileId, url, path: dir } = {}, signal, progress) => (
+    cloneOnHost({ profileId, url, path: dir, signal, progress })
+  ));
 }
 
-module.exports = { registerSshHandlers, isAllowedCloneUrl };
+module.exports = { registerSshHandlers, isAllowedCloneUrl, cloneOnHost };

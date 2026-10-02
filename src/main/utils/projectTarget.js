@@ -63,11 +63,69 @@ function remoteRootOf(project, profileId) {
 }
 
 /**
+ * Worktrees of remote repositories, learned from git's own answers
+ * (`git worktree list`, a successful `git worktree add`) by git.js. A
+ * worktree usually sits next to its project, outside every registered root,
+ * yet a terminal, a chat or the Git panel opened in it must resolve like the
+ * project. Each root maps to the roots of the same repository; a path inside
+ * one resolves when one of those is a registered project. Never fed by the
+ * renderer, and `/` is never accepted as a root.
+ */
+function createWorktreeRegistry() {
+  const groups = new Map(); // profileId -> Map<root, Set<root>>
+
+  function note(profileId, roots) {
+    if (!remotePath.isValidProfileId(profileId) || !Array.isArray(roots)) return;
+    const clean = [];
+    for (const root of roots) {
+      if (typeof root !== 'string' || !root.startsWith('/') || remotePath.hasControlChars(root)) continue;
+      let posix;
+      try { posix = remotePath.toPosix(root); } catch { continue; }
+      if (posix !== '/') clean.push(posix);
+    }
+    if (clean.length === 0) return;
+    if (!groups.has(profileId)) groups.set(profileId, new Map());
+    const byRoot = groups.get(profileId);
+    const merged = new Set(clean);
+    for (const root of clean) for (const other of byRoot.get(root) || []) merged.add(other);
+    for (const root of merged) byRoot.set(root, merged);
+    if (byRoot.size > 500) byRoot.clear();
+  }
+
+  /** The longest known worktree root containing `path`, with the roots of its repository. */
+  function lookup(profileId, path) {
+    const byRoot = groups.get(profileId);
+    if (!byRoot) return null;
+    let best = null;
+    for (const [root, group] of byRoot) {
+      if (remotePath.isInside(path, root) && (!best || root.length > best.root.length)) best = { root, group };
+    }
+    return best;
+  }
+
+  return { note, lookup, clear: () => groups.clear() };
+}
+
+/**
  * @param {object} deps
  * @param {(profileId: string) => Promise<object|null>} deps.getProfile
  * @param {() => Promise<object[]>} deps.loadProjects
+ * @param {ReturnType<typeof createWorktreeRegistry>} [deps.worktrees]
+ * @param {(profileId: string, projectUris: string[]) => Promise<void>} [deps.discoverWorktrees]
+ *        asked once when a path is in no registered project, to learn worktree roots
  */
-function createTargetResolver({ getProfile, loadProjects }) {
+function createTargetResolver({ getProfile, loadProjects, worktrees = null, discoverWorktrees = null }) {
+  /** A path inside a known worktree of a registered project: that project, rooted at the worktree. */
+  function worktreeMatch(profileId, path, projects) {
+    const hit = worktrees.lookup(profileId, path);
+    if (!hit) return null;
+    for (const project of projects) {
+      const root = remoteRootOf(project, profileId);
+      if (root !== null && hit.group.has(root)) return { project, root: hit.root };
+    }
+    return null;
+  }
+
   async function requireProfile(profileId) {
     const profile = await getProfile(profileId);
     if (!profile) throw targetError('REMOTE_PROFILE_UNKNOWN', 'No SSH host profile with this id is configured on this machine');
@@ -88,6 +146,16 @@ function createTargetResolver({ getProfile, loadProjects }) {
       const root = remoteRootOf(project, profileId);
       if (root === null || !remotePath.isInside(path, root)) continue;
       if (!best || root.length > best.root.length) best = { project, root };
+    }
+    if (!best && worktrees) {
+      best = worktreeMatch(profileId, path, projects);
+      if (!best && discoverWorktrees) {
+        const uris = projects.filter((p) => remoteRootOf(p, profileId) !== null).map((p) => p.path);
+        if (uris.length) {
+          try { await discoverWorktrees(profileId, uris); } catch { /* nothing learned */ }
+          best = worktreeMatch(profileId, path, projects);
+        }
+      }
     }
     if (!best) throw targetError('REMOTE_PATH_NOT_IN_PROJECT', 'Remote path is not inside a registered remote project');
     return {
@@ -131,6 +199,7 @@ function createTargetResolver({ getProfile, loadProjects }) {
 }
 
 let _default = null;
+const _worktrees = createWorktreeRegistry();
 
 /** The resolver wired to the real profile store and projects.json. */
 function defaultResolver() {
@@ -139,6 +208,8 @@ function defaultResolver() {
     _default = createTargetResolver({
       getProfile: (id) => require('../services/SshHostService').getProfile(id),
       loadProjects: () => readProjectsFile(projectsFile),
+      worktrees: _worktrees,
+      discoverWorktrees: (profileId, uris) => require('./git').discoverRemoteWorktrees(profileId, uris),
     });
   }
   return _default;
@@ -146,6 +217,8 @@ function defaultResolver() {
 
 module.exports = {
   createTargetResolver,
+  createWorktreeRegistry,
+  noteWorktreeRoots: (profileId, roots) => _worktrees.note(profileId, roots),
   readProjectsFile,
   resolveTarget: (p) => defaultResolver().resolveTarget(p),
   resolveBrowseTarget: (id, p) => defaultResolver().resolveBrowseTarget(id, p),

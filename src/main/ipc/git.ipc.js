@@ -3,8 +3,9 @@
  * Handles git-related IPC communication
  */
 
-const { ipcMain } = require('electron');
-const { execGit, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiffResult, getCommitDetailResult, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, FORCE_UNLOCK, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
+const { ipcMain: electronIpcMain } = require('electron');
+const remotePath = require('../../shared/remote-path');
+const { execGit, readUntrackedHeads, getGitInfo, getGitInfoFull, getGitStatusQuick, getGitStatusDetailed, gitPull, gitPush, gitPushBranch, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, isMergeInProgress, gitClone, gitStageFiles, gitCommit, getProjectStats, getBranches, getCurrentBranch, checkoutBranch, createBranch, deleteBranch, getCommitHistory, getFileDiffResult, getCommitDetailResult, cherryPick, revertCommit, gitUnstageFiles, stashApply, stashDrop, gitStashSave, getWorktrees, createWorktree, removeWorktree, FORCE_UNLOCK, lockWorktree, unlockWorktree, pruneWorktrees, detectWorktree, diffWorktreeBranches, diffWorktreeBranchesWithStats, deleteRemoteBranch, gitFetch, renameBranch, gitRebase, gitRebaseAbort, gitRebaseContinue, getFileHistory, getCommitFileDiffs, getCommitFileDiff, gitBlame, getTags, createTag, deleteTag, pushTag, pushAllTags, getRemotes, resolveConflict, getBranchOrphanCommitCount, gitDiscardFiles, stashPop, stashShow, gitAmendCommit, isRebaseInProgress, gitReset, searchCommitHistory, addRemote, removeRemote } = require('../utils/git');
 const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap, groupFiles } = require('../utils/commitMessageGenerator');
 const operations = require('../utils/cancellableOperation');
 const { generatePrDescription } = require('../utils/prDescriptionGenerator');
@@ -20,10 +21,93 @@ const isValidRemoteName = (n) => typeof n === 'string' && n.length > 0 && n.leng
 // Only https:// and git@host: remotes - blocks ext::/file://ssh:// and other code-execution transports
 const isAllowedRemoteUrl = (u) => typeof u === 'string' && /^(https?:\/\/|git@[\w.-]+:)/i.test(u.trim());
 
+// ── Remote (SSH) projects ───────────────────────────────────────────────────
+//
+// A `projectPath` that is an ssh-remote:// URI is checked once, here, before
+// any handler runs: its profile must be configured on this machine and the
+// path must lie inside a registered remote project (or a known worktree of
+// one). Anything else is refused before git.js, and therefore before any ssh
+// process, is reached. Local paths go straight through, untouched.
+
+/** What each handler answers when its remote path is refused, in that handler's own shape. */
+const REMOTE_REFUSALS = {
+  'git-current-branch': () => null,
+  'git-merge-in-progress': () => false,
+  'git-rebase-in-progress': () => false,
+  'git-branch-orphan-commits': () => 0,
+  'git-worktree-detect': () => ({ isWorktree: false }),
+};
+const ERROR_SHAPED = new Set([
+  'git-info', 'git-info-full', 'project-stats', 'git-status-quick', 'git-branches', 'git-merge-conflicts',
+  'git-commit-history', 'git-file-diff', 'git-commit-detail', 'git-search-history',
+]);
+
+function remoteRefusal(channel, error) {
+  const message = (error && error.message) || 'Remote path refused';
+  if (REMOTE_REFUSALS[channel]) return REMOTE_REFUSALS[channel]();
+  if (ERROR_SHAPED.has(channel)) return { error: true, message, refused: true };
+  return { success: false, error: message, refused: true };
+}
+
+/** The project path a git handler was given: the payload itself, or its `projectPath`. */
+function payloadProjectPath(payload) {
+  if (typeof payload === 'string') return payload;
+  return payload && typeof payload === 'object' ? payload.projectPath : undefined;
+}
+
+/**
+ * An ipcMain whose `handle` validates remote project paths first. Also handed
+ * to cancellableOperation, so the operations get the same check.
+ * @param {object} ipc - electron's ipcMain
+ * @param {(uri: string) => Promise<object>} resolveTarget
+ */
+function guardRemoteProjectPaths(ipc, resolveTarget) {
+  return {
+    handle(channel, handler) {
+      ipc.handle(channel, async (event, payload, ...rest) => {
+        const projectPath = payloadProjectPath(payload);
+        if (remotePath.isRemotePath(projectPath)) {
+          try {
+            await resolveTarget(projectPath);
+          } catch (e) {
+            return remoteRefusal(channel, e);
+          }
+        }
+        return handler(event, payload, ...rest);
+      });
+    },
+  };
+}
+
+/**
+ * Commit-message context for untracked files: a directory, a "large" marker or
+ * the first 3000 characters, exactly as the local stat/readFile path builds
+ * it. Remote work trees answer for every file in one request.
+ * @param {string} projectPath
+ * @param {Array<{path: string}>} untracked
+ * @param {{ largeLabel: (kb: string) => string, header: (p: string) => string }} format
+ * @param {AbortSignal} signal
+ */
+async function remoteUntrackedParts(projectPath, untracked, format, signal) {
+  const heads = await readUntrackedHeads(projectPath, untracked.map((f) => f.path), { signal });
+  return untracked.map((f) => {
+    const head = heads.get(f.path) || { kind: 'missing' };
+    if (head.kind === 'dir') return `--- New directory: ${f.path}/`;
+    if (head.kind === 'large') return `--- New file: ${f.path} (${format.largeLabel((head.size / 1024).toFixed(0))})`;
+    if (head.kind === 'file') {
+      const content = head.content.slice(0, 3000);
+      return `${format.header(f.path)}\n${content.split('\n').map(l => '+' + l).join('\n')}`;
+    }
+    return `--- New file: ${f.path}`;
+  });
+}
+
 /**
  * Register git IPC handlers
  */
 function registerGitHandlers() {
+  const ipcMain = guardRemoteProjectPaths(electronIpcMain, (uri) => require('../utils/projectTarget').resolveTarget(uri));
+
   // Get git info for dashboard (basic)
   ipcMain.handle('git-info', async (event, projectPath) => {
     try {
@@ -179,6 +263,15 @@ function registerGitHandlers() {
 
   // Git clone (auto-uses GitHub token if available)
   operations.handle(ipcMain, 'git-clone', async (event, { repoUrl, targetPath }, signal, progress) => {
+    // A remote destination clones on its host, with the host's own
+    // credentials: the local GitHub token is never fetched for it, so it can
+    // reach neither the remote command line nor its environment.
+    if (remotePath.isRemotePath(targetPath)) {
+      const { profileId, path: dir } = remotePath.parse(targetPath);
+      const { cloneOnHost } = require('./ssh.ipc');
+      const result = await cloneOnHost({ profileId, url: repoUrl, path: dir, signal, progress });
+      return result.success ? { ...result, path: remotePath.format(profileId, result.path) } : result;
+    }
     if (!require('../utils/rendererSecurity').permitted(targetPath, true)) throw new Error('Project destination is not authorized');
     // Validate URL scheme to prevent file:// or other dangerous protocols
     if (!repoUrl || typeof repoUrl !== 'string') return { success: false, error: 'Invalid repository URL' };
@@ -353,8 +446,16 @@ function registerGitHandlers() {
         if (diff) diffParts.push(diff);
       }
 
-      // Untracked files: read first lines of each to give context (async I/O)
-      await Promise.all(untrackedFiles.map(async (f) => {
+      // Untracked files: read first lines of each to give context (async I/O).
+      // A remote work tree answers for all of them in one request.
+      if (remotePath.isRemotePath(projectPath)) {
+        if (untrackedFiles.length > 0) {
+          diffParts.push(...await remoteUntrackedParts(projectPath, untrackedFiles, {
+            largeLabel: (kb) => `${kb}KB, binary or large`,
+            header: (p) => `--- New file: ${p}\n+++ ${p}`,
+          }, signal));
+        }
+      } else await Promise.all(untrackedFiles.map(async (f) => {
         try {
           const fullPath = path.join(projectPath, f.path);
           const stat = await fs.promises.stat(fullPath);
@@ -399,7 +500,14 @@ function registerGitHandlers() {
           if (diff) diffParts.push(diff);
         }
 
-        await Promise.all(untracked.map(async (f) => {
+        if (remotePath.isRemotePath(projectPath)) {
+          if (untracked.length > 0) {
+            diffParts.push(...await remoteUntrackedParts(projectPath, untracked, {
+              largeLabel: (kb) => `${kb}KB`,
+              header: (p) => `--- New file: ${p}`,
+            }, signal));
+          }
+        } else await Promise.all(untracked.map(async (f) => {
           try {
             const fullPath = path.join(projectPath, f.path);
             const stat = await fs.promises.stat(fullPath);
@@ -527,8 +635,12 @@ function registerGitHandlers() {
   ipcMain.handle('git-worktree-list', async (event, { projectPath }) => {
     try {
       const worktrees = await getWorktrees(projectPath);
-      const { permitted, grant } = require('../utils/rendererSecurity');
-      if (permitted(projectPath)) for (const tree of worktrees) grant(tree.path);
+      // A remote project's worktrees come back as ssh-remote:// URIs and are
+      // never granted: the renderer's fs bridge serves local paths only.
+      if (!remotePath.isRemotePath(projectPath)) {
+        const { permitted, grant } = require('../utils/rendererSecurity');
+        if (permitted(projectPath)) for (const tree of worktrees) grant(tree.path);
+      }
       return { success: true, worktrees };
     } catch (err) {
       return { success: false, error: err.message };
@@ -861,4 +973,4 @@ function registerGitHandlers() {
   });
 }
 
-module.exports = { registerGitHandlers };
+module.exports = { registerGitHandlers, guardRemoteProjectPaths, remoteRefusal };

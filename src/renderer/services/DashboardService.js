@@ -18,6 +18,7 @@ const KanbanPanel = require('../ui/panels/KanbanPanel');
 const Timeline = require('./ProjectTimeline');
 const Brief = require('./dashboard/briefing');
 const { isRemoteProject } = require('../../shared/remote-capabilities');
+const remotePathLib = require('../../shared/remote-path');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
@@ -87,6 +88,14 @@ let _cacheCleanupInterval = setInterval(evictCache, 60000);
  * @returns {string}
  */
 function getDiskCachePath(projectPath) {
+  // A remote (SSH) project's cache stays on this machine, under
+  // ~/.claude-terminal/remote-cache/<projectId>/: the app never writes its own
+  // files into a repository on someone's host (design/remote-ssh.md 5.5).
+  if (remotePathLib.isRemotePath(projectPath)) {
+    const project = (projectsState.get().projects || []).find(p => p.path === projectPath);
+    if (!project || typeof project.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(project.id)) return null;
+    return path.join(window.electron_nodeModules.os.homedir(), '.claude-terminal', 'remote-cache', project.id, 'dashboard.json');
+  }
   return path.join(projectPath, DISK_CACHE_FILE);
 }
 
@@ -100,6 +109,7 @@ function getDiskCachePath(projectPath) {
 async function readDiskCache(projectPath) {
   try {
     const filePath = getDiskCachePath(projectPath);
+    if (!filePath) return null;
     const raw = await fs.promises.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(raw);
     if (!parsed || !parsed.dashboard) return null;
@@ -134,8 +144,12 @@ async function _flushDiskWrites() {
   _pendingDiskWrites.clear();
   await Promise.all(writes.map(async ([projectPath, data]) => {
     const filePath = getDiskCachePath(projectPath);
+    if (!filePath) return;
     const payload = { _version: 1, _updatedAt: new Date().toISOString(), dashboard: data };
-    try { await fs.promises.writeFile(filePath, JSON.stringify(payload), 'utf-8'); } catch (_) {}
+    try {
+      if (remotePathLib.isRemotePath(projectPath)) await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.promises.writeFile(filePath, JSON.stringify(payload), 'utf-8');
+    } catch (_) {}
   }));
 }
 
@@ -203,6 +217,9 @@ async function getPackageDeps(projectPath) {
  * @returns {Promise<{ type: string, label: string, color: string }|null>}
  */
 async function detectProjectType(projectPath) {
+  // A remote project's files are on its host: its type comes from the listing
+  // that comes back with its stats (detectRemoteProjectType), never from fs.
+  if (remotePathLib.isRemotePath(projectPath)) return null;
   try {
     // Read directory listing once (covers all *.ext glob patterns + exact filenames)
     let dirEntries = null;
@@ -252,6 +269,40 @@ async function detectProjectType(projectPath) {
   } catch (e) {
     return null;
   }
+}
+
+/**
+ * Project type of a remote project, from the root listing and package.json
+ * dependencies its stats request brings back. The same markers, in the same
+ * order, as detectProjectType().
+ * @param {{ rootEntries?: string[], packageDeps?: string[] }|null} stats
+ * @returns {{ type: string, label: string, color: string }|null}
+ */
+function detectRemoteProjectType(stats) {
+  if (!stats || !Array.isArray(stats.rootEntries)) return null;
+  const entries = stats.rootEntries;
+  const deps = new Set(Array.isArray(stats.packageDeps) ? stats.packageDeps : []);
+  for (const marker of PROJECT_TYPE_MARKERS) {
+    if (marker.files) {
+      const hasFile = marker.files.some(f => (f.startsWith('*.') ? entries.some(e => e.endsWith(f.slice(1))) : entries.includes(f)));
+      if (hasFile) {
+        if (!marker.deps) return { type: marker.type, label: marker.label, color: marker.color };
+      } else if (!marker.deps) {
+        continue;
+      }
+    }
+    if (marker.deps) {
+      if (deps.size === 0) continue;
+      if (marker.deps.some(dep => deps.has(dep))) return { type: marker.type, label: marker.label, color: marker.color };
+    }
+  }
+  return null;
+}
+
+/** The host of a remote project (state, label), or null for a local one. */
+function _remoteHost(project) {
+  if (!isRemoteProject(project)) return null;
+  return require('../state/remoteHosts.state').getProjectHost(project);
 }
 
 /**
@@ -578,7 +629,15 @@ function loadProjectDashboard(project) {
     workflowRuns: { runs: [] }, pullRequests: { pullRequests: [] },
     ...getCachedData(project.id)
   };
+  const remote = isRemoteProject(project);
   load.git = Promise.all([getGitInfoFull(project.path), detectProjectType(project.path)]).then(([gitInfo, projectType]) => {
+    if (remote) {
+      // A host that dropped mid-load says nothing about the repository: keep
+      // the last known answer rather than repaint it as "not a git repo". The
+      // type comes with the stats, below.
+      if (gitInfo && gitInfo.disconnected && data.gitInfo && data.gitInfo.isGitRepo) gitInfo = data.gitInfo;
+      projectType = data.projectType || null;
+    }
     Object.assign(data, { gitInfo, projectType, commitHistory30d: null });
     // Keep partial data usable while GitHub responds, without marking it fresh.
     if (isCurrent()) dashboardCache.set(project.id, { data, timestamp: 0, loading: true });
@@ -586,13 +645,19 @@ function loadProjectDashboard(project) {
   });
   // Counting lines reads every source file; it must not hold up the Git panel.
   load.stats = getProjectStats(project.path).then(stats => {
+    if (remote) {
+      // Same rule as git: a failed remote count keeps the last known figures.
+      if (stats && stats.reason && data.stats) return data;
+      const type = detectRemoteProjectType(stats);
+      if (type || !data.projectType) data.projectType = type;
+    }
     data.stats = stats;
     return data;
   });
-  const remote = load.git.then(async () => {
+  const github = load.git.then(async () => {
     Object.assign(data, await loadRemoteDashboardData(data.gitInfo));
   });
-  load.complete = Promise.all([load.git, load.stats, remote]).then(() => {
+  load.complete = Promise.all([load.git, load.stats, github]).then(() => {
     if (isCurrent()) setCacheData(project.id, data);
     return data;
   }).finally(() => {
@@ -1974,6 +2039,13 @@ function wireBriefing(container, project, data, options, gitOps, isCurrent) {
   }
 }
 
+/** "<host> is not connected: last known figures" above a remote project's dashboard. */
+function buildRemoteOfflineNoteHtml(project, offline) {
+  const label = offline.hostLabel || (project.remote && project.remote.hostLabel) || t('ssh.unknownHost');
+  const state = String(offline.state || 'idle');
+  return `<div class="dashboard-remote-note" role="status"><span class="ssh-state-dot state-${escapeHtml(state)}" aria-hidden="true"></span><span>${escapeHtml(t('ssh.git.dashboardOffline', { host: label }))}</span></div>`;
+}
+
 function renderDashboardHtml(container, project, data, options, isRefreshing = false, isCurrent = () => true) {
   const {
     terminalCount = 0,
@@ -2025,6 +2097,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   // Build HTML
   container.innerHTML = `
     ${buildViewTabsHtml(project.id)}
+    ${data.remoteOffline ? buildRemoteOfflineNoteHtml(project, data.remoteOffline) : ''}
     ${isRefreshing ? `<div class="dashboard-refresh-indicator"><span class="refresh-spinner"></span> ${t('dashboard.refreshing')}</div>` : ''}
     ${hasMergeConflict ? `
     <div class="dashboard-merge-alert">
@@ -2338,6 +2411,23 @@ async function renderDashboard(container, project, options = {}) {
   stopWorkflowPolling();
 
   let data = getCachedData(project.id) || {};
+
+  // A remote (SSH) project whose host is not connected: show what was last
+  // known (memory, else the local remote-cache file) with a note, ask the host
+  // nothing, and render again once it connects.
+  const remoteHost = _remoteHost(project);
+  if (remoteHost && remoteHost.state !== 'connected') {
+    if (!data.gitInfo) {
+      const disk = await readDiskCache(project.path);
+      if (!isCurrent()) return;
+      if (disk) data = { ...disk.data, ...data };
+    }
+    renderDashboardHtml(container, project, { ...data, remoteOffline: { hostLabel: remoteHost.hostLabel, state: remoteHost.state } }, options, false, isCurrent);
+    animateDashboardIn(container);
+    _renderWhenHostConnects(container, project, options, isCurrent);
+    return;
+  }
+
   const cacheValid = isCacheValid(project.id) && !!data.gitInfo && !!data.stats && !_dashboardLoads.has(project.id);
   let pending = cacheValid ? (Array.isArray(data.commitHistory30d) ? 0 : 1) : 3;
   let painted = false;
@@ -2400,6 +2490,18 @@ async function renderDashboard(container, project, options = {}) {
       renderDashboard(container, project, options);
     });
   }
+}
+
+/** Re-render a remote project's dashboard once its host is connected, if it is still the one shown. */
+function _renderWhenHostConnects(container, project, options, isCurrent) {
+  const { remoteHostsState, getProjectHost } = require('../state/remoteHosts.state');
+  const off = remoteHostsState.subscribe(() => {
+    if (!isCurrent()) { off(); return; }
+    const host = getProjectHost(project);
+    if (!host || host.state !== 'connected') return;
+    off();
+    renderDashboard(container, project, options);
+  });
 }
 
 /** Leave the view while allowing in-flight requests to finish warming the cache. */
@@ -2937,6 +3039,9 @@ module.exports = {
   clearAllCache,
   loadAllDiskCaches,
   preloadAllProjects,
+  // Remote (SSH) projects
+  detectRemoteProjectType,
+  getDiskCachePath,
   cleanup() {
     if (_cacheCleanupInterval) {
       clearInterval(_cacheCleanupInterval);
