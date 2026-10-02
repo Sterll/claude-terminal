@@ -923,11 +923,18 @@ function buildTimelineToolbarHtml(projectId, counts, days, activeKinds) {
  * @param {string[]} failed - sources that could not be read
  * @param {number} now - injected so the day headings agree with the grouping
  */
-function buildTimelineListHtml(groups, failed, now) {
-  const warning = failed.length ? `
+function buildTimelineListHtml(groups, failed, now, unavailable = []) {
+  const failedNote = failed.length ? `
     <div class="timeline-warning">
       ${escapeHtml(t('timeline.sourcesFailed', { sources: failed.map(Timeline.kindLabel).join(', ') }))}
     </div>` : '';
+  // A remote project's sessions while its host is away: where they are,
+  // rather than a timeline that silently has none.
+  const hostNotes = (unavailable || []).map(u => `
+    <div class="timeline-warning">
+      ${escapeHtml(t('ssh.terminal.historyOnHost', { host: u.host || t('ssh.unknownHost') }))}
+    </div>`).join('');
+  const warning = failedNote + hostNotes;
 
   if (!groups.length) {
     return `${warning}
@@ -1805,7 +1812,7 @@ async function renderTimelineView(container, project, data, options, isRefreshin
   const now = Date.now();
   paint(
     buildTimelineToolbarHtml(project.id, counts, days, activeKinds) +
-    buildTimelineListHtml(groups, cached.failed, now)
+    buildTimelineListHtml(groups, cached.failed, now, cached.unavailable)
   );
 
   const rerender = () => renderTimelineView(container, project, data, options, isRefreshing, isCurrent);

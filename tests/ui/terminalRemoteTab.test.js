@@ -362,11 +362,12 @@ describe('TerminalManager with remote projects', () => {
     expect(calls.some((c) => c.namespace === 'terminal' && c.method === 'kill' && c.args[0].id === 9)).toBe(true);
   });
 
-  test('a remote tab cannot switch to chat yet, and keeps its PTY', async () => {
+  test('a remote tab is no longer refused a switch to chat: chat runs on the host too', async () => {
     seedTab('t-remote', REMOTE, { isBasic: false });
-    await manager.switchTerminalMode('t-remote');
-    expect(calls.some((c) => c.namespace === 'terminal' && c.method === 'kill')).toBe(false);
-    expect(terminalsState.getTerminal('t-remote').mode).toBe('terminal');
+    const refuse = jest.spyOn(require('../../src/renderer/ui/components/RemoteHostBadge'), 'refuseForRemote');
+    try { await manager.switchTerminalMode('t-remote'); } catch (_) { /* the chat view needs more DOM than the seed */ }
+    expect(refuse).not.toHaveBeenCalledWith(REMOTE, 'chat');
+    refuse.mockRestore();
   });
 });
 

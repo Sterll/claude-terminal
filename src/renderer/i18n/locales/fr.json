@@ -4501,7 +4501,18 @@
       "respawnFailed": "Impossible de rouvrir le terminal : {error}",
       "reconnected": "Reconnecté à {host}",
       "claudeMissing": "Claude Code est introuvable sur {host}. Installez-le sur cette machine, ou indiquez son chemin dans le profil de l’hôte.",
-      "historyOnHost": "L’historique des conversations de ce projet se trouve sur {host}. Il n’est pas encore listé ici."
+      "historyOnHost": "L’historique des conversations de ce projet se trouve sur {host}, qui n’est pas connecté. Connectez-vous à l’hôte pour l’afficher."
+    },
+    "chat": {
+      "localToolsNote": "S’exécute sur l’hôte. Les outils MCP de l’application et Claude in Chrome ne sont pas disponibles ici.",
+      "localToolsTooltip": "Le serveur MCP de l’application et celui de Claude in Chrome sont des programmes locaux que Claude Code ne peut pas lancer sur l’hôte. Les serveurs MCP configurés sur l’hôte lui-même fonctionnent toujours.",
+      "lost": "Connexion à {host} perdue ({state}). La conversation reprendra dès le retour de l’hôte.",
+      "lostManual": "Connexion à {host} perdue : {state}. Corrigez-le depuis le badge de l’hôte, puis reconnectez-vous.",
+      "gaveUp": "La connexion à {host} coupe sans arrêt. Reconnectez-vous une fois le réseau stable.",
+      "resuming": "Reprise de la conversation sur {host}...",
+      "resumed": "De nouveau connecté à {host}. Reprise de la conversation.",
+      "resent": "Connecté à {host}. Envoi de votre message.",
+      "pathAttachmentRefused": "{name} ne peut pas être joint à un chat distant : un chemin local n’a pas de sens sur l’hôte. Les fichiers assez petits sont envoyés directement."
     },
     "openRemoteProject": "Ouvrir un projet distant",
     "modalTitle": "Ouvrir un projet distant",
@@ -4552,11 +4563,12 @@
       "unknown": "erreur inconnue"
     },
     "disabled": {
-      "notYet": "Pas encore disponible pour les projets distants.",
       "openInExplorer": "Un projet distant n'a pas de dossier local à afficher.",
       "openInEditor": "Ouvrir un projet distant dans un éditeur externe n'est pas encore pris en charge.",
       "accountBinding": "Un projet distant utilise la connexion Claude de l'hôte distant.",
-      "cloudUpload": "L'envoi cloud compresse un dossier local : les projets distants ne peuvent pas être envoyés."
+      "cloudUpload": "L'envoi cloud compresse un dossier local : les projets distants ne peuvent pas être envoyés.",
+      "sessionMove": "Les sessions d’un projet distant se trouvent sur son hôte et ne peuvent pas être déplacées vers un autre projet.",
+      "pathAttachment": "Un chemin de fichier local n’a pas de sens pour un chat distant. Les fichiers assez petits sont envoyés directement."
     },
     "menu": {
       "section": "Hôte distant : {host}",

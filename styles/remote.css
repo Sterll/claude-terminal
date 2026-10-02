@@ -595,3 +595,90 @@
   opacity: 0.6;
   cursor: progress;
 }
+
+/* ── Remote chat tabs ─────────────────────────────────────────────────────
+   The bar a chat tab of a remote project carries above its transcript: the
+   host badge, what a remote chat does without, warnings main returned with
+   the session, and the "connection lost" banner. */
+
+.chat-remote-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  font-size: var(--font-xs);
+}
+
+.chat-remote-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-remote-host .remote-host-badge {
+  margin-left: 0;
+  cursor: pointer;
+}
+
+.chat-remote-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.chat-remote-warnings[hidden],
+.chat-remote-banner[hidden] {
+  display: none;
+}
+
+.chat-remote-warning {
+  padding: 4px 8px;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.chat-remote-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.chat-remote-banner-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.chat-remote-reconnect {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.chat-remote-reconnect:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.chat-remote-reconnect:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

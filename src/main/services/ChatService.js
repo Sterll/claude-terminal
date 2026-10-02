@@ -17,6 +17,11 @@ const { isCliFailureText } = require('../../shared/cli-failure-text');
 const { isApiErrorMessage } = require('../../shared/api-error');
 const { isPermissionMode } = require('../../shared/permission-modes');
 
+// Remote (SSH) sessions only, so required on first use: a local session never
+// loads the ssh modules.
+const isRemotePath = (value) => require('../../shared/remote-path').isRemotePath(value);
+const sshClaudeSpawnLib = () => require('../utils/sshClaudeSpawn');
+
 /**
  * SDKAssistantMessageError codes that mean *this account* cannot run the turn
  * and another one could. A refusal, an overloaded upstream or a bad request
@@ -665,7 +670,7 @@ class ChatService {
    * @param {string[]} [params.disallowedTools] - Tools to withhold from the session.
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], documents = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null }) {
+  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], documents = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null, remote = null }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -712,12 +717,18 @@ class ChatService {
       // overlay points the CLI's credential store at the account's own
       // directory, leaving everything else in ~/.claude shared. Unbound
       // projects keep reading the machine-wide login.
-      const accountOverlay = await AccountManager.accountEnv(accountId);
+      //
+      // A remote (SSH) session has none of that: its CLI runs on the host
+      // under the host's own `claude /login`.
+      const accountOverlay = remote ? null : await AccountManager.accountEnv(accountId);
       abortController.signal.throwIfAborted();
       if (accountOverlay) runtime.env = { ...runtime.env, ...accountOverlay };
       // Only the child environment changes; other startups may be awaiting SDK/account data.
       delete runtime.env.CLAUDECODE;
-      const effectiveCwd = cwd || require('os').homedir();
+      // A remote session's directory exists only on its host. The SDK gets
+      // the local home directory, so any check it makes locally passes, and
+      // the spawn hook below enters the remote one.
+      const effectiveCwd = remote ? require('os').homedir() : (cwd || require('os').homedir());
       // An allowlist is what makes a session hands-free, so it is also what
       // marks it unattended. An empty array is not a restriction.
       const effectiveMaxTurns = maxTurns
@@ -769,6 +780,19 @@ class ChatService {
         }
       };
 
+      // Remote (SSH) project: same query, but the CLI is spawned on the host
+      // through ssh. The SDK only wires `stderr` for its own local spawn, so
+      // the hook pipes the child's stderr into the same sink.
+      if (remote) {
+        options.spawnClaudeCodeProcess = sshClaudeSpawnLib().createRemoteSpawn({
+          launch: remote.launch,
+          remotePath: remote.remotePath,
+          claude: remote.claude,
+          loginPath: remote.loginPath,
+          onStderr: options.stderr,
+        });
+      }
+
       // Set model if specified
       if (model) {
         options.model = model;
@@ -814,7 +838,10 @@ class ChatService {
       // it runs unattended off a possibly-misheard transcription, and its
       // allowlist would withhold the browser tools anyway, so spawning the
       // server would only cost a process.
-      if (!allowedTools?.length) {
+      //
+      // Never for a remote session: the server is a local binary the remote
+      // CLI cannot start.
+      if (!allowedTools?.length && !remote) {
         const chrome = chromeBridgeService.getSessionConfig();
         if (chrome) {
           options.mcpServers = { ...(options.mcpServers || {}), ...chrome.mcpServers };
@@ -866,6 +893,8 @@ class ChatService {
           ? { resumeSessionId, resumeSessionAt }
           : null,
       });
+      // Which host a remote session runs on, for its error messages
+      if (remote) session.remote = { profileId: remote.profileId, host: remote.host };
 
       this._emitLifecycle('start', sessionId, { projectId, cwd });
 
@@ -876,9 +905,14 @@ class ChatService {
       // Free catalog refresh: the SDK caches the init handshake, so reading it
       // here costs no extra round trip. Detached on purpose — a model list is
       // never worth delaying or failing a session start over.
-      queryStream.initializationResult?.()
-        .then(init => ModelCatalogService.ingestInitResult(init))
-        .catch(() => {});
+      //
+      // Not for a remote session: the host's CLI may be another version, and
+      // its model list must not overwrite the catalog keyed to the bundled one.
+      if (!remote) {
+        queryStream.initializationResult?.()
+          .then(init => ModelCatalogService.ingestInitResult(init))
+          .catch(() => {});
+      }
       this._processStream(sessionId, queryStream);
       return sessionId;
     } catch (err) {
@@ -886,7 +920,7 @@ class ChatService {
         this.closeSession(sessionId);
         console.error(`[ChatService] startSession error (cwd: ${cwd}, perm: ${permissionMode}):`, err.message, err.stack);
       }
-      const humanized = this._humanizeError(err.message);
+      const humanized = this._humanizeError(err.message, remote ? { host: remote.host, stderr: session._stderr || '' } : null);
       throw humanized === err.message ? err : new Error(humanized);
     }
   }
@@ -1725,6 +1759,18 @@ class ChatService {
       } else {
         const stderrLog = session?._stderr || '';
         console.error(`[ChatService] Stream error after ${msgCount} msgs:`, err.message, stderrLog ? `\nstderr: ${stderrLog}` : '');
+        // A remote session ends for ssh reasons too: a lost connection is
+        // reported as `connection_lost` so the tab can resume once the host
+        // is back, the rest as a sentence about the host.
+        const remoteLib = session?.remote ? sshClaudeSpawnLib() : null;
+        const remoteKind = remoteLib ? remoteLib.classifyRemoteChatFailure(err.message, stderrLog) : null;
+        if (remoteKind) {
+          const remoteMsg = this._humanizeError(err.message, { host: session.remote.host, stderr: stderrLog });
+          const remoteType = remoteLib.TRANSIENT_KINDS.has(remoteKind) ? 'connection_lost' : 'generic';
+          this._send('chat-error', { sessionId, error: remoteMsg, errorType: remoteType, remote: { kind: remoteKind, profileId: session.remote.profileId } });
+          this._emitLifecycle('end', sessionId, { status: 'error', error: remoteMsg });
+          return;
+        }
         let errorMsg = this._humanizeError(err.message);
         // Append stderr details for crash diagnostics (exit code errors)
         if (stderrLog && err.message?.includes('exited with code')) {
@@ -1732,7 +1778,9 @@ class ChatService {
         }
         // A limit seen in-band counts even if the stream went on to die of
         // something else: the account is out of budget either way.
-        const errorType = (pendingAccountLimit || this._isUsageLimitError(err.message, stderrLog))
+        // A remote session runs on the host's own login: there is no local
+        // account to switch to, so its limit is shown as the error it is.
+        const errorType = (!session?.remote && (pendingAccountLimit || this._isUsageLimitError(err.message, stderrLog)))
           ? 'usage_limit' : 'generic';
         if (errorType === 'usage_limit') {
           await this._emitAccountLimit(sessionId, session, pendingAccountLimit || errorMsg);
@@ -1786,6 +1834,9 @@ class ChatService {
    * the project rather than swap a global account.
    */
   async _emitAccountLimit(sessionId, session, error) {
+    // No account switch to offer for a remote session (see the account
+    // binding row of remote-capabilities): the CLI's own text is on screen.
+    if (session?.remote) return;
     let activeAccountId = session?.accountId || null;
     try {
       if (!activeAccountId) activeAccountId = (await AccountManager.listAccounts()).defaultId;
@@ -1849,8 +1900,16 @@ class ChatService {
   /**
    * Convert raw SDK/process errors into user-friendly messages.
    */
-  _humanizeError(raw) {
+  _humanizeError(raw, remote = null) {
     if (!raw) return 'An unknown error occurred.';
+
+    // Remote (SSH) session: ssh's own failures (exit 255) and a missing
+    // remote `claude` (127) are about the host, and say so.
+    if (remote) {
+      const lib = sshClaudeSpawnLib();
+      const kind = lib.classifyRemoteChatFailure(raw, remote.stderr || '');
+      if (kind) return lib.describeSshFailure(kind, remote.host);
+    }
 
     // ENOENT — distinguish between spawn failures and file-not-found
     if (raw.includes('ENOENT')) {
@@ -2343,6 +2402,10 @@ class ChatService {
    * @returns {Promise<{ output: string, success: boolean, ... }>}
    */
   async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
+    // A workflow step runs the local CLI. A remote project's path does not
+    // exist here, and falling back to the home directory would run the step
+    // somewhere the user never asked for.
+    if (isRemotePath(cwd)) throw new Error('Remote projects are not supported by workflow Claude steps yet');
     const sdk = await loadSDK();
     const runtime = resolveRuntime();
 
@@ -2763,6 +2826,7 @@ class ChatService {
    * @returns {Promise<{suggestions: Array, claudeMdExists: boolean}>}
    */
   async analyzeSessionForClaudeMd(messages, projectPath) {
+    if (isRemotePath(projectPath)) return { suggestions: [], claudeMdExists: false };
     // Read existing CLAUDE.md (or empty string if not found)
     const claudeMdPath = require('path').join(projectPath, 'CLAUDE.md');
     let existingContent = '';
@@ -2891,6 +2955,9 @@ If there are no new useful discoveries, return exactly: []`;
    */
   applyClaudeMdSections(projectPath, sections) {
     if (!sections || sections.length === 0) return { success: true };
+    // A remote project's CLAUDE.md is on its host; joining its URI onto a
+    // local path would write somewhere on this machine instead.
+    if (isRemotePath(projectPath)) return { success: false, error: 'The CLAUDE.md of a remote project cannot be edited from here yet' };
 
     const fs = require('fs');
     const path = require('path');

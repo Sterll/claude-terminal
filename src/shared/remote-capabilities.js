@@ -33,10 +33,13 @@ const CAPABILITIES = Object.freeze({
   accountBinding: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.accountBinding' }),
   // Cloud upload zips a local folder.
   cloudUpload: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.cloudUpload' }),
-  // Not ported yet. Without this row a remote chat would start the local CLI
-  // in the home directory, which is acting on local data rather than failing
-  // closed. The chat slice removes it. (Terminals run over ssh and have no row.)
-  chat: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.notYet' }),
+  // A session is re-filed by moving its transcript between two local
+  // directories; a remote transcript lives on its host. (Terminals and chat
+  // run over ssh and have no row.)
+  sessionMove: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.sessionMove' }),
+  // A local path handed to the remote CLI names nothing on the host. Files
+  // within the inline limits travel as content instead.
+  pathAttachment: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.pathAttachment' }),
 });
 
 /** True when `project` is a remote project (has a `remote` block or a remote URI path). */

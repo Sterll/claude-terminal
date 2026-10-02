@@ -39,16 +39,18 @@ describe('remote-capabilities', () => {
     }
   });
 
-  test('the project-level actions of this slice refuse a remote project and leave a local one alone', () => {
-    for (const feature of ['openInExplorer', 'openInEditor', 'accountBinding', 'cloudUpload', 'chat']) {
+  test('the project-level actions refuse a remote project and leave a local one alone', () => {
+    for (const feature of ['openInExplorer', 'openInEditor', 'accountBinding', 'cloudUpload', 'sessionMove', 'pathAttachment']) {
       expect(can(remote, feature).ok).toBe(false);
       expect(can(local, feature)).toEqual({ ok: true });
     }
   });
 
-  test('terminals run over ssh, so they are no longer refused', () => {
+  test('terminals and chat run over ssh, so they are no longer refused', () => {
     expect(CAPABILITIES.terminals).toBeUndefined();
     expect(can(remote, 'terminals')).toEqual({ ok: true });
+    expect(CAPABILITIES.chat).toBeUndefined();
+    expect(can(remote, 'chat')).toEqual({ ok: true });
   });
 
   describe('sameProject (tab ownership)', () => {

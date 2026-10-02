@@ -4501,7 +4501,18 @@
       "respawnFailed": "Tidak dapat membuka kembali terminal: {error}",
       "reconnected": "Tersambung kembali ke {host}",
       "claudeMissing": "Claude Code tidak ditemukan di {host}. Instal di sana, atau atur path-nya di profil host.",
-      "historyOnHost": "Riwayat percakapan proyek ini ada di {host}. Riwayat itu belum ditampilkan di sini."
+      "historyOnHost": "Riwayat percakapan proyek ini ada di {host}, yang tidak terhubung. Hubungkan ke host untuk menampilkannya."
+    },
+    "chat": {
+      "localToolsNote": "Berjalan di host. Alat MCP aplikasi ini dan Claude in Chrome tidak tersedia di sini.",
+      "localToolsTooltip": "Server MCP aplikasi ini dan server Claude in Chrome adalah program lokal yang tidak dapat dijalankan oleh Claude Code di host. Server MCP yang dikonfigurasi di host itu sendiri tetap berfungsi.",
+      "lost": "Koneksi ke {host} terputus ({state}). Percakapan akan dilanjutkan begitu host kembali.",
+      "lostManual": "Koneksi ke {host} terputus: {state}. Perbaiki dari lencana host, lalu hubungkan kembali.",
+      "gaveUp": "Koneksi ke {host} terus terputus. Hubungkan kembali setelah jaringan stabil.",
+      "resuming": "Melanjutkan percakapan di {host}...",
+      "resumed": "Terhubung kembali ke {host}. Melanjutkan percakapan.",
+      "resent": "Terhubung ke {host}. Mengirim pesan Anda.",
+      "pathAttachmentRefused": "{name} tidak dapat dilampirkan ke chat jarak jauh: path lokal tidak berarti apa pun di host. File yang cukup kecil dikirim langsung."
     },
     "openRemoteProject": "Buka proyek jarak jauh",
     "modalTitle": "Buka Proyek Jarak Jauh",
@@ -4552,11 +4563,12 @@
       "unknown": "kesalahan tidak dikenal"
     },
     "disabled": {
-      "notYet": "Belum tersedia untuk proyek jarak jauh.",
       "openInExplorer": "Proyek jarak jauh tidak memiliki folder lokal untuk ditampilkan.",
       "openInEditor": "Membuka proyek jarak jauh di editor eksternal belum didukung.",
       "accountBinding": "Proyek jarak jauh memakai login Claude milik host jarak jauh.",
-      "cloudUpload": "Unggah cloud mengompres folder lokal, jadi proyek jarak jauh tidak dapat diunggah."
+      "cloudUpload": "Unggah cloud mengompres folder lokal, jadi proyek jarak jauh tidak dapat diunggah.",
+      "sessionMove": "Sesi proyek jarak jauh berada di host-nya dan tidak dapat dipindahkan ke proyek lain.",
+      "pathAttachment": "Path file lokal tidak berarti apa pun bagi chat jarak jauh. File yang cukup kecil dikirim langsung."
     },
     "menu": {
       "section": "Host jarak jauh: {host}",

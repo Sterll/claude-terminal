@@ -496,7 +496,8 @@ While a remote tab is open it holds its host (`holdHost`), so the renderer's
 **Tabs at startup.** The session restore still skips remote projects at boot,
 since nothing may connect then. Their saved tabs are held in memory (and kept
 in the saved file meanwhile) and restored when the user opens the project,
-which is also when its host connects. Chat tabs wait for the remote chat.
+which is also when its host connects. Chat tabs come back the same way and
+resume their conversation.
 
 **Events.** A remote tab's CLI never reaches the local hook server, so with
 hooks on the scraping provider also runs, for remote tabs only; local tabs keep
@@ -524,9 +525,9 @@ on the path so local behaviour does not move by a byte. A URI never equals a
 local path, so a local `/home/u/app` and a remote project at `/home/u/app`
 never share tabs either way.
 
-The sessions panel and the sessions modal of a remote project say that its
-history lives on the host, rather than showing an empty list, until the chat
-slice reads it over the channel (5.3).
+The sessions panel and the sessions modal of a remote project list its
+history from the host (5.3); while the host is not connected they say that the
+history lives there, rather than showing an empty list.
 
 Password-only hosts: terminals work, because node-pty gives ssh a TTY and
 OpenSSH prompts in the tab itself. Nothing is stored. The channel and chat run
@@ -574,9 +575,13 @@ sessions; the stdio `claude-terminal` server registered in the local
 
 **Remote CLI checks** use the handshake capabilities: `claude` not found
 (remote exit 127, or nothing resolved) gives "Claude Code is not installed on
-<host>" with the install command; a version older than the bundled
-`getSdkCliVersion()` minor gives a warning (not a block) naming both versions.
-`profile.remoteClaudePath` overrides resolution.
+<host>" with the install command; a version older than the bundled CLI gives a
+warning (not a block) naming both versions. The bundled version is the SDK
+manifest's `claudeCodeVersion` (the CLI's own 2.1.N numbering), not
+`getSdkCliVersion()`, which is the platform package's 0.3.N numbering a remote
+`claude --version` never prints; the comparison is on the full version, since
+CLI releases move the patch number. `profile.remoteClaudePath` overrides
+resolution.
 
 **Errors and reconnect.** `_humanizeError` gains the ssh cases, classified by
 `remote-shell.classifySshFailure(exitCode, stderr)`: `auth` ("Permission
@@ -587,6 +592,34 @@ closed or reset, broken pipe), `not-installed` (127). A `network` failure
 mid-session emits `chat-error` with `errorType: 'connection_lost'`; ChatView
 shows a reconnect banner and, when the host is back, restarts the session with
 `resume: <CLI session id>` through the existing resume path.
+
+Implementation notes (slice 4):
+
+- Only ssh's own exit (255) and the remote shell's "command not found" (127)
+  are classified as ssh failures. Any other exit is the CLI's, and its stderr
+  can mention a refused or reset connection to the API, which is not the ssh
+  link; a broken pipe before any exit code uses ssh's diagnostics on stderr
+  only. `auth` and host key failures are reported as sentences but not as
+  `connection_lost`: nothing is waited for, the badge says what to do.
+- The hook's script also exports the login `PATH` the handshake captured on
+  the host (`withPath`), so `claude` and the tools it runs resolve as in the
+  user's terminal. That is the host's PATH, not the local one: the env
+  allowlist stays `CLAUDE_CODE_ENTRYPOINT` and the `CLAUDE_AGENT_SDK_*`
+  switches the SDK sets, checked again against a deny list.
+- `chat-start` resolves the URI in main (`prepareRemoteChat`): configured
+  profile, registered project, a project id that owns the URI, a connected
+  host (it connects one that is idle), a `claude` on it. It drops any
+  `accountId` and any `remote` field the renderer sent; a local start is
+  handed to `startSession` unchanged. A host that cannot be reached comes back
+  as `errorType: 'connection_lost'`, and the tab sends its opening turn once
+  the host is connected.
+- Automatic resumes wait 1.5 s after the host reads connected (the channel may
+  not have noticed a drop yet) and stop after three within a minute; the
+  banner's Reconnect button always works and asks for the host first.
+- Workflow `claude` steps (`runSinglePrompt` and `claude.node`) refuse a remote
+  project instead of falling back to the home directory, and the CLAUDE.md
+  suggestions a closed chat offers are skipped for one: both read and write
+  local files.
 
 ### 5.3 Session history
 
@@ -605,16 +638,28 @@ does).
   (`stat`, `readdir`, `readRange(file, start, length)`, `readLines`). The local
   implementation is a thin wrapper over the current `fs` calls; the remote one is
   `remoteFs`. Parsers are unchanged.
-- Session listing is one request: a script that prints, for every `*.jsonl` in
-  the directory, its size, mtime and first N lines, capped. Cached by
-  `(profileId, remote.path, directory mtime)`.
+- Session listing is one request (`remoteFs.listSessionFiles`): for the 150
+  newest `*.jsonl` by `ls -t` (the listing shows fifty), the size, the mtime,
+  the first 30 lines capped at 64 KB, and the lines of the last 128 KB that a
+  title-and-last-activity scan looks at: every title line, and the last three
+  timestamped ones, numbered by awk. The same parsers then run on that. A head
+  cut by its cap drops its partial last line, so a transcript whose first
+  lines are huge can list without its first prompt; nothing else differs.
+  Cached by `(profileId, remote.path, directory mtime)`, and for 15 s at most,
+  because an append to a transcript does not move the directory mtime.
 - History loading stays tail-first: `readRange` on the end of the file
   (`tail -c` / `dd skip=`), so a 50 MB transcript costs only the tail.
 - Delete runs `rm --` remotely. Export reads remotely and writes locally.
   Move-session, orphaned worktree discovery and workflow session cleanup are
   disabled for remote projects.
 - While disconnected, the sessions modal, Files session picker and Timeline show
-  "History lives on <host>, not connected" rather than an empty list.
+  "History lives on <host>, not connected" rather than an empty list. The
+  marker comes from `claude-sessions` called with `{ withStatus: true }`
+  (preload `claude.sessionListing`), which answers `{ sessions, disconnected,
+  host }`; without it, callers keep receiving the bare array (empty for a
+  disconnected host). The other readers fail with `disconnected: true`.
+- A session id names a file on the host, so it is checked against
+  `[A-Za-z0-9][A-Za-z0-9_.-]*` (no `..`) and never quoted into a path as-is.
 
 ### 5.4 Git
 
@@ -841,9 +886,9 @@ reason, and nothing fails silently.
 | Account binding | The remote host has its own `claude /login` | Account picker disabled with tooltip |
 | Cloud zip upload | Zips a local folder | Disabled; the git-based upload works |
 | Open in Explorer; Open in editor (except VS Code family over Remote-SSH) | Local OS integrations | Disabled with tooltip |
-| Session move, orphan worktree discovery, workflow session cleanup | Local transcript moves | Disabled |
-| Path attachments in chat | A local path means nothing to the remote CLI | Inline within limits, otherwise refused with a toast |
-| `@errors`, `@selection` mentions | Local-only sources | Filtered by the existing `LOCAL_ONLY_MENTIONS`, keyed on `isCloud || remote` |
+| Session move, orphan worktree discovery, workflow session cleanup | Local transcript moves | Disabled: the `sessionMove` row refuses with a toast, main refuses too, and remote projects are not offered as move targets |
+| Path attachments in chat | A local path means nothing to the remote CLI | Inline within limits, otherwise refused with a toast (`pathAttachment` row), local paths dropped from the explorer included |
+| `@errors`, `@selection` mentions | Local-only sources | Filtered for remote chats (cloud chats keep their own, longer `LOCAL_ONLY_MENTIONS` list) |
 | Copy/drag between local and remote trees | Needs a transfer feature | Refused with a toast |
 | Overview multi-root mixing local and remote | A dead host would stall the tree | Remote roots shown collapsed with a connect affordance |
 | Project-scoped MCP config panel, remote SQLite | Read local files | Skipped, with a note |

@@ -127,6 +127,11 @@ module.exports = {
       || resolveProjectPath(config.projectId || '', vars)
       || varCtx.project
       || '';
+    // A remote (SSH) project's URI never exists locally, so the fallback below
+    // would quietly run the step in the home directory instead.
+    if (require('../../shared/remote-path').isRemotePath(cwd)) {
+      throw new Error('Remote projects are not supported by workflow nodes yet');
+    }
     if (!cwd || !fs.existsSync(cwd)) {
       console.warn(`[claude.node] cwd invalid or missing: "${cwd}", falling back to ${home}`);
       cwd = home;

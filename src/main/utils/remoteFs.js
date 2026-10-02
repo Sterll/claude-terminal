@@ -137,6 +137,193 @@ function randomSuffix() {
   return crypto.randomBytes(6).toString('hex');
 }
 
+// ── Line walks and session listings (design/remote-ssh.md section 5.3) ──────
+
+/** Forward line walks read this much per round trip. */
+const READ_LINES_CHUNK = 1024 * 1024;
+
+/** A line as `readline` (crlfDelay: Infinity) would hand it over: no `\r` before the break. */
+function decodeLine(buf) {
+  const end = buf.length > 0 && buf[buf.length - 1] === 0x0D ? buf.length - 1 : buf.length;
+  return buf.toString('utf8', 0, end);
+}
+
+/**
+ * Walk a file's lines from the start through any `readRange(p, start, length)`,
+ * one chunk per call, the way `readline` walks a local stream: a line that
+ * spans two chunks is joined before it is decoded (so a multi-byte character
+ * is never cut), an empty line is handed over as '', and the last line is
+ * handed over even without a final newline. `onLine` returning true stops the
+ * walk.
+ *
+ * @param {(p: string, start: number, length: number) => Promise<Buffer>} readRange
+ * @param {string} p
+ * @param {(line: string) => boolean|void} onLine
+ * @param {{chunkBytes?: number}} [options]
+ */
+async function readLinesVia(readRange, p, onLine, { chunkBytes = READ_LINES_CHUNK } = {}) {
+  const size = Math.max(1, Math.floor(chunkBytes));
+  let position = 0;
+  let pending = [];
+  let pendingLen = 0;
+  for (;;) {
+    const chunk = await readRange(p, position, size);
+    if (!chunk || chunk.length === 0) break;
+    position += chunk.length;
+    let start = 0;
+    let idx = chunk.indexOf(0x0A, start);
+    while (idx !== -1) {
+      let line = chunk.subarray(start, idx);
+      if (pendingLen > 0) {
+        line = Buffer.concat([...pending, line], pendingLen + line.length);
+        pending = [];
+        pendingLen = 0;
+      }
+      if (onLine(decodeLine(line)) === true) return;
+      start = idx + 1;
+      idx = chunk.indexOf(0x0A, start);
+    }
+    if (start < chunk.length) {
+      pending.push(chunk.subarray(start));
+      pendingLen += chunk.length - start;
+    }
+    if (chunk.length < size) break;
+  }
+  if (pendingLen > 0) onLine(decodeLine(Buffer.concat(pending, pendingLen)));
+}
+
+/**
+ * What one session listing request collects per transcript.
+ *
+ * - `maxFiles` newest `*.jsonl` by mtime (`ls -t`). A listing shows the fifty
+ *   most recent sessions, so the head of the mtime order is all it can use.
+ * - `headLines` / `headBytes`: the start of each file, where the first prompt,
+ *   the session id and the sidechain flag are. A head cut by the byte cap is
+ *   reported so the reader drops its partial last line.
+ * - `tailBytes`: the end of each file, filtered on the host. Every line
+ *   containing one of `tailAll` (the title lines) and the last `tailLastCount`
+ *   lines containing `tailLast` (the timestamped ones) are sent with their
+ *   line number, which is all a title-and-last-activity scan of the tail looks
+ *   at. The first line of a tail that does not start at the beginning of the
+ *   file is cut in half and is skipped, as the local tail read skips it.
+ * - `indexFile` / `indexBytes`: the CLI's sessions-index.json, when present.
+ */
+const SESSION_LISTING = Object.freeze({
+  maxFiles: 150,
+  headLines: 30,
+  headBytes: 64 * 1024,
+  tailBytes: 128 * 1024,
+  tailAll: Object.freeze(['-title"']),
+  tailLast: '"timestamp"',
+  tailLastCount: 3,
+  indexFile: 'sessions-index.json',
+  indexBytes: 2 * 1024 * 1024,
+  timeoutMs: 30000,
+  maxBuffer: 16 * 1024 * 1024,
+});
+
+/** A fixed string for an awk `index()` call, as an awk -v assignment. */
+function awkVar(name, value) {
+  if (typeof value !== 'string' || !value || value.includes('\\')) throw fsError('EINVAL', 'Listing patterns must be non-empty and free of backslashes');
+  return `-v ${name}=${q(value)}`;
+}
+
+function intOption(value, name) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 1) throw fsError('EINVAL', `Invalid listing option: ${name}`);
+  return n;
+}
+
+/** The one-line script behind listSessionFiles. */
+function sessionListingScript(dir, opts) {
+  const maxFiles = intOption(opts.maxFiles, 'maxFiles');
+  const headLines = intOption(opts.headLines, 'headLines');
+  const headBytes = intOption(opts.headBytes, 'headBytes');
+  const tailBytes = intOption(opts.tailBytes, 'tailBytes');
+  const lastCount = intOption(opts.tailLastCount, 'tailLastCount');
+  const indexBytes = intOption(opts.indexBytes, 'indexBytes');
+  const tailAll = Array.isArray(opts.tailAll) ? opts.tailAll : [];
+  const vars = [awkVar('pl', opts.tailLast), ...tailAll.map((p, i) => awkVar(`pa${i}`, p))];
+  const allTest = tailAll.length ? tailAll.map((_, i) => `index($0,pa${i})>0`).join('||') : '0';
+  const awk = [
+    'NR==1&&sk==1{next}',
+    `${allTest}{print NR "\\t" $0; next}`,
+    `index($0,pl)>0{c++; r[c%${lastCount}]=NR "\\t" $0}`,
+    'END{for(i in r) print r[i]}',
+  ].join(' ');
+  if (opts.indexFile && !/^[A-Za-z0-9._-]+$/.test(opts.indexFile)) throw fsError('EINVAL', 'Invalid index file name');
+  const index = opts.indexFile
+    ? `if [ -f ${q('./' + opts.indexFile)} ]; then head -c ${indexBytes} ${q('./' + opts.indexFile)} 2>/dev/null | tr -d '\\000'; fi`
+    : ':';
+  const perFile = [
+    '[ -f "./$f" ] || continue',
+    'sz=$(( $(wc -c <"./$f") ))',
+    'set -- $(ct_stat "./$f" 2>/dev/null)',
+    'mt=$2',
+    '[ -n "$mt" ] || mt=-',
+    "printf '%s\\0%s %s\\0' \"$f\" \"$sz\" \"$mt\"",
+    `head -n ${headLines} "./$f" 2>/dev/null | tr -d '\\000' | head -c ${headBytes}`,
+    "printf '\\0'",
+    `if [ "$sz" -gt ${tailBytes} ]; then sk=1; else sk=0; fi`,
+    `tail -c ${tailBytes} "./$f" 2>/dev/null | tr -d '\\000' | awk -v sk="$sk" ${vars.join(' ')} ${q(awk)}`,
+    "printf '\\0'",
+  ].join('; ');
+  return [
+    cdOrFail(dir),
+    "s=$(ct_stat . 2>/dev/null) || s='- -'",
+    "printf '%s\\0' \"$s\"",
+    index,
+    "printf '\\0'",
+    `ls -t 2>/dev/null | grep -e '\\.jsonl$' | head -n ${maxFiles} | while IFS= read -r f; do ${perFile}; done`,
+    ':',
+  ].join('; ');
+}
+
+/**
+ * Parse the listing output: `<dir stat>\0<index>\0` then, per file,
+ * `<name>\0<size> <mtime>\0<head>\0<tail hints>\0`.
+ *
+ * @param {Buffer} buffer
+ * @param {object} [opts]
+ * @returns {{dirMtimeMs: number|null, index: string|null, files: Array<{name: string, size: number|null, mtimeMs: number|null, head: string, headTruncated: boolean, hints: Array<{n: number, text: string}>}>}}
+ */
+function parseSessionListing(buffer, opts = SESSION_LISTING) {
+  const parts = [];
+  let start = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    if (buffer[i] === 0) {
+      parts.push(buffer.subarray(start, i));
+      start = i + 1;
+    }
+  }
+  const text = (b) => (b ? b.toString('utf8') : '');
+  const [dirStat] = parseStatLines(text(parts[0]));
+  const indexText = parts.length > 1 ? text(parts[1]) : '';
+  const headCap = opts.headBytes || SESSION_LISTING.headBytes;
+  const files = [];
+  for (let i = 2; i + 3 < parts.length; i += 4) {
+    const name = text(parts[i]);
+    if (!name) continue;
+    const [{ size = null, mtimeMs = null } = {}] = parseStatLines(text(parts[i + 1]));
+    const headBuf = parts[i + 2];
+    const hints = [];
+    for (const raw of text(parts[i + 3]).split('\n')) {
+      const tab = raw.indexOf('\t');
+      if (tab <= 0) continue;
+      const n = Number(raw.slice(0, tab));
+      if (!Number.isInteger(n)) continue;
+      hints.push({ n, text: raw.slice(tab + 1).replace(/\r$/, '') });
+    }
+    hints.sort((a, b) => a.n - b.n);
+    files.push({ name, size, mtimeMs, head: text(headBuf), headTruncated: headBuf.length >= headCap, hints });
+  }
+  return {
+    dirMtimeMs: dirStat ? dirStat.mtimeMs : null,
+    index: indexText || null,
+    files,
+  };
+}
+
 /**
  * @param {object} runner
  * @param {(script: string, opts?: object) => Promise<object>} runner.exec      channel request
@@ -241,6 +428,24 @@ function createRemoteFs(runner) {
     const script = `f=${q(p)}; [ -e "$f" ] || exit 2; [ -d "$f" ] && exit 4; tail -c +${from + 1} "$f" | head -c ${len}`;
     const res = unwrap(await exec(script, { timeoutMs, maxBuffer: len + 64 }), 'read');
     return Buffer.from(res.stdout);
+  }
+
+  /** Walk a file's lines forward, in chunks of `chunkBytes` (see readLinesVia). */
+  function readLines(p, onLine, options) {
+    assertAbsolute(p);
+    return readLinesVia(readRange, p, onLine, options);
+  }
+
+  /**
+   * One request describing every transcript of a sessions directory: what a
+   * session listing needs from each file without reading any of them whole.
+   * See SESSION_LISTING for the shape; a missing directory throws ENOENT.
+   */
+  async function listSessionFiles(dir, options = {}) {
+    assertAbsolute(dir);
+    const opts = { ...SESSION_LISTING, ...options };
+    const res = unwrap(await exec(sessionListingScript(dir, opts), { timeoutMs: opts.timeoutMs, maxBuffer: opts.maxBuffer }), 'session listing');
+    return parseSessionListing(res.stdout, opts);
   }
 
   /**
@@ -348,8 +553,8 @@ function createRemoteFs(runner) {
   }
 
   return {
-    stat, exists, readdir, listDirectories, realpathDir, readFile, readRange,
-    writeFile, mkdir, rm, rename, copy, listFiles, grep,
+    stat, exists, readdir, listDirectories, realpathDir, readFile, readRange, readLines,
+    listSessionFiles, writeFile, mkdir, rm, rename, copy, listFiles, grep,
   };
 }
 
@@ -357,5 +562,9 @@ module.exports = {
   createRemoteFs,
   isBlockedRemotePath,
   parseListing,
+  readLinesVia,
+  sessionListingScript,
+  parseSessionListing,
+  SESSION_LISTING,
   PUT_LIMIT,
 };

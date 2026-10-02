@@ -24,6 +24,9 @@ const {
   linkedWorktreePaths,
   listProjectSessionDirs,
   invalidateSessionDirs,
+  remoteClaudeRoot,
+  getRemoteSessionsDir,
+  listRemoteSessionDirs,
 } = require('../../src/shared/session-dirs');
 
 const REPO = path.join(TMP_HOME, 'repo');
@@ -158,5 +161,34 @@ describe('listProjectSessionDirs', () => {
     expect(listProjectSessionDirs(plain)).toEqual([
       { dir: getProjectSessionsDir(plain), cwd: plain, worktree: null, missing: false }
     ]);
+  });
+});
+
+// A remote (SSH) project's transcripts are on its host: the directory comes
+// from the handshake capabilities, with no file-system walk and no worktree
+// discovery (design/remote-ssh.md section 5.3).
+describe('remote session directories', () => {
+  test('CLAUDE_CONFIG_DIR on the host wins over the home directory', () => {
+    expect(remoteClaudeRoot({ home: '/home/y', claudeConfigDir: '/srv/claude/' })).toBe('/srv/claude');
+    expect(remoteClaudeRoot({ home: '/home/y/', claudeConfigDir: '' })).toBe('/home/y/.claude');
+  });
+
+  test('an unknown or relative home gives no directory rather than a guess', () => {
+    expect(remoteClaudeRoot(null)).toBeNull();
+    expect(remoteClaudeRoot({ home: 'relative', claudeConfigDir: '~/.claude' })).toBeNull();
+    expect(getRemoteSessionsDir('/home/y/api', null)).toBeNull();
+    expect(getRemoteSessionsDir('relative/api', { home: '/home/y' })).toBeNull();
+  });
+
+  test('the remote path is encoded the way the CLI encodes it, joined POSIX-style', () => {
+    expect(getRemoteSessionsDir('/home/y/my api', { home: '/home/y' })).toBe('/home/y/.claude/projects/-home-y-my-api');
+  });
+
+  test('one directory, resumed at the project URI, and none when the home is unknown', () => {
+    const uri = 'ssh-remote://abcd1234/home/y/api';
+    expect(listRemoteSessionDirs(uri, '/home/y/api', { home: '/home/y' })).toEqual([
+      { dir: '/home/y/.claude/projects/-home-y-api', cwd: uri, worktree: null, missing: false },
+    ]);
+    expect(listRemoteSessionDirs(uri, '/home/y/api', {})).toEqual([]);
   });
 });

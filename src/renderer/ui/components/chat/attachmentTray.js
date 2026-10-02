@@ -26,6 +26,7 @@ const {
   MAX_IMAGE_BYTES,
   MAX_PDF_BYTES,
 } = require('../../../utils/attachments');
+const { can: remoteCan } = require('../../../../shared/remote-capabilities');
 
 /**
  * @param {object} deps
@@ -194,8 +195,21 @@ function createAttachmentTray({
     reader.readAsText(file);
   }
 
+  /**
+   * A remote (SSH) chat's CLI runs on its host, where a local path names
+   * nothing: a file that cannot travel inline is refused out loud instead.
+   * Answers false for a local project, which goes on exactly as before.
+   */
+  function refusePathForRemote(name) {
+    const cap = remoteCan(getProject(), 'pathAttachment');
+    if (cap.ok) return false;
+    attachmentToast(t('ssh.chat.pathAttachmentRefused', { name }));
+    return true;
+  }
+
   /** Hand the agent a path to read rather than the bytes themselves. */
   function addPathAttachment(file) {
+    if (refusePathForRemote(file.name)) return;
     onAttachmentChip(file.name, {
       kind: 'path',
       name: file.name,
@@ -262,6 +276,9 @@ function createAttachmentTray({
     const { fs, path } = window.electron_nodeModules;
     const parsed = parseDroppedPathsPayload(textData, { fs, path, projectRoot: getProject()?.path || '' });
     if (!parsed) return;
+    // Those paths are local ones, and a remote chat's CLI cannot read them
+    const dropped = [...parsed.files.map(f => f.path), ...parsed.missing, ...parsed.directories];
+    if (dropped.length && refusePathForRemote(String(dropped[0]).split(/[\\/]/).pop() || String(dropped[0]))) return;
 
     for (const missing of parsed.missing) {
       const Toast = require('../Toast');

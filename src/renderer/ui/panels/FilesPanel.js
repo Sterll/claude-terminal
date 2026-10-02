@@ -22,6 +22,8 @@ const FileViewer = require('../components/FileViewer');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { getOpenProjects } = require('../../state');
+const { isRemoteProject } = require('../../../shared/remote-capabilities');
+const { getProjectHost } = require('../../state/remoteHosts.state');
 
 const api = window.electron_api;
 
@@ -46,6 +48,7 @@ let _sessionId = null;
 let _sessionLabel = '';
 let _sessionFiles = null;   // Map<path, {additions, deletions, edits, hunks}>
 let _sessions = null;       // cached picker list
+let _sessionsHost = null;   // remote project whose host is not connected: where its history is
 let _loadingSession = false;
 let _modifiedOnly = false;
 let _selectedPath = null;
@@ -181,8 +184,21 @@ function getSessionChange(path) {
 
 async function _loadSessions() {
   if (_sessions) return _sessions;
+  _sessionsHost = null;
   try {
-    const list = await api.claude.sessions(_project.path) || [];
+    let list;
+    if (isRemoteProject(_project)) {
+      // Read on the host. A host that is not connected is said, not cached,
+      // so the next open of the picker tries again.
+      const listing = await api.claude.sessionListing(_project.path);
+      if (!listing || listing.disconnected) {
+        _sessionsHost = (getProjectHost(_project) || {}).hostLabel || (listing && listing.host) || t('ssh.unknownHost');
+        return [];
+      }
+      list = listing.sessions || [];
+    } else {
+      list = await api.claude.sessions(_project.path) || [];
+    }
     // The API already orders by real last activity; sorting again keeps the
     // menu right even if that ever changes upstream.
     _sessions = [...list].sort((a, b) => new Date(b.modified || 0) - new Date(a.modified || 0));
@@ -327,6 +343,9 @@ function _wireSessionPicker() {
       </button>`,
       '<div class="files-picker-divider"></div>',
     ];
+    if (_sessionsHost) {
+      items.push(`<div class="files-picker-loading">${escapeHtml(t('ssh.terminal.historyOnHost', { host: _sessionsHost }))}</div>`);
+    }
     for (const s of sessions) {
       const text = _sessionText(s);
       items.push(`<button class="files-picker-item${_sessionId === s.sessionId ? ' active' : ''}" data-sid="${escapeHtml(s.sessionId)}" role="menuitem" title="${escapeHtml(text)}">

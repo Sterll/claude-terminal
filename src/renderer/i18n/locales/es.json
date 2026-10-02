@@ -4501,7 +4501,18 @@
       "respawnFailed": "No se pudo volver a abrir el terminal: {error}",
       "reconnected": "Reconectado a {host}",
       "claudeMissing": "No se encontró Claude Code en {host}. Instálalo allí o indica su ruta en el perfil del host.",
-      "historyOnHost": "El historial de conversaciones de este proyecto está en {host}. Todavía no se muestra aquí."
+      "historyOnHost": "El historial de conversaciones de este proyecto está en {host}, que no está conectado. Conéctate al host para verlo."
+    },
+    "chat": {
+      "localToolsNote": "Se ejecuta en el host. Las herramientas MCP de la aplicación y Claude in Chrome no están disponibles aquí.",
+      "localToolsTooltip": "El servidor MCP de la aplicación y el de Claude in Chrome son programas locales que Claude Code no puede iniciar en el host. Los servidores MCP configurados en el propio host siguen funcionando.",
+      "lost": "Conexión con {host} perdida ({state}). La conversación se reanudará en cuanto vuelva el host.",
+      "lostManual": "Conexión con {host} perdida: {state}. Corrígelo desde la insignia del host y vuelve a conectar.",
+      "gaveUp": "La conexión con {host} se corta una y otra vez. Vuelve a conectar cuando la red sea estable.",
+      "resuming": "Reanudando la conversación en {host}...",
+      "resumed": "Conectado de nuevo a {host}. Reanudando la conversación.",
+      "resent": "Conectado a {host}. Enviando tu mensaje.",
+      "pathAttachmentRefused": "{name} no se puede adjuntar a un chat remoto: una ruta local no significa nada en el host. Los archivos lo bastante pequeños se envían directamente."
     },
     "openRemoteProject": "Abrir proyecto remoto",
     "modalTitle": "Abrir proyecto remoto",
@@ -4552,11 +4563,12 @@
       "unknown": "error desconocido"
     },
     "disabled": {
-      "notYet": "Aún no disponible para proyectos remotos.",
       "openInExplorer": "Un proyecto remoto no tiene una carpeta local que mostrar.",
       "openInEditor": "Abrir un proyecto remoto en un editor externo aún no es compatible.",
       "accountBinding": "Un proyecto remoto usa el inicio de sesión de Claude del host remoto.",
-      "cloudUpload": "La subida a la nube comprime una carpeta local, así que los proyectos remotos no se pueden subir."
+      "cloudUpload": "La subida a la nube comprime una carpeta local, así que los proyectos remotos no se pueden subir.",
+      "sessionMove": "Las sesiones de un proyecto remoto están en su host y no se pueden mover a otro proyecto.",
+      "pathAttachment": "Una ruta de archivo local no significa nada para un chat remoto. Los archivos lo bastante pequeños se envían directamente."
     },
     "menu": {
       "section": "Host remoto: {host}",

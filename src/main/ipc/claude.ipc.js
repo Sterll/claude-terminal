@@ -14,7 +14,48 @@ const {
   encodeProjectPath,
   getProjectSessionsDir,
   listProjectSessionDirs,
+  getRemoteSessionsDir,
 } = require('../../shared/session-dirs');
+const { isRemotePath } = require('../../shared/remote-path');
+
+// Only read the first lines of a transcript for its listing entry
+const SESSION_INFO_MAX_LINES = 30;
+
+/** What a listing entry learns from the head of a transcript, before any line. */
+function newSessionInfo() {
+  return { firstPrompt: '', sessionId: '', isSidechain: false, gitBranch: '', messageCount: 0 };
+}
+
+/**
+ * Fold one head line into a listing entry. Shared by the local reader and the
+ * remote listing, so both read the head of a transcript the same way.
+ * @param {object} info - from newSessionInfo(), updated in place
+ * @param {string} line
+ */
+function applySessionInfoLine(info, line) {
+  try {
+    const obj = JSON.parse(line);
+
+    if (obj.type === 'user' || obj.type === 'assistant') {
+      info.messageCount++;
+    }
+
+    // Extract info from first user message
+    if (obj.type === 'user' && !info.firstPrompt) {
+      info.sessionId = obj.sessionId || '';
+      info.isSidechain = obj.isSidechain || false;
+      info.gitBranch = obj.gitBranch || '';
+
+      const content = obj.message?.content;
+      if (typeof content === 'string') {
+        info.firstPrompt = content;
+      } else if (Array.isArray(content)) {
+        const textBlock = content.find(b => b.type === 'text');
+        if (textBlock) info.firstPrompt = textBlock.text;
+      }
+    }
+  } catch (e) { /* skip malformed lines */ }
+}
 
 /**
  * Extract first user prompt from a .jsonl session file (reads only first few lines)
@@ -26,38 +67,13 @@ async function extractSessionInfo(filePath) {
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    let firstPrompt = '';
-    let sessionId = '';
-    let isSidechain = false;
-    let gitBranch = '';
-    let messageCount = 0;
+    const info = newSessionInfo();
     let linesRead = 0;
-    const maxLines = 30; // Only read first 30 lines for speed
+    const maxLines = SESSION_INFO_MAX_LINES; // Only read first 30 lines for speed
 
     rl.on('line', (line) => {
       linesRead++;
-      try {
-        const obj = JSON.parse(line);
-
-        if (obj.type === 'user' || obj.type === 'assistant') {
-          messageCount++;
-        }
-
-        // Extract info from first user message
-        if (obj.type === 'user' && !firstPrompt) {
-          sessionId = obj.sessionId || '';
-          isSidechain = obj.isSidechain || false;
-          gitBranch = obj.gitBranch || '';
-
-          const content = obj.message?.content;
-          if (typeof content === 'string') {
-            firstPrompt = content;
-          } else if (Array.isArray(content)) {
-            const textBlock = content.find(b => b.type === 'text');
-            if (textBlock) firstPrompt = textBlock.text;
-          }
-        }
-      } catch (e) { /* skip malformed lines */ }
+      applySessionInfoLine(info, line);
 
       if (linesRead >= maxLines) {
         rl.close();
@@ -66,6 +82,7 @@ async function extractSessionInfo(filePath) {
     });
 
     rl.on('close', () => {
+      const { firstPrompt, sessionId, isSidechain, gitBranch, messageCount } = info;
       resolve({ firstPrompt, sessionId, isSidechain, gitBranch, messageCount });
     });
 
@@ -104,29 +121,41 @@ async function readSessionTitle(filePath, size) {
     // The first line is cut in half unless the read started at the beginning
     if (start > 0) lines.shift();
 
-    let customTitle = '';
-    let aiTitle = '';
-    let lastActivity = '';
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      if (!line) continue;
-      const isTitleLine = line.indexOf('-title"') !== -1;
-      const mayHaveTimestamp = !lastActivity && line.indexOf('"timestamp"') !== -1;
-      if (!isTitleLine && !mayHaveTimestamp) continue; // cheap pre-filter
-      try {
-        const obj = JSON.parse(line);
-        if (!customTitle && obj.type === 'custom-title' && obj.customTitle) customTitle = obj.customTitle;
-        else if (!aiTitle && obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle;
-        if (!lastActivity && obj.timestamp) lastActivity = obj.timestamp;
-        if (customTitle && aiTitle && lastActivity) break;
-      } catch { /* skip malformed lines */ }
-    }
-    return { customTitle, aiTitle, lastActivity };
+    return scanTitleLines(lines);
   } catch {
     return { customTitle: '', aiTitle: '', lastActivity: '' };
   } finally {
     await handle?.close().catch(() => {});
   }
+}
+
+/**
+ * The title and last activity of a transcript, from the whole lines of its
+ * tail, walked from the end. Only lines naming a title or carrying a
+ * timestamp are ever parsed, which is what lets a remote host send just those
+ * (see SESSION_LISTING in remoteFs.js) and get the same answer.
+ * @param {string[]} lines - whole lines, in file order
+ * @returns {{customTitle: string, aiTitle: string, lastActivity: string}}
+ */
+function scanTitleLines(lines) {
+  let customTitle = '';
+  let aiTitle = '';
+  let lastActivity = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (!line) continue;
+    const isTitleLine = line.indexOf('-title"') !== -1;
+    const mayHaveTimestamp = !lastActivity && line.indexOf('"timestamp"') !== -1;
+    if (!isTitleLine && !mayHaveTimestamp) continue; // cheap pre-filter
+    try {
+      const obj = JSON.parse(line);
+      if (!customTitle && obj.type === 'custom-title' && obj.customTitle) customTitle = obj.customTitle;
+      else if (!aiTitle && obj.type === 'ai-title' && obj.aiTitle) aiTitle = obj.aiTitle;
+      if (!lastActivity && obj.timestamp) lastActivity = obj.timestamp;
+      if (customTitle && aiTitle && lastActivity) break;
+    } catch { /* skip malformed lines */ }
+  }
+  return { customTitle, aiTitle, lastActivity };
 }
 
 /**
@@ -171,7 +200,75 @@ async function _sessionsSignature(sources) {
   return stamps.join('|');
 }
 
+/**
+ * Enrich listing entries with the summaries of the CLI's sessions-index.json.
+ * Throws on unparseable JSON, which the callers treat as "no index".
+ * @param {Array<object>} sessions - updated in place
+ * @param {string} rawData
+ */
+function applySessionsIndex(sessions, rawData) {
+  const data = JSON.parse(rawData);
+  if (data.entries && Array.isArray(data.entries)) {
+    const indexMap = new Map(data.entries.map(e => [e.sessionId, e]));
+    for (const session of sessions) {
+      const indexed = indexMap.get(session.sessionId);
+      if (indexed) {
+        session.summary = indexed.summary || '';
+        if (indexed.messageCount) session.messageCount = indexed.messageCount;
+      }
+    }
+  }
+}
+
+/**
+ * From every listing entry of a project to the fifty the UI shows: one per
+ * session id, titled from the tail of its transcript, ordered by real last
+ * activity. `readTitle` is where the local and the remote listings differ.
+ *
+ * @param {Array<object>} entries - listing entries carrying `size` and `filePath`
+ * @param {(session: object) => Promise<{customTitle: string, aiTitle: string, lastActivity: string}>} readTitle
+ * @returns {Promise<Array<object>>} sessions without `size` and `filePath`
+ */
+async function rankSessions(entries, readTitle) {
+  // A session that ran in the project and then in a worktree can have left a
+  // transcript in both. They are two halves of one conversation and only the
+  // last one is live, so the most recent wins and the id appears once.
+  const byId = new Map();
+  for (const session of entries) {
+    const existing = byId.get(session.sessionId);
+    if (!existing || new Date(session.modified) > new Date(existing.modified)) {
+      byId.set(session.sessionId, session);
+    }
+  }
+  const allSessions = [...byId.values()];
+
+  // Pre-rank by mtime and read tails only for the head of that ranking: a
+  // 128 KB tail read per file is wasted on sessions that can't make the cut.
+  // The margin over 50 absorbs mtime drift (appends only push mtime forward,
+  // so a session with recent real activity is always near the top by mtime).
+  const candidates = allSessions
+    .sort((a, b) => new Date(b.modified) - new Date(a.modified))
+    .slice(0, 80);
+
+  await Promise.all(candidates.map(async (session) => {
+    const { customTitle, aiTitle, lastActivity } = await readTitle(session);
+    session.title = customTitle || aiTitle || '';
+    session.customTitle = customTitle;
+    session.aiTitle = aiTitle;
+    // Order and time labels follow the conversation, not file housekeeping
+    if (lastActivity) session.modified = lastActivity;
+  }));
+
+  // Final order by real last activity (most recent first), limit to 50
+  const top = candidates
+    .sort((a, b) => new Date(b.modified) - new Date(a.modified))
+    .slice(0, 50);
+
+  return top.map(({ size, filePath, ...session }) => session);
+}
+
 async function getClaudeSessions(projectPath) {
+  if (isRemotePath(projectPath)) return (await getRemoteSessionsListing(projectPath)).sessions;
   // The project's own directory plus one per worktree — a session that moved
   // into a worktree was re-filed there by the CLI, history and all.
   const sources = listProjectSessionDirs(projectPath);
@@ -239,57 +336,13 @@ async function getClaudeSessions(projectPath) {
       try {
         const indexPath = path.join(source.dir, 'sessions-index.json');
         const rawData = await fs.promises.readFile(indexPath, 'utf8');
-        const data = JSON.parse(rawData);
-        if (data.entries && Array.isArray(data.entries)) {
-          const indexMap = new Map(data.entries.map(e => [e.sessionId, e]));
-          for (const session of sessions) {
-            const indexed = indexMap.get(session.sessionId);
-            if (indexed) {
-              session.summary = indexed.summary || '';
-              if (indexed.messageCount) session.messageCount = indexed.messageCount;
-            }
-          }
-        }
+        applySessionsIndex(sessions, rawData);
       } catch { /* index may not exist or be stale, that's ok */ }
 
       return sessions;
     }));
 
-    // A session that ran in the project and then in a worktree can have left a
-    // transcript in both. They are two halves of one conversation and only the
-    // last one is live, so the most recent wins and the id appears once.
-    const byId = new Map();
-    for (const session of perSource.flat()) {
-      const existing = byId.get(session.sessionId);
-      if (!existing || new Date(session.modified) > new Date(existing.modified)) {
-        byId.set(session.sessionId, session);
-      }
-    }
-    const allSessions = [...byId.values()];
-
-    // Pre-rank by mtime and read tails only for the head of that ranking: a
-    // 128 KB tail read per file is wasted on sessions that can't make the cut.
-    // The margin over 50 absorbs mtime drift (appends only push mtime forward,
-    // so a session with recent real activity is always near the top by mtime).
-    const candidates = allSessions
-      .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-      .slice(0, 80);
-
-    await Promise.all(candidates.map(async (session) => {
-      const { customTitle, aiTitle, lastActivity } = await readSessionTitle(session.filePath, session.size);
-      session.title = customTitle || aiTitle || '';
-      session.customTitle = customTitle;
-      session.aiTitle = aiTitle;
-      // Order and time labels follow the conversation, not file housekeeping
-      if (lastActivity) session.modified = lastActivity;
-    }));
-
-    // Final order by real last activity (most recent first), limit to 50
-    const top = candidates
-      .sort((a, b) => new Date(b.modified) - new Date(a.modified))
-      .slice(0, 50);
-
-    const sessions = top.map(({ size, filePath, ...session }) => session);
+    const sessions = await rankSessions(perSource.flat(), (session) => readSessionTitle(session.filePath, session.size));
     _sessionsCache.set(projectPath, {
       at: Date.now(),
       signature: await _sessionsSignature(sources),
@@ -530,44 +583,60 @@ async function forEachLineFromEnd(filePath, onLine) {
   try {
     handle = await fs.promises.open(filePath, 'r');
     const { size } = await handle.stat();
-    let position = size;
-    // Head of an already-read block whose line starts further back, in file order
-    let pending = [];
-    let pendingLen = 0;
-
-    while (position > 0) {
-      const length = Math.min(REVERSE_BLOCK_BYTES, position);
-      position -= length;
+    await walkLinesFromEnd(size, async (position, length) => {
       const block = Buffer.alloc(length);
       await handle.read(block, 0, length, position);
-
-      let end = length; // exclusive end of the stretch not yet handed out
-      let idx = block.lastIndexOf(0x0A, end - 1);
-      while (idx !== -1) {
-        const tail = block.subarray(idx + 1, end);
-        let line = tail;
-        if (pendingLen > 0) {
-          line = Buffer.concat([tail, ...pending], tail.length + pendingLen);
-          pending = [];
-          pendingLen = 0;
-        }
-        if (line.length > 0 && onLine(line) === true) return;
-        end = idx;
-        idx = end > 0 ? block.lastIndexOf(0x0A, end - 1) : -1;
-      }
-      if (end > 0) {
-        pending.unshift(block.subarray(0, end));
-        pendingLen += end;
-      }
-    }
-
-    // Whatever is left once the start of the file is reached is its first line
-    if (pendingLen > 0) {
-      const line = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingLen);
-      if (line.length > 0) onLine(line);
-    }
+      return block;
+    }, onLine);
   } catch { /* an unreadable transcript reads as an empty one */ } finally {
     await handle?.close().catch(() => {});
+  }
+}
+
+/**
+ * The backwards walk itself, over any block reader: a local file handle, or a
+ * remote `readRange` that only ever asks the host for the stretch it needs.
+ *
+ * @param {number} size - Bytes in the file
+ * @param {(position: number, length: number) => Promise<Buffer>} readBlock
+ * @param {(line: Buffer) => boolean} onLine - Return true to stop the walk
+ * @returns {Promise<void>}
+ */
+async function walkLinesFromEnd(size, readBlock, onLine) {
+  let position = size;
+  // Head of an already-read block whose line starts further back, in file order
+  let pending = [];
+  let pendingLen = 0;
+
+  while (position > 0) {
+    const length = Math.min(REVERSE_BLOCK_BYTES, position);
+    position -= length;
+    const block = await readBlock(position, length);
+
+    let end = length; // exclusive end of the stretch not yet handed out
+    let idx = block.lastIndexOf(0x0A, end - 1);
+    while (idx !== -1) {
+      const tail = block.subarray(idx + 1, end);
+      let line = tail;
+      if (pendingLen > 0) {
+        line = Buffer.concat([tail, ...pending], tail.length + pendingLen);
+        pending = [];
+        pendingLen = 0;
+      }
+      if (line.length > 0 && onLine(line) === true) return;
+      end = idx;
+      idx = end > 0 ? block.lastIndexOf(0x0A, end - 1) : -1;
+    }
+    if (end > 0) {
+      pending.unshift(block.subarray(0, end));
+      pendingLen += end;
+    }
+  }
+
+  // Whatever is left once the start of the file is reached is its first line
+  if (pendingLen > 0) {
+    const line = pending.length === 1 ? pending[0] : Buffer.concat(pending, pendingLen);
+    if (line.length > 0) onLine(line);
   }
 }
 
@@ -622,11 +691,20 @@ function mayMeasureContext(line) {
  * @returns {Promise<{messages: Array, total: number|null, truncated: boolean, contextTokens: number}>}
  */
 async function loadHistoryTail(filePath, limit) {
+  return loadHistoryTailFrom((onLine) => forEachLineFromEnd(filePath, onLine), limit);
+}
+
+/**
+ * loadHistoryTail over any backwards line walk, local or remote.
+ * @param {(onLine: (line: Buffer) => boolean) => Promise<void>} walkFromEnd
+ * @param {number} limit
+ */
+async function loadHistoryTailFrom(walkFromEnd, limit) {
   const pages = []; // messages per line, newest line first
   let collected = 0;
   let contextTokens = 0;
 
-  await forEachLineFromEnd(filePath, (raw) => {
+  await walkFromEnd((raw) => {
     const wantMessages = collected <= limit;
     if (!wantMessages) {
       if (contextTokens > 0) return true;
@@ -699,18 +777,7 @@ async function loadHistoryTail(filePath, limit) {
  */
 function loadHistorySequential(filePath, limit, until) {
   return new Promise((resolve) => {
-    const messages = [];
-    // Keep some slack above `limit` so the tail can be realigned onto a user-turn
-    // boundary without re-reading the file.
-    const maxKept = limit ? limit * 2 : Infinity;
-    let total = 0;
-    let dropped = 0;
-    // Context occupancy at the last frame that measured it — a reply, or what a
-    // compaction left — for the chat's context gauge. A resumed conversation
-    // has no live session to ask until the user sends something, but the figure
-    // is already on disk. Tracked across every line rather than the returned
-    // window, so a trimmed replay still reports the real tail.
-    let contextTokens = 0;
+    const history = createSequentialHistory(limit, until);
     let done = false;
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -724,46 +791,82 @@ function loadHistorySequential(filePath, limit, until) {
 
     rl.on('line', (line) => {
       if (done) return;
-      try {
-        const obj = JSON.parse(line);
-
-        // Sidechain lines are a subagent's own window, not this conversation's.
-        const turnTokens = contextTokensFromMessage(obj);
-        if (turnTokens > 0) contextTokens = turnTokens;
-
-        for (const msg of collectLineMessages(obj)) {
-          total++;
-          messages.push(msg);
-          if (messages.length > maxKept) {
-            const excess = messages.length - limit;
-            messages.splice(0, excess);
-            dropped += excess;
-          }
-        }
-
-        // Fork point reached — everything after it is discarded by the fork anyway
-        if (until && obj.uuid === until) finish();
-      } catch { /* skip malformed lines */ }
+      if (history.onLine(line)) finish();
     });
 
-    rl.on('close', () => {
-      // Realign the tail onto a user turn so the replay never opens mid tool-run
-      // `dropped > 0` matters on its own: a trim leaves exactly `limit` entries, so a
-      // file ending right on a trim boundary would otherwise skip the realignment and
-      // open mid tool-run.
-      let window = messages;
-      if (limit && (messages.length > limit || dropped > 0)) {
-        let start = Math.max(0, messages.length - limit);
-        for (let i = start; i < messages.length; i++) {
-          if (messages[i].role === 'user') { start = i; break; }
-        }
-        dropped += start;
-        window = messages.slice(start);
-      }
-      resolve({ messages: window, total, truncated: dropped > 0, contextTokens });
-    });
+    rl.on('close', () => resolve(history.result()));
     rl.on('error', () => resolve({ messages: [], total: 0, truncated: false, contextTokens: 0 }));
   });
+}
+
+/**
+ * The forward history reader's state, fed one line at a time by whichever
+ * reader walks the file (a local stream, or remote chunks).
+ *
+ * @param {number} limit - Max messages to return (tail). 0 = no limit.
+ * @param {string|null} until - Stop after this message uuid
+ * @returns {{onLine: (line: string) => boolean, result: () => object}}
+ *   `onLine` answers true once the fork point is reached and nothing more is wanted
+ */
+function createSequentialHistory(limit, until) {
+  const messages = [];
+  // Keep some slack above `limit` so the tail can be realigned onto a user-turn
+  // boundary without re-reading the file.
+  const maxKept = limit ? limit * 2 : Infinity;
+  let total = 0;
+  let dropped = 0;
+  // Context occupancy at the last frame that measured it (a reply, or what a
+  // compaction left), for the chat's context gauge. A resumed conversation
+  // has no live session to ask until the user sends something, but the figure
+  // is already on disk. Tracked across every line rather than the returned
+  // window, so a trimmed replay still reports the real tail.
+  let contextTokens = 0;
+  let done = false;
+
+  function onLine(line) {
+    if (done) return true;
+    try {
+      const obj = JSON.parse(line);
+
+      // Sidechain lines are a subagent's own window, not this conversation's.
+      const turnTokens = contextTokensFromMessage(obj);
+      if (turnTokens > 0) contextTokens = turnTokens;
+
+      for (const msg of collectLineMessages(obj)) {
+        total++;
+        messages.push(msg);
+        if (messages.length > maxKept) {
+          const excess = messages.length - limit;
+          messages.splice(0, excess);
+          dropped += excess;
+        }
+      }
+
+      // Fork point reached: everything after it is discarded by the fork anyway
+      if (until && obj.uuid === until) done = true;
+    } catch { /* skip malformed lines */ }
+    return done;
+  }
+
+  function result() {
+    // Realign the tail onto a user turn so the replay never opens mid tool-run
+    // `dropped > 0` matters on its own: a trim leaves exactly `limit` entries, so a
+    // file ending right on a trim boundary would otherwise skip the realignment and
+    // open mid tool-run.
+    let window = messages;
+    let droppedTotal = dropped;
+    if (limit && (messages.length > limit || dropped > 0)) {
+      let start = Math.max(0, messages.length - limit);
+      for (let i = start; i < messages.length; i++) {
+        if (messages[i].role === 'user') { start = i; break; }
+      }
+      droppedTotal += start;
+      window = messages.slice(start);
+    }
+    return { messages: window, total, truncated: droppedTotal > 0, contextTokens };
+  }
+
+  return { onLine, result };
 }
 
 /**
@@ -781,6 +884,7 @@ function loadHistorySequential(filePath, limit, until) {
 async function loadSessionHistory(projectPath, sessionId, options = {}) {
   const limit = options.limit === 0 ? 0 : (options.limit || DEFAULT_HISTORY_LIMIT);
   const until = options.until || null;
+  if (isRemotePath(projectPath)) return loadRemoteSessionHistory(projectPath, sessionId, limit, until);
 
   // Find the JSONL file — uses indexed lookup
   const filePath = await resolveSessionFileInProject(projectPath, sessionId);
@@ -811,14 +915,24 @@ const MAX_TOOL_OUTPUT_BYTES = 4 * 1024 * 1024;
  */
 async function loadToolResultOutput(projectPath, sessionId, toolUseId) {
   if (!toolUseId || typeof toolUseId !== 'string') return { success: false, error: 'Missing tool use id' };
+  if (isRemotePath(projectPath)) return loadRemoteToolResultOutput(projectPath, sessionId, toolUseId);
 
   const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) return { success: false, error: 'Session not found' };
 
+  return findToolResultOutput((onLine) => forEachLineFromEnd(filePath, onLine), toolUseId);
+}
+
+/**
+ * The search behind loadToolResultOutput, over any backwards line walk.
+ * @param {(onLine: (line: Buffer) => boolean) => Promise<void>} walkFromEnd
+ * @param {string} toolUseId
+ */
+async function findToolResultOutput(walkFromEnd, toolUseId) {
   const needle = Buffer.from(toolUseId, 'utf8');
   let found = null;
 
-  await forEachLineFromEnd(filePath, (raw) => {
+  await walkFromEnd((raw) => {
     // The id is a literal in the line it belongs to, so this rejects almost
     // every line for the cost of a memory scan — no decode, no parse.
     if (raw.indexOf(needle) === -1) return false;
@@ -927,6 +1041,7 @@ async function parseSessionReplay(projectPath, sessionId, options = {}) {
     totalSteps: 0, totalEstimatedTokens: 0, uniqueFileCount: 0,
     toolBreakdown: {}, offset, returned: 0, truncated: false
   });
+  if (isRemotePath(projectPath)) return parseRemoteSessionReplay(projectPath, sessionId, offset, limit, emptySummary);
 
   // Find the JSONL file — uses indexed lookup
   const filePath = await resolveSessionFileInProject(projectPath, sessionId);
@@ -936,118 +1051,134 @@ async function parseSessionReplay(projectPath, sessionId, options = {}) {
   // requested window of steps is materialized. Buffering the raw lines first
   // retained 546 MB of heap on a 207 MB session before parsing even started.
   return new Promise((resolve) => {
-    const steps = [];
-    // Map toolUseId -> step object, so a later tool_result can be attached to it.
-    // Holds out-of-window steps too, so their output still counts toward the summary.
-    const pendingTools = new Map();
-    const uniqueFiles = new Set();
-    const toolBreakdown = {};
-    let totalSteps = 0;
-    let totalEstimatedTokens = 0;
-
-    /** True when the step at this global index belongs to the requested window. */
-    function keeps(index) {
-      return limit === 0 || (index >= offset && steps.length < limit);
-    }
-
-    /** Count a text-ish step, and materialize it only if it is in the window. */
-    function addTextStep(type, text, maxLen) {
-      const index = totalSteps++;
-      const tokens = Math.ceil(text.length / 4);
-      totalEstimatedTokens += tokens;
-      if (!keeps(index)) return;
-      steps.push({ index, type, text: text.slice(0, maxLen), estimatedTokens: tokens });
-    }
-
-    function trackPendingTool(id, step) {
-      if (id === undefined || id === null) return;
-      pendingTools.set(id, step);
-      // Results follow their call almost immediately; this only bounds the map
-      // when a session was cut mid-call and a result never arrives.
-      if (pendingTools.size > MAX_PENDING_TOOLS) {
-        pendingTools.delete(pendingTools.keys().next().value);
-      }
-    }
-
-    function attachToolResult(block) {
-      const pending = pendingTools.get(block.tool_use_id);
-      if (!pending) return;
-      const out = typeof block.content === 'string' ? block.content
-        : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
-      pending.toolOutput = out.slice(0, 3000);
-      pending.estimatedOutputTokens = Math.ceil(out.length / 4);
-      totalEstimatedTokens += pending.estimatedOutputTokens;
-      pendingTools.delete(block.tool_use_id);
-    }
-
+    const replay = createReplayCollector(offset, limit);
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
-    rl.on('line', (line) => {
-      if (!line.trim()) return;
-      try {
-        const obj = JSON.parse(line);
+    rl.on('line', (line) => replay.onLine(line));
+    rl.on('close', () => resolve(replay.result()));
+    rl.on('error', () => resolve({ steps: [], summary: emptySummary() }));
+  });
+}
 
-        // ── User message ────────────────────────────────────────────────────
-        if (obj.type === 'user' && obj.message) {
-          const content = obj.message.content;
-          if (typeof content === 'string') {
-            if (content.trim()) addTextStep('prompt', content, 5000);
-          } else if (Array.isArray(content)) {
-            for (const block of content) {
-              if (block.type === 'tool_result') attachToolResult(block);
-            }
-            // Any plain text blocks are user prompts (rare but possible)
-            const textBlocks = content.filter(b => b.type === 'text');
-            if (textBlocks.length > 0) {
-              const text = textBlocks.map(b => b.text).join('\n');
-              if (text.trim()) addTextStep('prompt', text, 5000);
-            }
-          }
-        }
+/**
+ * The replay parser's state, fed one line at a time by whichever reader walks
+ * the transcript (a local stream, or remote chunks).
+ * @param {number} offset - Index of the first step to return
+ * @param {number} limit - Max steps to return. 0 = no limit.
+ * @returns {{onLine: (line: string) => void, result: () => {steps: Array, summary: object}}}
+ */
+function createReplayCollector(offset, limit) {
+  const steps = [];
+  // Map toolUseId -> step object, so a later tool_result can be attached to it.
+  // Holds out-of-window steps too, so their output still counts toward the summary.
+  const pendingTools = new Map();
+  const uniqueFiles = new Set();
+  const toolBreakdown = {};
+  let totalSteps = 0;
+  let totalEstimatedTokens = 0;
 
-        // ── Assistant message ───────────────────────────────────────────────
-        if ((obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant')) && obj.message?.content) {
-          for (const block of obj.message.content) {
-            if (block.type === 'text' && block.text && block.text.trim()) {
-              addTextStep('response', block.text, 5000);
-            } else if (block.type === 'tool_use') {
-              const index = totalSteps++;
-              const fp = extractFilePath(block.name, block.input);
-              const inputStr = JSON.stringify(block.input || {});
-              const estimatedInputTokens = Math.ceil(inputStr.length / 4);
-              totalEstimatedTokens += estimatedInputTokens;
-              toolBreakdown[block.name] = (toolBreakdown[block.name] || 0) + 1;
-              if (fp) uniqueFiles.add(fp);
-              // Built even out of window: its result still feeds the token total,
-              // and pendingTools is the only thing holding it.
-              const step = {
-                index, type: 'tool',
-                toolName: block.name,
-                toolInput: sanitizeToolInput(block.input),
-                toolOutput: null,
-                filePath: fp,
-                estimatedInputTokens,
-                estimatedOutputTokens: 0
-              };
-              if (keeps(index)) steps.push(step);
-              trackPendingTool(block.id, step);
-            } else if (block.type === 'thinking' && block.thinking) {
-              addTextStep('thinking', block.thinking, 3000);
-            }
-          }
-        }
+  /** True when the step at this global index belongs to the requested window. */
+  function keeps(index) {
+    return limit === 0 || (index >= offset && steps.length < limit);
+  }
 
-        // ── Standalone tool_result (alternate JSONL format) ─────────────────
-        if (obj.type === 'tool_result' && obj.message?.content) {
-          for (const block of obj.message.content) {
+  /** Count a text-ish step, and materialize it only if it is in the window. */
+  function addTextStep(type, text, maxLen) {
+    const index = totalSteps++;
+    const tokens = Math.ceil(text.length / 4);
+    totalEstimatedTokens += tokens;
+    if (!keeps(index)) return;
+    steps.push({ index, type, text: text.slice(0, maxLen), estimatedTokens: tokens });
+  }
+
+  function trackPendingTool(id, step) {
+    if (id === undefined || id === null) return;
+    pendingTools.set(id, step);
+    // Results follow their call almost immediately; this only bounds the map
+    // when a session was cut mid-call and a result never arrives.
+    if (pendingTools.size > MAX_PENDING_TOOLS) {
+      pendingTools.delete(pendingTools.keys().next().value);
+    }
+  }
+
+  function attachToolResult(block) {
+    const pending = pendingTools.get(block.tool_use_id);
+    if (!pending) return;
+    const out = typeof block.content === 'string' ? block.content
+      : Array.isArray(block.content) ? block.content.map(b => b.text || '').join('\n') : '';
+    pending.toolOutput = out.slice(0, 3000);
+    pending.estimatedOutputTokens = Math.ceil(out.length / 4);
+    totalEstimatedTokens += pending.estimatedOutputTokens;
+    pendingTools.delete(block.tool_use_id);
+  }
+
+  function onLine(line) {
+    if (!line.trim()) return;
+    try {
+      const obj = JSON.parse(line);
+
+      // ── User message ────────────────────────────────────────────────────
+      if (obj.type === 'user' && obj.message) {
+        const content = obj.message.content;
+        if (typeof content === 'string') {
+          if (content.trim()) addTextStep('prompt', content, 5000);
+        } else if (Array.isArray(content)) {
+          for (const block of content) {
             if (block.type === 'tool_result') attachToolResult(block);
           }
+          // Any plain text blocks are user prompts (rare but possible)
+          const textBlocks = content.filter(b => b.type === 'text');
+          if (textBlocks.length > 0) {
+            const text = textBlocks.map(b => b.text).join('\n');
+            if (text.trim()) addTextStep('prompt', text, 5000);
+          }
         }
-      } catch { /* skip malformed lines */ }
-    });
+      }
 
-    rl.on('close', () => resolve({
+      // ── Assistant message ───────────────────────────────────────────────
+      if ((obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant')) && obj.message?.content) {
+        for (const block of obj.message.content) {
+          if (block.type === 'text' && block.text && block.text.trim()) {
+            addTextStep('response', block.text, 5000);
+          } else if (block.type === 'tool_use') {
+            const index = totalSteps++;
+            const fp = extractFilePath(block.name, block.input);
+            const inputStr = JSON.stringify(block.input || {});
+            const estimatedInputTokens = Math.ceil(inputStr.length / 4);
+            totalEstimatedTokens += estimatedInputTokens;
+            toolBreakdown[block.name] = (toolBreakdown[block.name] || 0) + 1;
+            if (fp) uniqueFiles.add(fp);
+            // Built even out of window: its result still feeds the token total,
+            // and pendingTools is the only thing holding it.
+            const step = {
+              index, type: 'tool',
+              toolName: block.name,
+              toolInput: sanitizeToolInput(block.input),
+              toolOutput: null,
+              filePath: fp,
+              estimatedInputTokens,
+              estimatedOutputTokens: 0
+            };
+            if (keeps(index)) steps.push(step);
+            trackPendingTool(block.id, step);
+          } else if (block.type === 'thinking' && block.thinking) {
+            addTextStep('thinking', block.thinking, 3000);
+          }
+        }
+      }
+
+      // ── Standalone tool_result (alternate JSONL format) ─────────────────
+      if (obj.type === 'tool_result' && obj.message?.content) {
+        for (const block of obj.message.content) {
+          if (block.type === 'tool_result') attachToolResult(block);
+        }
+      }
+    } catch { /* skip malformed lines */ }
+  }
+
+  function result() {
+    return {
       steps,
       summary: {
         totalSteps,
@@ -1058,9 +1189,10 @@ async function parseSessionReplay(projectPath, sessionId, options = {}) {
         returned: steps.length,
         truncated: limit > 0 && steps.length < totalSteps
       }
-    }));
-    rl.on('error', () => resolve({ steps: [], summary: emptySummary() }));
-  });
+    };
+  }
+
+  return { onLine, result };
 }
 
 // ─── Session file changes ───────────────────────────────────────────────────
@@ -1153,31 +1285,13 @@ function patchForCreatedFile(content) {
 async function parseSessionFileChanges(projectPath, sessionId, options = {}) {
   const statsOnly = !!options.statsOnly;
   const empty = () => ({ files: [], totals: { files: 0, additions: 0, deletions: 0, edits: 0, truncated: false } });
+  if (isRemotePath(projectPath)) return parseRemoteSessionFileChanges(projectPath, sessionId, statsOnly, empty);
 
   const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) return empty();
 
   return new Promise((resolve) => {
-    const byPath = new Map();       // path -> entry
-    const pendingEdits = new Map(); // tool_use_id -> path, until its result lands
-    // A subagent tool call can appear both streamed and in the full assistant
-    // message; ids keep each edit counted once.
-    const seenToolUseIds = new Set();
-    let patchBytes = 0;
-    let truncated = false;
-
-    function entryFor(path) {
-      let entry = byPath.get(path);
-      if (!entry) {
-        entry = {
-          path, additions: 0, deletions: 0, edits: 0,
-          hunks: [], viaSubagent: false, lastEditedAt: null,
-        };
-        byPath.set(path, entry);
-      }
-      return entry;
-    }
-
+    const changes = createChangesCollector(statsOnly);
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
 
@@ -1185,85 +1299,121 @@ async function parseSessionFileChanges(projectPath, sessionId, options = {}) {
     // Windows refuses to delete a file that still has one open.
     const release = () => { rl.close(); stream.destroy(); };
 
-    rl.on('line', (line) => {
-      if (!line.trim()) return;
-      let obj;
-      try { obj = JSON.parse(line); } catch { return; }
-
-      // ── The call: note which file it targets, keyed by its id ──
-      const isAssistant = obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant');
-      if (isAssistant && Array.isArray(obj.message?.content)) {
-        for (const block of obj.message.content) {
-          if (block.type !== 'tool_use' || !FILE_EDIT_TOOLS.has(block.name)) continue;
-          if (block.id && seenToolUseIds.has(block.id)) continue;
-          const path = editedPath(block.name, block.input);
-          if (!path) continue;
-          if (block.id) seenToolUseIds.add(block.id);
-
-          const entry = entryFor(path);
-          entry.edits++;
-          if (obj.isSidechain) entry.viaSubagent = true;
-          if (obj.timestamp) entry.lastEditedAt = obj.timestamp;
-          if (block.id) pendingEdits.set(block.id, path);
-        }
-      }
-
-      // ── The result: the patch the tool actually applied ──
-      // It rides as a sibling field on the line carrying the tool_result.
-      const result = obj.toolUseResult;
-      if (!result || typeof result !== 'object' || !Array.isArray(result.structuredPatch)) return;
-
-      // Only patches belonging to a file-editing call we saw. Matching on the
-      // result's own filePath instead would count any tool that happens to
-      // carry a structuredPatch, which is how a Read ends up in the list.
-      let path = null;
-      if (Array.isArray(obj.message?.content)) {
-        for (const block of obj.message.content) {
-          if (block.type === 'tool_result' && pendingEdits.has(block.tool_use_id)) {
-            path = pendingEdits.get(block.tool_use_id);
-            pendingEdits.delete(block.tool_use_id);
-            break;
-          }
-        }
-      }
-      if (!path) return;
-
-      const entry = entryFor(path);
-      const hunks = result.structuredPatch.length === 0 && result.type === 'create'
-        ? patchForCreatedFile(result.content)
-        : normalizeHunks(result.structuredPatch);
-      const counts = countPatchLines(hunks);
-      entry.additions += counts.additions;
-      entry.deletions += counts.deletions;
-
-      if (statsOnly) return;
-      const bytes = JSON.stringify(hunks).length;
-      if (patchBytes + bytes > CHANGES_MAX_PATCH_BYTES) { truncated = true; return; }
-      patchBytes += bytes;
-      entry.hunks.push(...hunks);
-    });
+    rl.on('line', (line) => changes.onLine(line));
 
     rl.on('close', () => {
       release();
-      // An edit whose result never landed (session cut mid-call) leaves an
-      // entry with zeroed counters; keep it, the file was still touched.
-      const files = [...byPath.values()].sort(
-        (a, b) => (b.additions + b.deletions) - (a.additions + a.deletions)
-      );
-      resolve({
-        files,
-        totals: {
-          files: files.length,
-          additions: files.reduce((n, f) => n + f.additions, 0),
-          deletions: files.reduce((n, f) => n + f.deletions, 0),
-          edits: files.reduce((n, f) => n + f.edits, 0),
-          truncated,
-        },
-      });
+      resolve(changes.result());
     });
     rl.on('error', () => { release(); resolve(empty()); });
     stream.on('error', () => { release(); resolve(empty()); });
   });
+}
+
+/**
+ * The file-changes parser's state, fed one line at a time by whichever reader
+ * walks the transcript (a local stream, or remote chunks).
+ * @param {boolean} statsOnly - Skip the hunks, keep the counters
+ * @returns {{onLine: (line: string) => void, result: () => {files: Array, totals: object}}}
+ */
+function createChangesCollector(statsOnly) {
+  const byPath = new Map();       // path -> entry
+  const pendingEdits = new Map(); // tool_use_id -> path, until its result lands
+  // A subagent tool call can appear both streamed and in the full assistant
+  // message; ids keep each edit counted once.
+  const seenToolUseIds = new Set();
+  let patchBytes = 0;
+  let truncated = false;
+
+  function entryFor(path) {
+    let entry = byPath.get(path);
+    if (!entry) {
+      entry = {
+        path, additions: 0, deletions: 0, edits: 0,
+        hunks: [], viaSubagent: false, lastEditedAt: null,
+      };
+      byPath.set(path, entry);
+    }
+    return entry;
+  }
+
+  function onLine(line) {
+    if (!line.trim()) return;
+    let obj;
+    try { obj = JSON.parse(line); } catch { return; }
+
+    // ── The call: note which file it targets, keyed by its id ──
+    const isAssistant = obj.type === 'assistant' || (!obj.type && obj.message?.role === 'assistant');
+    if (isAssistant && Array.isArray(obj.message?.content)) {
+      for (const block of obj.message.content) {
+        if (block.type !== 'tool_use' || !FILE_EDIT_TOOLS.has(block.name)) continue;
+        if (block.id && seenToolUseIds.has(block.id)) continue;
+        const path = editedPath(block.name, block.input);
+        if (!path) continue;
+        if (block.id) seenToolUseIds.add(block.id);
+
+        const entry = entryFor(path);
+        entry.edits++;
+        if (obj.isSidechain) entry.viaSubagent = true;
+        if (obj.timestamp) entry.lastEditedAt = obj.timestamp;
+        if (block.id) pendingEdits.set(block.id, path);
+      }
+    }
+
+    // ── The result: the patch the tool actually applied ──
+    // It rides as a sibling field on the line carrying the tool_result.
+    const result = obj.toolUseResult;
+    if (!result || typeof result !== 'object' || !Array.isArray(result.structuredPatch)) return;
+
+    // Only patches belonging to a file-editing call we saw. Matching on the
+    // result's own filePath instead would count any tool that happens to
+    // carry a structuredPatch, which is how a Read ends up in the list.
+    let path = null;
+    if (Array.isArray(obj.message?.content)) {
+      for (const block of obj.message.content) {
+        if (block.type === 'tool_result' && pendingEdits.has(block.tool_use_id)) {
+          path = pendingEdits.get(block.tool_use_id);
+          pendingEdits.delete(block.tool_use_id);
+          break;
+        }
+      }
+    }
+    if (!path) return;
+
+    const entry = entryFor(path);
+    const hunks = result.structuredPatch.length === 0 && result.type === 'create'
+      ? patchForCreatedFile(result.content)
+      : normalizeHunks(result.structuredPatch);
+    const counts = countPatchLines(hunks);
+    entry.additions += counts.additions;
+    entry.deletions += counts.deletions;
+
+    if (statsOnly) return;
+    const bytes = JSON.stringify(hunks).length;
+    if (patchBytes + bytes > CHANGES_MAX_PATCH_BYTES) { truncated = true; return; }
+    patchBytes += bytes;
+    entry.hunks.push(...hunks);
+  }
+
+  function result() {
+    // An edit whose result never landed (session cut mid-call) leaves an
+    // entry with zeroed counters; keep it, the file was still touched.
+    const files = [...byPath.values()].sort(
+      (a, b) => (b.additions + b.deletions) - (a.additions + a.deletions)
+    );
+    return {
+      files,
+      totals: {
+        files: files.length,
+        additions: files.reduce((n, f) => n + f.additions, 0),
+        deletions: files.reduce((n, f) => n + f.deletions, 0),
+        edits: files.reduce((n, f) => n + f.edits, 0),
+        truncated,
+      },
+    };
+  }
+
+  return { onLine, result };
 }
 
 // ─── Session index cache ────────────────────────────────────────────────────
@@ -1378,6 +1528,7 @@ async function resolveSessionFileInProject(projectPath, sessionId) {
  * @returns {Promise<{success: boolean, error?: string}>}
  */
 async function deleteSession(projectPath, sessionId) {
+  if (isRemotePath(projectPath)) return deleteRemoteSession(projectPath, sessionId);
   const filePath = await resolveSessionFileInProject(projectPath, sessionId);
   if (!filePath) {
     return { success: false, error: 'Session file not found' };
@@ -1466,6 +1617,11 @@ async function rollbackSidecar(sourceSidecar, targetSidecar, targetSidecarPreexi
 async function moveSession(sessionId, fromProjectPath, toProjectPath) {
   if (!sessionId || !fromProjectPath || !toProjectPath) {
     return { success: false, code: 'bad-request', error: 'sessionId, fromProjectPath and toProjectPath are required' };
+  }
+  // Moving re-files a transcript between two local directories. A remote
+  // session lives on its host, and a local one cannot be moved onto a host.
+  if (isRemotePath(fromProjectPath) || isRemotePath(toProjectPath)) {
+    return { success: false, code: 'remote', error: 'Sessions of remote projects cannot be moved: their transcripts live on the remote host' };
   }
 
   const toDir = getProjectSessionsDir(toProjectPath);
@@ -1612,8 +1768,19 @@ async function findStraySidecars(sessionId, ignoredDirs = []) {
  * @returns {Promise<{success: boolean, content?: string, error?: string}>}
  */
 async function exportSession(projectPath, sessionId, format) {
-  const { steps, summary } = await parseSessionReplay(projectPath, sessionId);
+  return formatSessionExport(sessionId, await parseSessionReplay(projectPath, sessionId), format);
+}
 
+/**
+ * The export document for a parsed replay. Shared by local and remote
+ * sessions: a remote one is read over the channel, and the renderer writes
+ * the result to a local file either way.
+ * @param {string} sessionId
+ * @param {{steps: Array, summary: object}} replay
+ * @param {'markdown'|'json'} format
+ * @returns {{success: boolean, content: string}}
+ */
+function formatSessionExport(sessionId, { steps, summary }, format) {
   if (format === 'json') {
     return { success: true, content: JSON.stringify({ sessionId, summary, steps }, null, 2) };
   }
@@ -1676,12 +1843,332 @@ async function exportSession(projectPath, sessionId, format) {
   return { success: true, content: lines.join('\n') };
 }
 
+// ─── Remote (SSH) projects ──────────────────────────────────────────────────
+//
+// A remote project's transcripts are on its host, under the remote
+// `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded remote path>`
+// (design/remote-ssh.md section 5.3). They are read over the command channel
+// through `remoteFs`, and fed to the same parsers as a local transcript:
+//
+// - the listing is one request (`listSessionFiles`): size, mtime, the head
+//   and the title/timestamp lines of the tail of every transcript, cached by
+//   (profile, project path, directory mtime);
+// - history stays tail-first, `readRange` on the end of the file only;
+// - replay, changes, export and a sequential history walk the file forward in
+//   chunks;
+// - delete is a remote `rm`; export reads remotely and the renderer writes the
+//   result locally; move is refused.
+//
+// Worktree discovery is skipped (it walks local directories). Nothing here
+// ever names a host: the URI is resolved in main through `projectTarget`,
+// which only answers for a configured profile and a registered project.
+//
+// While the host is not connected, the listing answers `disconnected: true`
+// and the other readers fail with `code: 'EREMOTE'`, so the UI can say where
+// the history is instead of showing an empty list.
+
+/** A remote listing is reused while its directory mtime holds, for this long. */
+const REMOTE_SESSIONS_CACHE_MS = 15000;
+const _remoteListingCache = new Map(); // `${profileId}|${remotePath}|${dirMtimeMs}` -> { at, listing }
+
+/** A session id names a file in the remote sessions directory, so it is checked, never quoted into a path. */
+const REMOTE_SESSION_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
+
+let _remoteDepsOverride = null;
+
+/** Main-process collaborators of the remote readers; replaced in tests. */
+function remoteDeps() {
+  if (_remoteDepsOverride) return _remoteDepsOverride;
+  return {
+    resolveTarget: (p) => require('../utils/projectTarget').resolveTarget(p),
+    getStatus: (profileId) => require('../services/SshHostService').getStatus(profileId),
+    createFs: (profileId) => require('../utils/remoteFs').createRemoteFs(require('../services/SshHostService').runner(profileId)),
+    now: () => Date.now(),
+  };
+}
+
+/**
+ * Test hook: swap the collaborators (and drop the listing cache).
+ * @param {{resolveTarget: Function, getStatus: Function, createFs: Function, now?: Function}|null} deps
+ */
+function _setRemoteDeps(deps) {
+  _remoteDepsOverride = deps;
+  _remoteListingCache.clear();
+}
+
+function isTransportError(err) {
+  return Boolean(err && err.code === 'EREMOTE');
+}
+
+function disconnectedError(ctx) {
+  const err = new Error(`Not connected to ${ctx.host || 'the remote host'}: the history of this project lives there`);
+  err.code = 'EREMOTE';
+  err.reason = 'disconnected';
+  err.host = ctx.host || '';
+  return err;
+}
+
+/**
+ * Resolve a remote project path to everything its readers need, or to a
+ * `disconnected` marker when the host is not connected (nothing here connects
+ * a host: opening the project does).
+ * @param {string} projectUri
+ */
+async function remoteSessionContext(projectUri) {
+  const deps = remoteDeps();
+  const target = await deps.resolveTarget(projectUri);
+  if (!target || target.kind !== 'remote') throw new Error('Not a remote project path');
+  const status = deps.getStatus(target.profileId) || {};
+  const base = {
+    profileId: target.profileId,
+    host: target.host || '',
+    remotePath: target.remotePath,
+    uri: projectUri,
+    state: status.state || 'idle',
+  };
+  if (status.state !== 'connected') return { ...base, disconnected: true };
+  const dir = getRemoteSessionsDir(target.remotePath, status.capabilities);
+  if (!dir) return { ...base, disconnected: true };
+  return { ...base, disconnected: false, dir, sfs: deps.createFs(target.profileId), now: deps.now || Date.now };
+}
+
+/** Drop the cached listings of one remote project. */
+function invalidateRemoteListing(profileId, remotePath) {
+  const prefix = `${profileId}|${remotePath}|`;
+  for (const key of [..._remoteListingCache.keys()]) {
+    if (key.startsWith(prefix)) _remoteListingCache.delete(key);
+  }
+}
+
+/**
+ * The listing of a remote sessions directory, from the cache when the
+ * directory has not changed since (one stat), from the host otherwise (one
+ * request). A directory that does not exist yet is an empty listing.
+ */
+async function remoteListing(ctx) {
+  const empty = { dirMtimeMs: null, index: null, files: [] };
+  let stat;
+  try {
+    stat = await ctx.sfs.stat(ctx.dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') return empty;
+    throw err;
+  }
+  const key = `${ctx.profileId}|${ctx.remotePath}|${stat.mtimeMs}`;
+  const hit = _remoteListingCache.get(key);
+  if (hit && ctx.now() - hit.at < REMOTE_SESSIONS_CACHE_MS) return hit.listing;
+  let listing;
+  try {
+    listing = await ctx.sfs.listSessionFiles(ctx.dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') return empty;
+    throw err;
+  }
+  invalidateRemoteListing(ctx.profileId, ctx.remotePath);
+  _remoteListingCache.set(key, { at: ctx.now(), listing });
+  return listing;
+}
+
+/** The whole lines of a listed head, as `readline` would have handed them over. */
+function listedHeadLines(file) {
+  const lines = String(file.head || '').split('\n');
+  // A head cut by the byte cap ends in the middle of a line
+  if (file.headTruncated) lines.pop();
+  return lines.map(line => line.replace(/\r$/, ''));
+}
+
+/**
+ * The sessions of a remote project, or where they are when they cannot be read.
+ * @param {string} projectUri
+ * @returns {Promise<{sessions: Array, disconnected: boolean, host: string, state?: string, error?: string}>}
+ */
+async function getRemoteSessionsListing(projectUri) {
+  let ctx;
+  try {
+    ctx = await remoteSessionContext(projectUri);
+  } catch (err) {
+    console.warn('[claude-sessions] Remote project could not be resolved:', err.message);
+    return { sessions: [], disconnected: false, host: '', error: err.message };
+  }
+  if (ctx.disconnected) return { sessions: [], disconnected: true, host: ctx.host, state: ctx.state };
+  try {
+    const listing = await remoteListing(ctx);
+    const hintsByPath = new Map();
+    const entries = [];
+    for (const file of listing.files) {
+      const info = newSessionInfo();
+      for (const line of listedHeadLines(file).slice(0, SESSION_INFO_MAX_LINES)) applySessionInfoLine(info, line);
+      // Skip sidechain sessions, and files too small to be a conversation
+      if (info.isSidechain) continue;
+      const size = file.size || 0;
+      if (size < 200) continue;
+      const filePath = path.posix.join(ctx.dir, file.name);
+      hintsByPath.set(filePath, file.hints || []);
+      entries.push({
+        sessionId: info.sessionId || file.name.replace('.jsonl', ''),
+        summary: '',
+        title: '',
+        customTitle: '',
+        aiTitle: '',
+        firstPrompt: info.firstPrompt || '',
+        messageCount: info.messageCount || 0,
+        modified: new Date(file.mtimeMs || 0).toISOString(),
+        size,
+        filePath,
+        gitBranch: info.gitBranch,
+        // Resumed where it lives: the project, on its host
+        cwd: ctx.uri,
+        worktree: null,
+        worktreeMissing: false,
+      });
+    }
+    if (listing.index) {
+      try { applySessionsIndex(entries, listing.index); } catch { /* index may be stale or cut, that's ok */ }
+    }
+    const sessions = await rankSessions(entries, async (session) => scanTitleLines((hintsByPath.get(session.filePath) || []).map(h => h.text)));
+    return { sessions, disconnected: false, host: ctx.host };
+  } catch (err) {
+    if (isTransportError(err)) return { sessions: [], disconnected: true, host: ctx.host, state: ctx.state };
+    console.error('[claude-sessions] Remote listing failed:', err.message);
+    return { sessions: [], disconnected: false, host: ctx.host, error: err.message };
+  }
+}
+
+/**
+ * Where a remote session's transcript is: `<id>.jsonl` first, then the
+ * listing's heads (a renamed or forked transcript only carries its id inside).
+ * @returns {Promise<string|null>}
+ */
+async function resolveRemoteSessionFile(ctx, sessionId) {
+  if (typeof sessionId !== 'string' || !REMOTE_SESSION_ID_RE.test(sessionId) || sessionId.includes('..')) return null;
+  const direct = path.posix.join(ctx.dir, `${sessionId}.jsonl`);
+  try {
+    const stat = await ctx.sfs.stat(direct);
+    if (stat && stat.isFile) return direct;
+  } catch (err) {
+    if (isTransportError(err)) throw err;
+  }
+  const listing = await remoteListing(ctx);
+  for (const file of listing.files) {
+    for (const line of listedHeadLines(file).slice(0, 5)) {
+      try {
+        const obj = JSON.parse(line);
+        if (obj.sessionId) {
+          if (obj.sessionId === sessionId) return path.posix.join(ctx.dir, file.name);
+          break;
+        }
+      } catch { /* skip malformed */ }
+    }
+  }
+  return null;
+}
+
+/** A backwards line walk over a remote transcript that only asks for the blocks it reaches. */
+function remoteWalkFromEnd(ctx, file) {
+  return async (onLine) => {
+    try {
+      const stat = await ctx.sfs.stat(file);
+      await walkLinesFromEnd(stat.size || 0, async (position, length) => {
+        const block = await ctx.sfs.readRange(file, position, length);
+        if (!block || block.length !== length) throw new Error('The transcript changed size while it was read');
+        return block;
+      }, onLine);
+    } catch (err) {
+      // A lost connection is reported; anything else reads as the local
+      // walker reads an unreadable file: as what was read so far.
+      if (isTransportError(err)) throw err;
+    }
+  };
+}
+
+/** A forward line walk over a remote transcript, in chunks. */
+async function remoteReadLines(ctx, file, onLine) {
+  try {
+    await ctx.sfs.readLines(file, onLine);
+  } catch (err) {
+    if (isTransportError(err)) throw err;
+  }
+}
+
+/** Run `fn` with a connected context, or fail with the `disconnected` error. */
+async function withRemoteSessions(projectUri, fn) {
+  const ctx = await remoteSessionContext(projectUri);
+  if (ctx.disconnected) throw disconnectedError(ctx);
+  try {
+    return await fn(ctx);
+  } catch (err) {
+    if (isTransportError(err) && !err.host) err.host = ctx.host;
+    throw err;
+  }
+}
+
+function loadRemoteSessionHistory(projectUri, sessionId, limit, until) {
+  return withRemoteSessions(projectUri, async (ctx) => {
+    const file = await resolveRemoteSessionFile(ctx, sessionId);
+    if (!file) return { messages: [], total: 0, truncated: false, contextTokens: 0 };
+    if (limit && !until) return loadHistoryTailFrom(remoteWalkFromEnd(ctx, file), limit);
+    const history = createSequentialHistory(limit, until);
+    await remoteReadLines(ctx, file, (line) => history.onLine(line));
+    return history.result();
+  });
+}
+
+function loadRemoteToolResultOutput(projectUri, sessionId, toolUseId) {
+  return withRemoteSessions(projectUri, async (ctx) => {
+    const file = await resolveRemoteSessionFile(ctx, sessionId);
+    if (!file) return { success: false, error: 'Session not found' };
+    return findToolResultOutput(remoteWalkFromEnd(ctx, file), toolUseId);
+  });
+}
+
+function parseRemoteSessionReplay(projectUri, sessionId, offset, limit, emptySummary) {
+  return withRemoteSessions(projectUri, async (ctx) => {
+    const file = await resolveRemoteSessionFile(ctx, sessionId);
+    if (!file) return { steps: [], summary: emptySummary() };
+    const replay = createReplayCollector(offset, limit);
+    await remoteReadLines(ctx, file, (line) => { replay.onLine(line); });
+    return replay.result();
+  });
+}
+
+function parseRemoteSessionFileChanges(projectUri, sessionId, statsOnly, empty) {
+  return withRemoteSessions(projectUri, async (ctx) => {
+    const file = await resolveRemoteSessionFile(ctx, sessionId);
+    if (!file) return empty();
+    const changes = createChangesCollector(statsOnly);
+    await remoteReadLines(ctx, file, (line) => { changes.onLine(line); });
+    return changes.result();
+  });
+}
+
+function deleteRemoteSession(projectUri, sessionId) {
+  return withRemoteSessions(projectUri, async (ctx) => {
+    const file = await resolveRemoteSessionFile(ctx, sessionId);
+    if (!file) return { success: false, error: 'Session file not found' };
+    await ctx.sfs.rm(file);
+    invalidateRemoteListing(ctx.profileId, ctx.remotePath);
+    return { success: true };
+  });
+}
+
+/** The fields an IPC failure adds when the host, not the transcript, is the problem. */
+function remoteFailure(err) {
+  return isTransportError(err) ? { disconnected: true, host: err.host || '' } : {};
+}
+
 /**
  * Register Claude IPC handlers
  */
 function registerClaudeHandlers() {
   // Get Claude sessions for a project
-  ipcMain.handle('claude-sessions', async (event, projectPath) => {
+  // A remote project answers `{ sessions, disconnected, host }` when asked
+  // `withStatus`, so the UI can say where its history is rather than show an
+  // empty list; every other caller keeps receiving the bare array.
+  ipcMain.handle('claude-sessions', async (event, projectPath, options) => {
+    if (isRemotePath(projectPath)) {
+      const listing = await getRemoteSessionsListing(projectPath);
+      return options && options.withStatus ? listing : listing.sessions;
+    }
     return getClaudeSessions(projectPath);
   });
 
@@ -1692,7 +2179,7 @@ function registerClaudeHandlers() {
       return { success: true, messages, total, truncated, contextTokens };
     } catch (err) {
       console.error('[chat-load-history] Error:', err.message);
-      return { success: false, error: err.message, messages: [], total: 0, truncated: false, contextTokens: 0 };
+      return { success: false, error: err.message, messages: [], total: 0, truncated: false, contextTokens: 0, ...remoteFailure(err) };
     }
   });
 
@@ -1704,7 +2191,7 @@ function registerClaudeHandlers() {
       return await loadToolResultOutput(projectPath, sessionId, toolUseId);
     } catch (err) {
       console.error('[chat-tool-output] Error:', err.message);
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, ...remoteFailure(err) };
     }
   });
 
@@ -1714,7 +2201,7 @@ function registerClaudeHandlers() {
       return { success: true, ...(await parseSessionReplay(projectPath, sessionId, { offset, limit })) };
     } catch (err) {
       console.error('[claude-session-replay] Error:', err.message);
-      return { success: false, error: err.message, steps: [], summary: {} };
+      return { success: false, error: err.message, steps: [], summary: {}, ...remoteFailure(err) };
     }
   });
 
@@ -1724,7 +2211,7 @@ function registerClaudeHandlers() {
       return { success: true, ...(await parseSessionFileChanges(projectPath, sessionId, { statsOnly })) };
     } catch (err) {
       console.error('[claude-session-changes] Error:', err.message);
-      return { success: false, error: err.message, files: [], totals: {} };
+      return { success: false, error: err.message, files: [], totals: {}, ...remoteFailure(err) };
     }
   });
 
@@ -1734,7 +2221,7 @@ function registerClaudeHandlers() {
       return await deleteSession(projectPath, sessionId);
     } catch (err) {
       console.error('[claude-delete-session] Error:', err.message);
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, ...remoteFailure(err) };
     }
   });
 
@@ -1754,9 +2241,24 @@ function registerClaudeHandlers() {
       return await exportSession(projectPath, sessionId, format || 'markdown');
     } catch (err) {
       console.error('[claude-export-session] Error:', err.message);
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, ...remoteFailure(err) };
     }
   });
 }
 
-module.exports = { registerClaudeHandlers, getClaudeSessions, loadSessionHistory, loadToolResultOutput, parseSessionReplay, parseSessionFileChanges, moveSession, findStraySidecars, readSessionTitle, invalidateSessionsCache };
+module.exports = {
+  registerClaudeHandlers,
+  getClaudeSessions,
+  getRemoteSessionsListing,
+  loadSessionHistory,
+  loadToolResultOutput,
+  parseSessionReplay,
+  parseSessionFileChanges,
+  deleteSession,
+  exportSession,
+  moveSession,
+  findStraySidecars,
+  readSessionTitle,
+  invalidateSessionsCache,
+  _setRemoteDeps,
+};

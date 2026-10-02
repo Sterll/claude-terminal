@@ -32,6 +32,8 @@ const api = window.electron_api;
 const { getProjectSessions } = require('../state');
 const { formatDuration } = require('../utils/format');
 const { t } = require('../i18n');
+const { isRemoteProject } = require('../../shared/remote-capabilities');
+const { getProjectHost } = require('../state/remoteHosts.state');
 
 /** Sources, in the order their events tie-break within the same millisecond. */
 const KINDS = ['commit', 'session', 'time', 'workflow', 'parallel', 'artifact'];
@@ -375,6 +377,9 @@ function toMarkdown(groups, project) {
  */
 async function collect(project, { commitHistory } = {}) {
   const failed = [];
+  // Sources that could not be read for a known reason, said as such rather
+  // than as a failure: a remote project's sessions while its host is away.
+  const unavailable = [];
 
   /** Run one source, attributing a failure to it rather than to the timeline. */
   const source = async (kind, load) => {
@@ -393,7 +398,7 @@ async function collect(project, { commitHistory } = {}) {
         ? commitHistory
         : await api.git.commitHistory({ projectPath: project.path, skip: 0, limit: 300 })
     )),
-    source('session', async () => normalizeSessions(await api.claude.sessions(project.path))),
+    source('session', async () => normalizeSessions(await loadSessions(project, unavailable))),
     // Synchronous and local, but wrapped like the rest so a corrupt store
     // cannot take the view down with it.
     source('time', async () => normalizeTimeSessions(getProjectSessions(project.id))),
@@ -411,7 +416,26 @@ async function collect(project, { commitHistory } = {}) {
   const events = [commits, sessions, times, workflows, parallels, artifacts]
     .flatMap(list => list.slice(0, MAX_PER_SOURCE));
 
-  return { events, failed };
+  return { events, failed, unavailable };
+}
+
+/**
+ * The project's sessions for the timeline. A remote project's are read on
+ * its host; while it is not connected they are reported as unavailable (with
+ * the host) instead of as an empty history.
+ * @param {Object} project
+ * @param {Array<{kind: string, host: string}>} unavailable - appended to
+ * @returns {Promise<Array>}
+ */
+async function loadSessions(project, unavailable) {
+  if (!isRemoteProject(project)) return api.claude.sessions(project.path);
+  const listing = await api.claude.sessionListing(project.path);
+  if (!listing || listing.disconnected) {
+    const host = (getProjectHost(project) || {}).hostLabel || (listing && listing.host) || '';
+    unavailable.push({ kind: 'session', host });
+    return [];
+  }
+  return listing.sessions || [];
 }
 
 module.exports = {

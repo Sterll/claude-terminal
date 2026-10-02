@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { SshLane } = require('../../src/main/utils/sshChannel');
-const { createRemoteFs, isBlockedRemotePath, PUT_LIMIT } = require('../../src/main/utils/remoteFs');
+const { createRemoteFs, isBlockedRemotePath, PUT_LIMIT, readLinesVia } = require('../../src/main/utils/remoteFs');
 const { findSh, toShPath, FAKE_SSH } = require('../helpers/fake-ssh');
 
 describe('isBlockedRemotePath', () => {
@@ -28,6 +28,30 @@ describe('isBlockedRemotePath', () => {
   test('ordinary project files are not blocked', () => {
     expect(isBlockedRemotePath('/home/y/api/src/index.js', home, 'write')).toBe(false);
     expect(isBlockedRemotePath('/home/y/.sshfoo', home, 'write')).toBe(false);
+  });
+});
+
+describe('readLinesVia', () => {
+  const file = Buffer.from('first line\r\n\u00e9t\u00e9 \u2603 across\n\nlast without newline', 'utf8');
+  const readRange = async (_p, start, length) => file.subarray(start, start + length);
+
+  test('walks lines the way readline does, whatever the chunk size', async () => {
+    for (const chunkBytes of [1, 2, 3, 7, 64, 4096]) {
+      const lines = [];
+      await readLinesVia(readRange, '/f', (line) => { lines.push(line); }, { chunkBytes });
+      expect(lines).toEqual(['first line', '\u00e9t\u00e9 \u2603 across', '', 'last without newline']);
+    }
+  });
+
+  test('stops when the callback answers true, without reading further', async () => {
+    const reads = [];
+    const lines = [];
+    await readLinesVia(async (p, start, length) => { reads.push(start); return readRange(p, start, length); }, '/f', (line) => {
+      lines.push(line);
+      return true;
+    }, { chunkBytes: 4 });
+    expect(lines).toEqual(['first line']);
+    expect(Math.max(...reads)).toBeLessThan(16);
   });
 });
 

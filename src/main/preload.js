@@ -437,6 +437,9 @@ contextBridge.exposeInMainWorld('electron_api', {
   // ==================== CLAUDE ====================
   claude: {
     sessions: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath),
+    // `{ sessions, disconnected, host }`: what a remote project's views need to
+    // say "history lives on <host>" instead of showing an empty list
+    sessionListing: (projectPath) => ipcRenderer.invoke('claude-sessions', projectPath, { withStatus: true }),
     sessionReplay: (params) => ipcRenderer.invoke('claude-session-replay', params),
     sessionChanges: (params) => ipcRenderer.invoke('claude-session-changes', params),
     deleteSession: (params) => ipcRenderer.invoke('claude-delete-session', params),

@@ -4501,7 +4501,18 @@
       "respawnFailed": "无法重新打开终端：{error}",
       "reconnected": "已重新连接到 {host}",
       "claudeMissing": "在 {host} 上未找到 Claude Code。请在该主机上安装，或在主机配置中设置其路径。",
-      "historyOnHost": "此项目的对话历史保存在 {host} 上，目前尚未在此列出。"
+      "historyOnHost": "此项目的对话历史保存在 {host} 上，该主机当前未连接。连接到主机即可列出。"
+    },
+    "chat": {
+      "localToolsNote": "在主机上运行。本应用的 MCP 工具和 Claude in Chrome 在此不可用。",
+      "localToolsTooltip": "本应用的 MCP 服务器和 Claude in Chrome 服务器是本地程序，主机上的 Claude Code 无法启动它们。主机自身配置的 MCP 服务器仍然可用。",
+      "lost": "与 {host} 的连接已断开（{state}）。主机恢复后对话将继续。",
+      "lostManual": "与 {host} 的连接已断开：{state}。请通过主机徽标修复，然后重新连接。",
+      "gaveUp": "与 {host} 的连接反复断开。请在网络稳定后重新连接。",
+      "resuming": "正在 {host} 上恢复对话...",
+      "resumed": "已重新连接到 {host}，正在恢复对话。",
+      "resent": "已连接到 {host}，正在发送您的消息。",
+      "pathAttachmentRefused": "无法将 {name} 附加到远程聊天：本地路径在主机上没有意义。足够小的文件会直接内联发送。"
     },
     "openRemoteProject": "打开远程项目",
     "modalTitle": "打开远程项目",
@@ -4552,11 +4563,12 @@
       "unknown": "未知错误"
     },
     "disabled": {
-      "notYet": "远程项目暂不支持此功能。",
       "openInExplorer": "远程项目没有可显示的本地文件夹。",
       "openInEditor": "暂不支持在外部编辑器中打开远程项目。",
       "accountBinding": "远程项目使用远程主机自己的 Claude 登录。",
-      "cloudUpload": "云端上传会压缩本地文件夹，因此无法上传远程项目。"
+      "cloudUpload": "云端上传会压缩本地文件夹，因此无法上传远程项目。",
+      "sessionMove": "远程项目的会话保存在其主机上，无法移动到其他项目。",
+      "pathAttachment": "本地文件路径对远程聊天没有意义。足够小的文件会直接内联发送。"
     },
     "menu": {
       "section": "远程主机：{host}",

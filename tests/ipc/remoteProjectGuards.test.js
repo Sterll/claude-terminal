@@ -8,8 +8,9 @@
  * and an ssh-remote:// URI never exists locally: without a guard, opening a
  * terminal on a remote project would start a local shell in ~ under the remote
  * project's name. Terminals now run over ssh, so `terminal-create` resolves a
- * URI to its host in main (and refuses anything it cannot resolve); the chat
- * still refuses a URI. Every local call is left exactly as it was.
+ * URI to its host in main (and refuses anything it cannot resolve), and so does
+ * `chat-start`, which never takes a launch context or an account from the
+ * renderer. Every local call is left exactly as it was.
  *
  * TerminalService's `command` override is the other half of this slice: the
  * "Verify host" PTY. It is reachable from main only.
@@ -37,7 +38,12 @@ jest.mock('../../src/main/services/ChatService', () => mockChatService);
 jest.mock('../../src/main/services/ModelCatalogService', () => ({ onChange: jest.fn() }));
 const mockResolveTarget = jest.fn();
 jest.mock('../../src/main/utils/projectTarget', () => ({ resolveTarget: (...a) => mockResolveTarget(...a) }));
-const mockSsh = { ptyLaunch: jest.fn(), killTmuxSession: jest.fn(async () => true) };
+const mockSsh = {
+  ptyLaunch: jest.fn(),
+  killTmuxSession: jest.fn(async () => true),
+  getStatus: jest.fn(() => ({ state: 'connected', capabilities: null })),
+  connect: jest.fn(async () => ({ state: 'connected', capabilities: null })),
+};
 jest.mock('../../src/main/services/SshHostService', () => mockSsh);
 
 const { registerTerminalHandlers } = require('../../src/main/ipc/terminal.ipc');
@@ -133,10 +139,49 @@ describe('terminal-respawn and terminal-kill (remote tabs)', () => {
 });
 
 describe('chat-start', () => {
-  test('refuses a remote cwd', async () => {
-    const res = await invoke('chat-start', { cwd: URI, prompt: 'hi' });
+  const CAPS = { claude: '/home/yanis/.local/bin/claude', claudeVersion: '', path: '/home/yanis/.local/bin:/usr/bin' };
+  const LAUNCH = { profileId: 'abcd1234', profile: { id: 'abcd1234', host: 'h' }, command: '/usr/bin/ssh', prefixArgs: [], env: null, capabilities: CAPS, controlDir: null, platform: 'linux' };
+  const TARGET = { kind: 'remote', profileId: 'abcd1234', remotePath: '/home/yanis/api', uri: URI, host: 'yanis@h', project: { id: 'r1' } };
+
+  test('resolves a remote cwd in main, with no account and no launch context from the renderer', async () => {
+    mockResolveTarget.mockResolvedValueOnce(TARGET);
+    mockSsh.ptyLaunch.mockResolvedValueOnce(LAUNCH);
+    const res = await invoke('chat-start', { cwd: URI, projectId: 'r1', accountId: 'acc-1', prompt: 'hi', remote: { launch: { command: 'calc.exe' } } });
+    expect(res).toMatchObject({ success: true, sessionId: 'chat-1', remote: { host: 'yanis@h', warnings: [] } });
+    expect(mockResolveTarget).toHaveBeenCalledWith(URI);
+    const params = mockChatService.startSession.mock.calls[0][0];
+    expect(params.accountId).toBeNull();
+    expect(params.remote).toMatchObject({ profileId: 'abcd1234', remotePath: '/home/yanis/api', claude: CAPS.claude, launch: LAUNCH });
+    expect(params.remote.launch.command).toBe('/usr/bin/ssh');
+  });
+
+  test('refuses a remote cwd outside every registered project', async () => {
+    mockResolveTarget.mockRejectedValueOnce(Object.assign(new Error('Remote path is not inside a registered remote project'), { code: 'REMOTE_PATH_NOT_IN_PROJECT' }));
+    const res = await invoke('chat-start', { cwd: 'ssh-remote://abcd1234/etc', prompt: 'hi' });
     expect(res.success).toBe(false);
     expect(mockChatService.startSession).not.toHaveBeenCalled();
+  });
+
+  test('a host without claude is said, and nothing starts', async () => {
+    mockResolveTarget.mockResolvedValueOnce(TARGET);
+    mockSsh.ptyLaunch.mockResolvedValueOnce({ ...LAUNCH, capabilities: { claude: '' } });
+    const res = await invoke('chat-start', { cwd: URI, prompt: 'hi' });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/^Claude Code is not installed on yanis@h\./);
+    expect(mockChatService.startSession).not.toHaveBeenCalled();
+  });
+
+  test('an unreachable host comes back as connection_lost', async () => {
+    mockResolveTarget.mockResolvedValueOnce(TARGET);
+    mockSsh.getStatus.mockReturnValueOnce({ state: 'reconnecting' });
+    mockSsh.connect.mockResolvedValueOnce({ state: 'reconnecting' });
+    const res = await invoke('chat-start', { cwd: URI, prompt: 'hi' });
+    expect(res).toMatchObject({ success: false, errorType: 'connection_lost' });
+  });
+
+  test('a local session cannot be handed a remote launch context', async () => {
+    await invoke('chat-start', { cwd: 'C:\\code\\app', prompt: 'hi', remote: { launch: { command: 'calc.exe' } } });
+    expect(mockChatService.startSession.mock.calls[0][0]).not.toHaveProperty('remote');
   });
 
   test('a local session starts as before', async () => {

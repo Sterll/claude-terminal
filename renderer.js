@@ -2233,12 +2233,15 @@ function _moveSessionErrorMessage(result) {
  * @param {Function} onFinish - Called once the picker closes, moved or not
  */
 function _showMoveSessionModal(session, fromProject, onFinish) {
+  // A remote session lives on its host and is never re-filed from here
+  if (refuseForRemote(fromProject, 'sessionMove')) return;
   if (_isSessionLive(session.sessionId)) {
     showToast({ type: 'warning', title: t('sessions.move.title'), message: t('sessions.move.errorLive') });
     return;
   }
 
-  const targets = projectsState.get().projects.filter(p => p.path !== fromProject.path);
+  // A local transcript cannot be moved onto a host either
+  const targets = projectsState.get().projects.filter(p => p.path !== fromProject.path && !isRemoteProject(p));
   if (targets.length === 0) {
     showToast({ type: 'info', title: t('sessions.move.title'), message: t('sessions.move.noTarget') });
     return;
@@ -2326,23 +2329,32 @@ ${s.gitBranch ? `<span class="session-meta-branch"><svg width="10" height="10"><
 async function showSessionsModal(project) {
   if (!project) return;
 
-  // A remote project's transcripts live on its host, which the remote chat
-  // work reads; until then say where they are rather than "no conversations".
+  // A remote project's transcripts live on its host and are read over the
+  // channel. While the host is not connected, say where they are rather than
+  // "no conversations".
+  let remoteListing = null;
   if (isRemoteProject(project)) {
-    const hostLabel = getProjectHost(project)?.hostLabel || t('ssh.unknownHost');
-    showModal(t('terminals.resumeConversation') || 'Resume a conversation', `
-      <div class="sessions-modal-empty">
-        <p>${escapeHtml(t('ssh.terminal.historyOnHost', { host: hostLabel }))}</p>
-        <button class="modal-btn primary" id="sessions-modal-remote-new">${escapeHtml(t('terminals.newConversation'))}</button>
-      </div>
-    `);
-    const newBtn = document.getElementById('sessions-modal-remote-new');
-    if (newBtn) newBtn.onclick = () => { closeModal(); createTerminalForProject(project); };
-    return;
+    try {
+      remoteListing = await api.claude.sessionListing(project.path);
+    } catch (_) {
+      remoteListing = null;
+    }
+    if (!remoteListing || remoteListing.disconnected) {
+      const hostLabel = getProjectHost(project)?.hostLabel || t('ssh.unknownHost');
+      showModal(t('terminals.resumeConversation') || 'Resume a conversation', `
+        <div class="sessions-modal-empty">
+          <p>${escapeHtml(t('ssh.terminal.historyOnHost', { host: hostLabel }))}</p>
+          <button class="modal-btn primary" id="sessions-modal-remote-new">${escapeHtml(t('terminals.newConversation'))}</button>
+        </div>
+      `);
+      const newBtn = document.getElementById('sessions-modal-remote-new');
+      if (newBtn) newBtn.onclick = () => { closeModal(); createTerminalForProject(project); };
+      return;
+    }
   }
 
   try {
-    const sessions = await api.claude.sessions(project.path);
+    const sessions = remoteListing ? (remoteListing.sessions || []) : await api.claude.sessions(project.path);
 
     if (!sessions || sessions.length === 0) {
       showModal(t('terminals.resumeConversation') || 'Resume a conversation', `

@@ -4501,7 +4501,18 @@
       "respawnFailed": "Could not reopen the terminal: {error}",
       "reconnected": "Reconnected to {host}",
       "claudeMissing": "Claude Code was not found on {host}. Install it there, or set its path in the host profile.",
-      "historyOnHost": "The conversation history of this project lives on {host}. It is not listed here yet."
+      "historyOnHost": "The conversation history of this project lives on {host}, which is not connected. Connect to the host to list it."
+    },
+    "chat": {
+      "localToolsNote": "Runs on the host. This app's MCP tools and Claude in Chrome are not available here.",
+      "localToolsTooltip": "This app's MCP server and the Claude in Chrome server are local programs that Claude Code on the host cannot start. MCP servers configured on the host itself still work.",
+      "lost": "Connection to {host} lost ({state}). The conversation resumes as soon as the host is back.",
+      "lostManual": "Connection to {host} lost: {state}. Fix it from the host badge, then reconnect.",
+      "gaveUp": "The connection to {host} keeps dropping. Reconnect once the network is stable.",
+      "resuming": "Resuming the conversation on {host}...",
+      "resumed": "Connected to {host} again. Resuming the conversation.",
+      "resent": "Connected to {host}. Sending your message.",
+      "pathAttachmentRefused": "{name} cannot be attached to a remote chat: a local file path means nothing on the host. Files small enough are sent inline."
     },
     "openRemoteProject": "Open remote project",
     "modalTitle": "Open Remote Project",
@@ -4552,11 +4563,12 @@
       "unknown": "unknown error"
     },
     "disabled": {
-      "notYet": "Not available for remote projects yet.",
       "openInExplorer": "A remote project has no local folder to show.",
       "openInEditor": "Opening a remote project in an external editor is not supported yet.",
       "accountBinding": "A remote project uses the Claude login of the remote host.",
-      "cloudUpload": "Cloud upload zips a local folder, so remote projects cannot be uploaded."
+      "cloudUpload": "Cloud upload zips a local folder, so remote projects cannot be uploaded.",
+      "sessionMove": "Sessions of a remote project live on its host and cannot be moved to another project.",
+      "pathAttachment": "A local file path means nothing to a remote chat. Files small enough are sent inline instead."
     },
     "menu": {
       "section": "Remote host: {host}",

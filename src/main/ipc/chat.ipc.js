@@ -8,6 +8,7 @@ const chatService = require('../services/ChatService');
 const modelCatalog = require('../services/ModelCatalogService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 const { isRemotePath } = require('../../shared/remote-path');
+const { prepareRemoteChat } = require('../utils/sshClaudeSpawn');
 
 function broadcast(channel, payload) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -25,17 +26,30 @@ function registerChatHandlers() {
   // Start a new chat session (streaming input mode)
   ipcMain.handle('chat-start', async (_event, params) => {
     try {
-      // A remote (ssh-remote://) cwd would start the local CLI somewhere it
-      // was never meant to run. Refused until remote chat sessions land.
+      // A remote (ssh-remote://) project runs its CLI on the host. Main
+      // resolves the URI itself (configured profile, registered project,
+      // connected host, a `claude` on it): the renderer never names a host,
+      // and the account overlay does not apply there.
       if (params && isRemotePath(params.cwd)) {
-        return { success: false, error: 'Chat sessions are not available for remote projects yet' };
+        const { remote: _ignored, accountId: _account, ...rest } = params;
+        const remote = await prepareRemoteChat({ cwd: params.cwd, projectId: params.projectId || null });
+        const sessionId = await chatService.startSession({ ...rest, accountId: null, remote });
+        return {
+          success: true,
+          sessionId,
+          remote: { host: remote.host, profileId: remote.profileId, warnings: remote.warnings.map(w => w.message) },
+        };
       }
-      const sessionId = await chatService.startSession(params);
+      // A launch context is main's to build; one sent by the renderer is dropped.
+      const local = params && Object.prototype.hasOwnProperty.call(params, 'remote')
+        ? (({ remote: _ignored, ...rest }) => rest)(params)
+        : params;
+      const sessionId = await chatService.startSession(local);
       return { success: true, sessionId };
     } catch (err) {
       if (err.name === 'AbortError') return { success: false, cancelled: true };
       console.error('[chat-start] Error:', err.message);
-      return { success: false, error: err.message };
+      return { success: false, error: err.message, ...(err.errorType ? { errorType: err.errorType } : {}) };
     }
   });
 

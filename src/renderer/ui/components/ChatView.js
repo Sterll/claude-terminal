@@ -40,6 +40,7 @@ const { createLightbox } = require('./chat/lightbox');
 const { attachExportMenu } = require('./chat/exportConversation');
 const { createTranscriptSearch } = require('./chat/transcriptSearch');
 const { createAttachmentTray } = require('./chat/attachmentTray');
+const { createRemoteChat } = require('./chat/remoteSession');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
@@ -555,6 +556,31 @@ class ChatView extends BaseComponent {
     onMentionChip: (type, data) => addMentionChip(type, data),
     countPdfAttachments: () => countPdfAttachments(),
     countTextAttachments: () => countTextAttachments(),
+  });
+
+  // ── Remote (SSH) project ──
+  //
+  // Its CLI runs on the host. The unit draws the host badge and what a remote
+  // chat does without, holds the host while the tab is open, and resumes the
+  // session once a lost connection comes back. Inert for a local project.
+  const remoteChat = createRemoteChat({
+    project,
+    chatView,
+    hosts: {
+      getProjectHost: (p) => require('../../state/remoteHosts.state').getProjectHost(p),
+      holdHost: (id) => require('../../state/remoteHosts.state').holdHost(id),
+      connectHost: (id) => require('../../state/remoteHosts.state').connectHost(id),
+      subscribe: (fn) => require('../../state/remoteHosts.state').remoteHostsState.subscribe(fn),
+      nudge: () => api.ssh?.networkOnline?.(),
+    },
+    badge: {
+      buildHostBadgeHtml: (p, opts) => require('./RemoteHostBadge').buildHostBadgeHtml(p, opts),
+      onHostBadgeClick: (id) => require('./RemoteHostBadge').onHostBadgeClick(id),
+      stateLabel: (state) => require('./RemoteHostBadge').stateLabel(state),
+    },
+    t,
+    escapeHtml,
+    onResume: (ctx) => resumeAfterConnectionLoss(ctx),
   });
 
   // ── Contenteditable helpers ──
@@ -2370,7 +2396,12 @@ class ChatView extends BaseComponent {
 
     const query = atMatch[1].toLowerCase();
     const LOCAL_ONLY_MENTIONS = ['file', 'git', 'errors', 'selection', 'todos'];
-    const availableMentions = project.isCloud ? MENTION_TYPES.filter(m => !LOCAL_ONLY_MENTIONS.includes(m.type)) : MENTION_TYPES;
+    // The app's own errors and the editor selection are local, whatever the
+    // project; a remote chat cannot use them.
+    const REMOTE_EXCLUDED_MENTIONS = ['errors', 'selection'];
+    const availableMentions = project.isCloud
+      ? MENTION_TYPES.filter(m => !LOCAL_ONLY_MENTIONS.includes(m.type))
+      : remoteChat.isRemote ? MENTION_TYPES.filter(m => !REMOTE_EXCLUDED_MENTIONS.includes(m.type)) : MENTION_TYPES;
     const filtered = availableMentions.filter(m => m.type.includes(query));
     if (filtered.length === 0) {
       hideMentionDropdown();
@@ -3428,6 +3459,11 @@ class ChatView extends BaseComponent {
           sessionId = null;
           appendError(result.error || t('chat.errorOccurred'));
           setStreaming(false);
+          // A remote host that is not reachable yet: the opening turn goes
+          // out on its own once it is
+          if (result.errorType === 'connection_lost') remoteChat.onConnectionLost({ turnWasRunning: false });
+        } else if (result.remote) {
+          remoteChat.showWarnings(result.remote.warnings);
         }
       } else {
         // Force parallel task: prepend instruction to message in existing session
@@ -7518,6 +7554,9 @@ class ChatView extends BaseComponent {
 
   const unsubError = api.chat.onError(({ sessionId: sid, error, errorType }) => {
     if (sid !== sessionId) return;
+    // A remote session that lost its host: picked up again once it is back
+    const turnWasRunning = isStreaming;
+    if (errorType === 'connection_lost') remoteChat.onConnectionLost({ turnWasRunning });
     removeThinkingIndicator();
     finalizeStreamBlock();
     resolveAllPendingCards();
@@ -7679,6 +7718,54 @@ class ChatView extends BaseComponent {
    *   restart; defaults to whether a limit cut the last turn short.
    * @returns {Promise<boolean>}
    */
+  /**
+   * Restart a remote session after its connection came back, the way an
+   * account switch restarts one: same tab, same app-local handle, `resume`
+   * with the CLI's own session id. A turn the drop cut off is asked for
+   * again; an idle tab just comes back. A session that never started (the
+   * host was away for the opening turn) sends that turn now.
+   *
+   * @param {{turnWasRunning: boolean}} ctx
+   * @returns {Promise<boolean>} whether the session is running again
+   */
+  async function resumeAfterConnectionLoss({ turnWasRunning }) {
+    if (destroyed || !lastStartOpts) return false;
+    const realSid = sdkSessionId || resumeSessionId;
+    const restartOpts = realSid
+      ? {
+        ...lastStartOpts,
+        prompt: turnWasRunning ? RESUME_TURN_PROMPT : '',
+        images: [],
+        documents: [],
+        mentions: [],
+        userMessageUuid: null,
+        forkSession: false,
+        resumeSessionAt: null,
+        resumeDropsTurn: null,
+        resumeSessionId: realSid,
+      }
+      : { ...lastStartOpts };
+    const replayed = Boolean((restartOpts.prompt || '').trim() || (restartOpts.images || []).length || (restartOpts.mentions || []).length);
+    appendSystemNotice(realSid
+      ? t('ssh.chat.resumed', { host: remoteChat.hostLabel() })
+      : t('ssh.chat.resent', { host: remoteChat.hostLabel() }), 'info');
+    // The handle the restart runs under: events for it must reach this tab
+    sessionId = restartOpts.sessionId || sessionId;
+    if (replayed) {
+      setStreaming(true);
+      appendThinkingIndicator();
+    }
+    const res = await startChatSession(restartOpts);
+    if (!res) return false;
+    if (!res.success) {
+      if (res.errorType !== 'connection_lost') appendError(res.error || t('chat.errorOccurred'));
+      setStreaming(false);
+      return false;
+    }
+    if (res.remote) remoteChat.showWarnings(res.remote.warnings);
+    return true;
+  }
+
   async function switchAccountAndRestart(accountId, { resumeTurn = turnCutByLimit } = {}) {
     // `null` is a target of its own — the project following the default account
     // rather than pinning one — so only an absent argument is refused.
@@ -8832,6 +8919,7 @@ class ChatView extends BaseComponent {
         } catch (e) { /* events not ready */ }
       }
       if (sessionId) api.chat.close({ sessionId });
+      remoteChat.destroy();
       // Persist whatever the debounce was still holding, before the view goes.
       artifactRegistry.flush();
       transcriptPruner?.destroy();

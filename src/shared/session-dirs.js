@@ -214,8 +214,64 @@ function listProjectSessionDirs(projectPath) {
   return dirs;
 }
 
+// ── Remote (SSH) projects ───────────────────────────────────────────────────
+//
+// A remote project's transcripts are on its host, in the remote
+// `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded remote path>`. The
+// encoding is the CLI's own and applies unchanged to a POSIX path. Nothing here
+// touches a file system: the directory is computed from the handshake
+// capabilities, and the readers in claude.ipc.js go through the remote fs.
+//
+// Worktree discovery is skipped. It reads `.git/worktrees` and lists the
+// projects root, both local file-system walks, and a remote project's sessions
+// are listed in one request (design/remote-ssh.md section 5.3).
+
+/**
+ * The remote Claude config directory, from the handshake capabilities.
+ * @param {{claudeConfigDir?: string, home?: string}|null} capabilities
+ * @returns {string|null} absolute POSIX path, or null when the home is unknown
+ */
+function remoteClaudeRoot(capabilities) {
+  const caps = capabilities || {};
+  const configured = typeof caps.claudeConfigDir === 'string' ? caps.claudeConfigDir.replace(/\/+$/, '') : '';
+  if (configured.startsWith('/')) return configured;
+  const home = typeof caps.home === 'string' ? caps.home.replace(/\/+$/, '') : '';
+  if (!home.startsWith('/')) return null;
+  return `${home}/.claude`;
+}
+
+/**
+ * The transcript directory of a remote project.
+ * @param {string} remotePath - the project's absolute POSIX path on its host
+ * @param {{claudeConfigDir?: string, home?: string}|null} capabilities
+ * @returns {string|null}
+ */
+function getRemoteSessionsDir(remotePath, capabilities) {
+  const root = remoteClaudeRoot(capabilities);
+  if (!root || typeof remotePath !== 'string' || !remotePath.startsWith('/')) return null;
+  return path.posix.join(root, 'projects', encodeProjectPath(remotePath));
+}
+
+/**
+ * The single transcript directory a remote project's sessions are read from,
+ * in the shape `listProjectSessionDirs` returns. `cwd` is the project's URI:
+ * that is where a remote session is resumed.
+ *
+ * @param {string} projectUri - the project's ssh-remote:// path
+ * @param {string} remotePath
+ * @param {object|null} capabilities
+ * @returns {Array<{dir: string, cwd: string, worktree: null, missing: false}>}
+ */
+function listRemoteSessionDirs(projectUri, remotePath, capabilities) {
+  const dir = getRemoteSessionsDir(remotePath, capabilities);
+  return dir ? [{ dir, cwd: projectUri, worktree: null, missing: false }] : [];
+}
+
 module.exports = {
   claudeProjectsRoot,
+  remoteClaudeRoot,
+  getRemoteSessionsDir,
+  listRemoteSessionDirs,
   encodeProjectPath,
   getProjectSessionsDir,
   commonGitDir,

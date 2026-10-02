@@ -74,7 +74,7 @@ const {
 } = require('./terminal/sessionCards');
 const { createMdRenderer, buildMdToc } = require('./terminal/markdownViewer');
 const { getBuiltinSystemPrompt } = require('../../services/BuiltinSystemPrompts');
-const { isRemoteProject, sameProject, can: remoteCan } = require('../../../shared/remote-capabilities');
+const { isRemoteProject, sameProject } = require('../../../shared/remote-capabilities');
 const { isRemotePath } = require('../../../shared/remote-path');
 const { createRemoteTabs } = require('./terminal/remoteTab');
 
@@ -1592,12 +1592,8 @@ class TerminalManager extends BaseComponent {
 
     const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
 
-    // A remote (SSH) project's terminals run on its host. Its chat comes with
-    // a later slice of the remote work: until then it is refused with the
-    // reason rather than letting main start the local CLI in the home directory.
-    if (project && require('./RemoteHostBadge').refuseForRemote(project, mode === 'chat' && runClaude ? 'chat' : 'terminals')) {
-      return null;
-    }
+    // A remote (SSH) project's terminals and chats both run on its host:
+    // main resolves the project URI, so nothing here is refused.
     const remoteSessionKey = this._remoteSessionKey(project, options.remoteSessionKey);
 
     if (mode === 'chat' && runClaude) {
@@ -2805,9 +2801,17 @@ class TerminalManager extends BaseComponent {
 
   async _renderSessionsPanel(project, emptyState) {
     const self = this;
-    if (isRemoteProject(project)) return this._renderRemoteSessionsPanel(project, emptyState);
     try {
-      const sessions = await this._api.claude.sessions(project.path);
+      let sessions;
+      if (isRemoteProject(project)) {
+        // Read on the host over the channel. While it is not connected the
+        // listing says so, and the panel says where the history is.
+        const listing = await this._api.claude.sessionListing(project.path);
+        if (!listing || listing.disconnected) return this._renderRemoteSessionsPanel(project, emptyState);
+        sessions = listing.sessions || [];
+      } else {
+        sessions = await this._api.claude.sessions(project.path);
+      }
 
       if (!sessions || sessions.length === 0) {
         emptyState.innerHTML = `
@@ -2950,6 +2954,8 @@ class TerminalManager extends BaseComponent {
         const moveBtn = e.target.closest('.session-card-move');
         if (moveBtn) {
           e.stopPropagation();
+          // A remote transcript lives on its host: say so rather than fail
+          if (require('./RemoteHostBadge').refuseForRemote(project, 'sessionMove')) return;
           const session = sessionMap.get(moveBtn.dataset.moveSid);
           if (session && self._callbacks.onMoveSession) {
             self._callbacks.onMoveSession(session, project, () => self._renderSessionsPanel(project, emptyState));
@@ -3033,10 +3039,10 @@ class TerminalManager extends BaseComponent {
   }
 
   /**
-   * The empty state of a remote project. Its transcripts live in the remote
-   * ~/.claude/projects, which the chat slice of the remote work reads over the
-   * channel; until then the panel says where they are rather than showing an
-   * empty list as if there were none.
+   * The sessions panel of a remote project whose host is not connected. Its
+   * transcripts live in the remote ~/.claude/projects and are read over the
+   * channel, so while the host is away the panel says where they are rather
+   * than showing an empty list as if there were none.
    */
   _renderRemoteSessionsPanel(project, emptyState) {
     const host = require('../../state/remoteHosts.state').getProjectHost(project);
@@ -3068,7 +3074,7 @@ class TerminalManager extends BaseComponent {
    * before then (design/remote-ssh.md section 6). A shell tab comes back in the
    * directory it had, reattached to its tmux session when the host profile
    * opted into tmux; a Claude tab resumes its conversation when the id is
-   * known. Chat tabs wait for the remote chat to exist.
+   * known, and a chat tab reopens its conversation the same way.
    *
    * @param {Object} project
    * @returns {Promise<number>} how many tabs were restored
@@ -3081,7 +3087,6 @@ class TerminalManager extends BaseComponent {
     let restored = 0;
     for (const tab of saved.tabs) {
       const mode = tab.mode || null;
-      if (mode === 'chat' && !remoteCan(project, 'chat').ok) continue;
       const cwd = isRemotePath(tab.cwd) ? tab.cwd : project.path;
       const id = await this.createTerminal(project, {
         runClaude: !tab.isBasic,
@@ -4191,8 +4196,6 @@ class TerminalManager extends BaseComponent {
     const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
 
     if (!wrapper || !tab) return;
-    // A remote project has no chat yet: say so instead of killing its PTY first.
-    if (newMode === 'chat' && require('./RemoteHostBadge').refuseForRemote(project, 'chat')) return;
 
     this._modeSwitching.add(id);
     try {
