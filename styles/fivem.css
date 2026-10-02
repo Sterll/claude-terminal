@@ -1402,8 +1402,8 @@
   align-items: center;
   gap: 4px;
   padding: 3px 8px;
-  background: rgba(217, 119, 6, 0.12);
-  border: 1px solid rgba(217, 119, 6, 0.25);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.25);
   border-radius: var(--radius-sm);
   color: var(--accent);
   font-size: var(--font-2xs);
@@ -1415,7 +1415,7 @@
 }
 
 .fivem-error-debug-btn:hover {
-  background: rgba(217, 119, 6, 0.22);
+  background: rgba(var(--accent-rgb), 0.22);
   border-color: var(--accent);
 }
 
@@ -1768,7 +1768,7 @@
 }
 
 .fivem-resource-btn.folder:hover {
-  background: rgba(217, 119, 6, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
 }
 
@@ -1801,8 +1801,8 @@
 
 .fivem-resource-btn.shortcut.has-shortcut {
   padding: 0 6px;
-  background: rgba(217, 119, 6, 0.12);
-  border: 1px solid rgba(217, 119, 6, 0.2);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
   color: var(--accent);
   height: 22px;
 }
@@ -1836,12 +1836,12 @@
 }
 
 .fivem-resource-item.shortcut-triggered {
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
   animation: shortcut-flash 0.4s ease-out;
 }
 
 @keyframes shortcut-flash {
-  0% { background: rgba(217, 119, 6, 0.2); }
+  0% { background: rgba(var(--accent-rgb), 0.2); }
   100% { background: transparent; }
 }
 
@@ -1965,7 +1965,7 @@
 .manifest-tab.active {
   color: var(--bg-primary);
   background: var(--accent);
-  box-shadow: 0 1px 8px rgba(217,119,6,0.35);
+  box-shadow: 0 1px 8px rgba(var(--accent-rgb), 0.35);
 }
 
 /* ── Form grid layout ── */
@@ -2039,10 +2039,10 @@
 .fivem-resource-wizard .form-input:focus,
 .fivem-manifest-editor .form-input:focus {
   outline: none;
-  border-color: rgba(217,119,6,0.35);
+  border-color: rgba(var(--accent-rgb), 0.35);
   border-left-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(217,119,6,0.08);
-  background: rgba(217,119,6,0.03);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.08);
+  background: rgba(var(--accent-rgb), 0.03);
 }
 
 /* select arrow */
@@ -2084,10 +2084,10 @@
 .fivem-resource-wizard .form-textarea:focus,
 .fivem-manifest-editor .form-textarea:focus {
   outline: none;
-  border-color: rgba(217,119,6,0.35);
+  border-color: rgba(var(--accent-rgb), 0.35);
   border-left-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(217,119,6,0.08);
-  background: rgba(217,119,6,0.02);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.08);
+  background: rgba(var(--accent-rgb), 0.02);
 }
 
 .fivem-manifest-editor .form-code {
@@ -2103,7 +2103,7 @@
   resize: vertical;
   background: #0a0a0a !important;
   border-color: var(--border-color) !important;
-  border-left-color: rgba(217,119,6,0.4) !important;
+  border-left-color: rgba(var(--accent-rgb), 0.4) !important;
   color: #c9d1d9;
   padding: 14px 16px !important;
   font-size: 12.5px !important;
@@ -2113,7 +2113,7 @@
 
 .manifest-raw-editor:focus {
   border-left-color: var(--accent) !important;
-  box-shadow: 0 0 0 3px rgba(217,119,6,0.1), inset 0 2px 8px rgba(0,0,0,0.3) !important;
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.1), inset 0 2px 8px rgba(0,0,0,0.3) !important;
 }
 
 /* Raw tab container — add a subtle chrome bar on top */

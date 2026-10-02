@@ -113,7 +113,7 @@
 }
 .database-picker-item:hover { background: rgba(255, 255, 255, 0.05); }
 .database-picker-item.active {
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 .database-picker-item-type {
   font-size: 9px;
@@ -193,8 +193,8 @@
 }
 .database-card:hover::before { opacity: 0.6; }
 .database-card.selected {
-  border-color: rgba(217, 119, 6, 0.4);
-  background: rgba(217, 119, 6, 0.06);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 .database-card.selected::before {
   background: var(--accent);
@@ -319,12 +319,12 @@
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
-  box-shadow: 0 1px 4px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 1px 4px rgba(var(--accent-rgb), 0.3);
 }
 .btn-database.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.4);
   transform: scale(1.05);
 }
 .btn-database.primary:active {
@@ -577,7 +577,7 @@
   background: var(--bg-hover);
 }
 .db-browser-table-item.active {
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 .db-browser-table-item.active::before {
   opacity: 1;
@@ -1015,13 +1015,13 @@
   cursor: cell;
 }
 .db-grid-cell:hover {
-  background: rgba(217, 119, 6, 0.04);
+  background: rgba(var(--accent-rgb), 0.04);
 }
 .db-grid tbody tr:hover td {
   background: rgba(255, 255, 255, 0.02);
 }
 .db-grid tbody tr:hover .db-grid-cell:hover {
-  background: rgba(217, 119, 6, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 /* Null values */
@@ -1034,20 +1034,20 @@
 /* Editing state */
 .db-grid-cell.editing {
   padding: 0 !important;
-  background: rgba(217, 119, 6, 0.08) !important;
+  background: rgba(var(--accent-rgb), 0.08) !important;
 }
 .db-grid-edit-input {
   width: 100%;
   height: 100%;
   padding: 5px 12px;
-  background: rgba(217, 119, 6, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
   border: 1.5px solid var(--accent);
   border-radius: 0;
   outline: none;
   color: var(--text-primary);
   font-family: 'Cascadia Code', 'Fira Code', monospace;
   font-size: 11px;
-  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.15);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
 }
 
 /* Pending edit highlight */
@@ -1291,7 +1291,7 @@
 }
 .db-insert-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.15);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.15);
 }
 .db-insert-input::placeholder {
   color: var(--text-muted);
@@ -1459,7 +1459,7 @@
   overflow: auto;
 }
 .db-query-highlight-wrap .database-query-editor::selection {
-  background: rgba(217, 119, 6, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
   color: transparent;
 }
 .db-query-highlight-wrap .database-query-editor:focus {
@@ -1498,7 +1498,7 @@
 }
 .db-query-run:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 10px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 2px 10px rgba(var(--accent-rgb), 0.25);
 }
 .db-query-run:active {
   transform: scale(0.97);
@@ -2264,13 +2264,13 @@
 /* ========== SAVED QUERIES ========== */
 
 .db-query-tpl-saved {
-  border-color: rgba(217, 119, 6, 0.2) !important;
+  border-color: rgba(var(--accent-rgb), 0.2) !important;
   color: var(--accent) !important;
 }
 
 .db-query-tpl-saved:hover {
-  background: rgba(217, 119, 6, 0.08) !important;
-  border-color: rgba(217, 119, 6, 0.35) !important;
+  background: rgba(var(--accent-rgb), 0.08) !important;
+  border-color: rgba(var(--accent-rgb), 0.35) !important;
   color: var(--accent-hover) !important;
 }
 
@@ -2299,8 +2299,8 @@
 }
 
 .db-query-save:hover {
-  background: rgba(217, 119, 6, 0.08);
-  border-color: rgba(217, 119, 6, 0.15);
+  background: rgba(var(--accent-rgb), 0.08);
+  border-color: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
 }
 
@@ -2504,10 +2504,10 @@
   cursor: pointer;
 }
 .db-grid tbody tr.selected > td {
-  background: rgba(217, 119, 6, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 .db-grid tbody tr.selected:hover > td {
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 .db-browser-selection-badge {
   font-size: var(--font-2xs);

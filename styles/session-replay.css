@@ -383,7 +383,7 @@
 }
 
 .sr-view-btn--player {
-  border-color: rgba(217, 119, 6, 0.35);
+  border-color: rgba(var(--accent-rgb), 0.35);
   color: var(--accent);
 }
 
@@ -936,7 +936,7 @@
   padding: 3px 10px;
   border-radius: 20px;
   background: var(--accent-dim);
-  border: 1px solid rgba(217, 119, 6, 0.3);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
   color: var(--accent);
   font-size: var(--font-sm);
   font-weight: 600;
@@ -962,7 +962,7 @@
 
 .sr-ask-opt--selected {
   background: var(--accent-dim);
-  border-color: rgba(217, 119, 6, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
   color: var(--accent);
   font-weight: 600;
 }

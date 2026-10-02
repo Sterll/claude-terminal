@@ -179,7 +179,7 @@
 }
 
 .dashboard-project-type.fivem {
-  background: rgba(217, 119, 6, 0.15);
+  background: rgba(var(--accent-rgb), 0.15);
   color: var(--accent);
 }
 
@@ -212,7 +212,7 @@
 
 .dashboard-stat-card.starting {
   border-color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .stat-icon {
@@ -404,7 +404,7 @@
 
 .source-option.selected {
   border-color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .source-option svg {

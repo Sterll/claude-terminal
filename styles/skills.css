@@ -169,7 +169,7 @@
 
 .btn-sm.btn-install:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .btn-sm.btn-install:disabled {
@@ -738,7 +738,7 @@
   flex-shrink: 0;
   background: linear-gradient(135deg, var(--accent-dim), var(--bg-tertiary));
   color: var(--accent);
-  border: 1px solid rgba(217, 119, 6, 0.15);
+  border: 1px solid rgba(var(--accent-rgb), 0.15);
 }
 
 .plugin-installed-info {
@@ -862,8 +862,8 @@
 }
 
 .plugin-marketplace-card.official {
-  border-color: rgba(217, 119, 6, 0.3);
-  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(217, 119, 6, 0.04) 100%);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(var(--accent-rgb), 0.04) 100%);
 }
 
 .plugin-mp-header {
@@ -886,7 +886,7 @@
 
 .plugin-marketplace-card.official .plugin-mp-icon {
   background: var(--accent-dim);
-  border-color: rgba(217, 119, 6, 0.2);
+  border-color: rgba(var(--accent-rgb), 0.2);
   color: var(--accent);
 }
 
@@ -1246,9 +1246,9 @@
 
 /* Edit button — accent-colored */
 .btn-sm.btn-accent {
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
-  border: 1px solid rgba(217, 119, 6, 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
   font-weight: 600;
 }
 
@@ -1256,7 +1256,7 @@
   background: var(--accent);
   color: #000;
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
 }
 
 /* Shared install button spinner (used by plugins, marketplace, mcp) */
@@ -1595,7 +1595,7 @@
 }
 
 .skill-editor-textarea::selection {
-  background: rgba(217, 119, 6, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
 }
 
 .skill-editor-textarea::placeholder {

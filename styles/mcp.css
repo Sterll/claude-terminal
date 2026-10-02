@@ -69,7 +69,7 @@
   justify-content: center;
   flex-shrink: 0;
   font-family: 'Cascadia Code', 'Consolas', monospace;
-  border: 1px solid rgba(217, 119, 6, 0.2);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
   user-select: none;
 }
 
@@ -514,7 +514,7 @@
 }
 
 .mcp-filter-pill.active .mcp-filter-count {
-  background: rgba(217, 119, 6, 0.2);
+  background: rgba(var(--accent-rgb), 0.2);
 }
 
 /* ========== MCP Registry Cards ========== */

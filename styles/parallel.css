@@ -573,7 +573,7 @@
 
 .pt-run-card[data-phase="decomposing"] { border-color: rgba(59,130,246,0.18); }
 .pt-run-card[data-phase="reviewing"]   { border-color: rgba(167,139,250,0.18); }
-.pt-run-card[data-phase="running"]     { border-color: rgba(217,119,6,0.2); }
+.pt-run-card[data-phase="running"]     { border-color: rgba(var(--accent-rgb), 0.2); }
 .pt-run-card[data-phase="done"]        { border-color: rgba(34,197,94,0.16); }
 .pt-run-card[data-phase="failed"]      { border-color: rgba(239,68,68,0.16); }
 .pt-run-card[data-phase="cancelled"]   { opacity: 0.6; }
@@ -827,7 +827,7 @@
 }
 
 
-.parallel-task-card.status-running { border-color: rgba(217,119,6,0.22); }
+.parallel-task-card.status-running { border-color: rgba(var(--accent-rgb), 0.22); }
 .parallel-task-card.status-done    { border-color: rgba(34,197,94,0.12); }
 .parallel-task-card.status-failed  { border-color: rgba(239,68,68,0.15); }
 
@@ -956,7 +956,7 @@
 
 .badge-pending   { background: rgba(255,255,255,0.04);       color: #555; }
 .badge-creating  { background: rgba(59,130,246,0.08);         color: var(--pt-blue); }
-.badge-running   { background: rgba(217,119,6,0.08);          color: var(--accent); }
+.badge-running   { background: rgba(var(--accent-rgb), 0.08);          color: var(--accent); }
 .badge-done      { background: rgba(34,197,94,0.08);          color: var(--pt-green); }
 .badge-failed    { background: rgba(239,68,68,0.08);          color: var(--pt-red); }
 .badge-cancelled { background: rgba(255,255,255,0.04);       color: #555; }

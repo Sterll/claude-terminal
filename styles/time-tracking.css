@@ -466,8 +466,8 @@
 }
 
 .tt-card:hover {
-  border-color: rgba(217, 119, 6, 0.3);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(217, 119, 6, 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(var(--accent-rgb), 0.1);
 }
 
 @keyframes tt-card-appear {
@@ -546,8 +546,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 32px;
-  background: linear-gradient(145deg, rgba(217, 119, 6, 0.1), rgba(21, 21, 21, 0.95));
-  border-color: rgba(217, 119, 6, 0.3);
+  background: linear-gradient(145deg, rgba(var(--accent-rgb), 0.1), rgba(21, 21, 21, 0.95));
+  border-color: rgba(var(--accent-rgb), 0.3);
   animation-delay: 0.05s;
 }
 
@@ -1335,7 +1335,7 @@
 
 .tt-global-value.tt-accent {
   color: var(--accent);
-  text-shadow: 0 0 20px rgba(217, 119, 6, 0.4);
+  text-shadow: 0 0 20px rgba(var(--accent-rgb), 0.4);
 }
 
 /* Project name in stats */
