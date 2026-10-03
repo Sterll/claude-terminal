@@ -150,6 +150,22 @@ describe('the composer hints leave an unreachable host alone', () => {
     hint.stop();
   });
 
+  test('with no hint to show, a refresh still puts the default placeholder back', async () => {
+    // Every turn sets "queue a follow-up" and relies on this refresh to undo
+    // it: a clean work tree, or a host that may not be read, used to leave it
+    // on an idle composer for good.
+    const { createContextSuggestions } = require('../../src/renderer/ui/components/chat/contextSuggestions');
+    const api = makeApi();
+    api.git.statusDetailed.mockImplementation(async () => ({ modified: [], staged: [], untracked: [] }));
+    for (const [project, mayRead] of [[LOCAL, () => true], [REMOTE, () => false]]) {
+      const input = { setPlaceholder: jest.fn(), isEmpty: () => true };
+      const hint = createContextSuggestions(api, project, input, () => 'Ask', mayRead);
+      await hint.refresh();
+      expect(input.setPlaceholder).toHaveBeenLastCalledWith('Ask');
+      hint.stop();
+    }
+  });
+
   test('the follow-up chips do not scan when they may not read, and still do for a local project', async () => {
     const { createFollowupChips } = require('../../src/renderer/ui/components/chat/followupChips');
     const api = makeApi();
