@@ -19,13 +19,14 @@
  *             (the script runs with the decoded bytes on stdin)
  *   client -> PATH <id>\n<value>\n   (export PATH for later requests)
  *   client -> BYE\n
- *   driver -> PID <id> <pid>\n        (the request's process group leader)
+ *   driver -> PID <id> <pid>\n        (the request's subshell; its group leader under set -m)
  *   driver -> RES <id> <exit> <stdoutBytes> <stderrBytes>\n<stdout><stderr>
  *
  * Responses are length-prefixed, so they are binary safe. `set -m` puts each
- * request in its own process group when the shell supports it, which is what
- * lets a cancellation reach the `git` a request started and not only its
- * subshell. The original umask is restored for each request: the driver's own
+ * request in its own process group when the shell supports it; dash refuses
+ * it without a terminal, so a cancellation (`killScript`) also walks the
+ * request's process tree, which is what lets it reach the `git` a request
+ * started and not only its subshell. The original umask is restored for each request: the driver's own
  * `umask 077` protects its temp directory, not the user's files.
  *
  * Helpers the driver defines for the scripts it runs (requests are subshells
@@ -137,11 +138,35 @@ function driverPreamble(nonce) {
   return `CT_NONCE=${nonce}\n${DRIVER}`;
 }
 
-/** Process-group kill for a request, sent on a sibling lane. Falls back to the pid when there is no group. */
-function killScript(pgid) {
-  const id = Number(pgid);
-  if (!Number.isInteger(id) || id <= 1) throw new Error('Refusing to signal an invalid process group');
-  return `kill -TERM -- -${id} 2>/dev/null || kill -TERM ${id} 2>/dev/null; :`;
+/**
+ * awk program listing a process and all its descendants from `ps -A -o pid= -o ppid=`
+ * (POSIX ps, so GNU procps, busybox with ps -o, the BSDs and macOS alike).
+ */
+const DESCENDANTS_AWK = '{ p[NR] = $1; pp[NR] = $2 } END { s[r] = 1; o = r; do { c = 0; for (i = 1; i <= NR; i++) if (!(p[i] in s) && (pp[i] in s)) { s[p[i]] = 1; o = o " " p[i]; c = 1 } } while (c); print o }';
+
+/**
+ * Kill a request and everything it started, sent on a sibling lane.
+ *
+ * Two mechanisms, because neither works everywhere:
+ *   - the process group, when the driver's `set -m` gave the request one
+ *     (bash, ksh, zsh as /bin/sh). `kill -TERM -<pgid>` has no `--`: dash's
+ *     kill builtin reads `--` after a signal name as a pid and fails with
+ *     "Illegal number";
+ *   - the process tree, snapshotted with `ps` before anything is signalled
+ *     (a child whose parent dies first is re-parented to init and would drop
+ *     out of the tree). This is the only route on dash, Debian's and Ubuntu's
+ *     /bin/sh, which refuses `set -m` without a terminal and so leaves every
+ *     request in the driver's own group.
+ */
+function killScript(pid) {
+  const id = Number(pid);
+  if (!Number.isInteger(id) || id <= 1) throw new Error('Refusing to signal an invalid process');
+  return [
+    `t=$(ps -A -o pid= -o ppid= 2>/dev/null | awk -v r=${id} ${q(DESCENDANTS_AWK)} 2>/dev/null)`,
+    `kill -TERM -${id} 2>/dev/null`,
+    `kill -TERM \${t:-${id}} 2>/dev/null`,
+    ':',
+  ].join('; ');
 }
 
 // ── Handshake ────────────────────────────────────────────────────────────────

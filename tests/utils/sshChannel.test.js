@@ -211,6 +211,34 @@ describeSh('SshLane against fake-ssh and a real sh', () => {
     expect(probe.ok).toBe(false);
   });
 
+  test('the kill reaches the whole tree of a request that has no process group of its own (dash)', async () => {
+    // dash, Debian's and Ubuntu's /bin/sh, refuses `set -m` without a
+    // terminal, so a request shares the driver's process group and only its
+    // process tree leads to the commands it started. Reproduced here on any
+    // sh by starting the tree with job control off, so its root is not a
+    // group leader and the group kill finds nothing.
+    const lane = makeLane();
+    const sibling = makeLane();
+    await Promise.all([lane.open(), sibling.open()]);
+    const probe = await sibling.request('ps -A -o pid= -o ppid= >/dev/null 2>&1');
+    if (!probe.ok) return; // this sh's ps cannot list parents (Git for Windows' msys ps)
+    const rootFile = toShPath(path.join(tmp, 'root.pid'));
+    const leafFile = toShPath(path.join(tmp, 'leaf.pid'));
+    const started = lane.request(`set +m; ( sh -c 'sleep 40 & echo $! > ${leafFile}; wait' ) & echo $! > '${rootFile}'; wait`, { timeoutMs: 20000 });
+    let rootPid = '';
+    for (let i = 0; i < 50 && !(rootPid && fs.existsSync(path.join(tmp, 'leaf.pid'))); i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      try { rootPid = fs.readFileSync(path.join(tmp, 'root.pid'), 'utf8').trim(); } catch { /* not yet */ }
+    }
+    const leafPid = fs.readFileSync(path.join(tmp, 'leaf.pid'), 'utf8').trim();
+    const { killScript } = require('../../src/main/utils/sshDriver');
+    await sibling.request(killScript(Number(rootPid)));
+    const res = await started;
+    expect(res.ok).toBe(false);
+    const alive = await sibling.request(`kill -0 ${leafPid} 2>/dev/null`);
+    expect(alive.ok).toBe(false);
+  });
+
   test('without a killer, a stuck request closes the lane after the grace period', async () => {
     const lane = makeLane({}, { graceMs: 300 });
     await lane.open();
@@ -281,5 +309,26 @@ describeSh('SshLane against fake-ssh and a real sh', () => {
     expect(res).toMatchObject({ ok: false, reason: 'disconnected' });
     const info = await exited;
     expect(info).toMatchObject({ expected: false, code: 255, sshFailure: 'network' });
+  });
+});
+
+describe('killScript', () => {
+  const { killScript } = require('../../src/main/utils/sshDriver');
+
+  test('never puts -- after the signal: dash reads it as a pid and kills nothing', () => {
+    const script = killScript(4242);
+    expect(script).not.toMatch(/kill\s+-TERM\s+--/);
+    expect(script).toContain('kill -TERM -4242 ');
+  });
+
+  test('snapshots the process tree before signalling anything, on one line', () => {
+    const script = killScript(4242);
+    expect(script).not.toMatch(/[\r\n]/);
+    expect(script.indexOf('ps -A -o pid= -o ppid=')).toBeLessThan(script.indexOf('kill -TERM'));
+    expect(script).toContain('awk -v r=4242 ');
+  });
+
+  test.each([0, 1, -5, 1.5, 'x', null])('refuses %p', (pid) => {
+    expect(() => killScript(pid)).toThrow();
   });
 });
