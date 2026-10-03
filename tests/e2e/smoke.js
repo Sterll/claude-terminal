@@ -56,6 +56,14 @@ const TAB_SETTLE_MS = 700;
 /** Hard ceiling on the whole run, so CI cannot hang on a stuck window. */
 const RUN_TIMEOUT_MS = 120_000;
 
+/**
+ * Electron binary to launch instead of the one `node_modules/electron`
+ * resolves to. For a checkout whose node_modules holds no usable binary, e.g.
+ * a git worktree sharing another checkout's dependencies: point this at an
+ * Electron of the version package.json asks for, installed anywhere.
+ */
+const ELECTRON_BINARY = process.env.CT_E2E_ELECTRON || null;
+
 // ── Reporting ────────────────────────────────────────────────────────────────
 
 const failures = [];
@@ -169,9 +177,9 @@ function openModalTitle(win) {
  */
 function diagnoseLaunch(env) {
   return new Promise((resolve) => {
-    let binary;
+    let binary = ELECTRON_BINARY;
     try {
-      binary = require('electron');
+      if (!binary) binary = require('electron');
     } catch (e) {
       return resolve(`could not resolve the electron package: ${e.message}`);
     }
@@ -224,6 +232,7 @@ async function run() {
 
   try {
     app = await electron.launch({
+      ...(ELECTRON_BINARY ? { executablePath: ELECTRON_BINARY } : {}),
       args: [
         ROOT,
         `--user-data-dir=${profile.userData}`,
