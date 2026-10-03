@@ -57,7 +57,12 @@ function createContextSuggestions(api, project, inputAdapter, getDefaultPlacehol
 
   function _start() {
     stop();
-    if (!suggestions.length) return;
+    if (!suggestions.length) {
+      // Called after every turn: with no hint to show, the placeholder must
+      // still go back from "queue a follow-up" to the default one.
+      if (inputAdapter.isEmpty()) inputAdapter.setPlaceholder(getDefaultPlaceholder());
+      return;
+    }
     currentIndex = 0;
     _apply();
     if (suggestions.length > 1) {
