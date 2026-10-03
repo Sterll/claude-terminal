@@ -1177,6 +1177,8 @@ round trip.
 No sshd runs in CI and the unit suite must stay hermetic, so ssh is mocked at
 three levels.
 
+### 10.1 Hermetic suite
+
 1. **Pure units** (`tests/shared/`, `tests/utils/`): `remote-path` (parse,
    format, join, relative, `..` refusal, control characters), `remote-shell`
    (`q()` round trip, executed for real through `/bin/sh -c` and, when present,
@@ -1218,39 +1220,114 @@ three levels.
    - Renderer: projects state dedupe for URIs, `checkMissingPaths` skipping
      remote, capability table driving disabled controls and tooltips, FileExplorer
      with a remote backend mock.
-4. **Manual checklist** (in the last slice's PR description): Windows client to a
-   Linux host with agent auth, ProxyJump, a password-only host in a terminal,
-   unknown and changed host keys, Wi-Fi drop and resume from sleep, a host
-   without `claude`, a fish login shell.
-5. **Live harness** (`npm run test:remote-live`, `scripts/remote-ssh-live.cjs`):
-   the real main-process modules, plain Node with Electron stubbed, against a
-   real sshd through the OpenSSH client the app discovers. Opt-in through
-   `CT_REMOTE_LIVE_DEST` (and `CT_REMOTE_LIVE_JUMP`), never part of `npm test`
-   or CI. With `CT_REMOTE_LIVE_ADMIN`, a root route to the host that does not
-   use the host's own network, it also covers the host key states with a
-   dedicated known_hosts built from the host's public keys, a user without a
-   key, a network drop, an sshd restart, a host stop and start, login shells
-   (bash with noisy rc files, zsh, fish), and that no driver, watcher, request
-   or ssh is left on either side. It never writes the user's known_hosts and
-   never copies a credential. The first run against a Debian 13 container
-   through a ProxyJump found the dash cancellation, lane pool and keepalive
-   bugs described in 2.3 and 6; it also confirmed what `classifyPtyExit`
-   relies on: a PTY session that ends, `exit 255` included, finishes on
-   "Connection to <host> closed.". The execution groups then cover remote
-   PTYs (exit codes, a killed sshd session against a real `exit 255`, tmux
-   reattach after a drop, Claude tabs under bash, tcsh and fish, a missing
-   `claude` ending in 127), quick actions and the `quickaction` node with
-   `$BRANCH` read on the host, and chats driven through `ChatService` and the
-   SDK's `query()` over a non-TTY ssh against a `claude` installed on the host
-   but never logged in: the `init` message, the env allowlist and argv as `ps`
-   sees them, interrupts, the version warning, a network drop ending in
-   `connection_lost` and a resume with the CLI session id, and the transcript
-   the CLI writes even for a turn that failed to authenticate. Their first run
-   found the bundled-version lookup, the SDK's replaced exit error and
-   Windows' -1 exit status described in 5.1 and 5.2.
 
 The Playwright smoke test stays as it is: it never configures a host, so it
 guards that the new UI renders and that nothing connects at startup.
+
+### 10.2 Manual checklist
+
+For the last slice's PR description: Windows client to a Linux host with
+agent auth, ProxyJump, a password-only host in a terminal, unknown and changed
+host keys, Wi-Fi drop and resume from sleep, a host without `claude`, a fish
+login shell. Section 10.4 says which of these the live runs covered and which
+are still open.
+
+### 10.3 Live harness
+
+`npm run test:remote-live` (`scripts/remote-ssh-live.cjs`) runs the real
+main-process modules, plain Node with Electron stubbed, against a
+real sshd through the OpenSSH client the app discovers. Opt-in through
+`CT_REMOTE_LIVE_DEST` (and `CT_REMOTE_LIVE_JUMP`), never part of `npm test`
+or CI. With `CT_REMOTE_LIVE_ADMIN`, a root route to the host that does not
+use the host's own network, it also covers the host key states with a
+dedicated known_hosts built from the host's public keys, a user without a
+key, a network drop, an sshd restart, a host stop and start, login shells
+(bash with noisy rc files, zsh, fish), and that no driver, watcher, request
+or ssh is left on either side. It never writes the user's known_hosts and
+never copies a credential. The first run against a Debian 13 container
+through a ProxyJump found the dash cancellation, lane pool and keepalive
+bugs described in 2.3 and 6; it also confirmed what `classifyPtyExit`
+relies on: a PTY session that ends, `exit 255` included, finishes on
+"Connection to <host> closed.". The execution groups then cover remote
+PTYs (exit codes, a killed sshd session against a real `exit 255`, tmux
+reattach after a drop, Claude tabs under bash, tcsh and fish, a missing
+`claude` ending in 127), quick actions and the `quickaction` node with
+`$BRANCH` read on the host, and chats driven through `ChatService` and the
+SDK's `query()` over a non-TTY ssh against a `claude` installed on the host
+but never logged in: the `init` message, the env allowlist and argv as `ps`
+sees them, interrupts, the version warning, a network drop ending in
+`connection_lost` and a resume with the CLI session id, and the transcript
+the CLI writes even for a turn that failed to authenticate. Their first run
+found the bundled-version lookup, the SDK's replaced exit error and
+Windows' -1 exit status described in 5.1 and 5.2.
+
+### 10.4 Verified live, and what is still manual
+
+The live runs used a Windows 11 client with its System32 OpenSSH 9.5p2 (so no
+ControlMaster), a Debian 13 container whose `/bin/sh` is dash, reached through
+a ProxyJump with key authentication, a `claude` 2.1.288 installed on the host
+and never logged in, and both the harness above and the real Electron 43 app
+under a throwaway home (`CT_E2E_ELECTRON` for the smoke test).
+
+Verified:
+
+- **Host profiles and keys.** Binary discovery, profile validation including
+  ProxyJump, `ssh -G` alias resolution, an unknown key accepted through Verify
+  host in the embedded OpenSSH prompt (and refused, leaving known_hosts
+  byte-identical), a changed key, a user without a key: no retry, one spawn.
+- **Transport.** Handshake in about 1.2 s through the jump, hostile values
+  quoted through dash, binary-safe output up to 2.5 MB, writes from 0 B to
+  3 MB checked with sha256, a burst spread over the lane pool, cancel and
+  timeout killing the whole remote process tree on dash.
+- **Files.** Names with spaces, quotes, `$`, backticks, backslashes, unicode
+  and leading dashes; symlink escapes and `~/.ssh` refused; the browser's
+  mkdir and git init; the inotifywait watcher and plain polling; the media
+  cache; a Memory editor save, byte-exact on the host.
+- **Git.** Status, stage, multi-line commits (quotes, `$HOME`, backtick),
+  branches, stash, blame, history, push and pull against a bare repo, clone
+  over https into a directory with a space, worktrees, TODO scan and stats,
+  and the Git panel with a file whose name has a space.
+- **Terminals.** Shell and Claude tabs through node-pty and ConPTY, exit
+  codes, a cwd with a space, a real `exit 255` closing the tab while a killed
+  sshd session (Windows exit -1) reconnects, tmux reattach after a drop and
+  kill-session on close, login shells bash (noisy rc files), zsh, fish and
+  tcsh, a missing `claude` ending in 127.
+- **Quick actions.** The UI and the `quickaction` node with `$BRANCH` read on
+  the host, empty without a connection attempt while the host is down.
+- **Chat.** The SDK's `query()` over a non-TTY ssh: `init` with the remote cwd,
+  the env allowlist and argv as `/proc` shows them (no token, no local path),
+  an interrupt acknowledged, the version warning, the "not installed" and
+  "not logged in" messages naming the host, a 75 s drop ending in
+  `connection_lost` and a resume with the same CLI session id, and the remote
+  session history.
+- **Lifecycle.** A 45 s network drop (noticed in 22 to 28 s, connected again
+  seconds after the link came back, badges updated in the list, the tab strip
+  and the chat header), an sshd restart, a container stop and start, and no
+  ssh, driver, watcher or tmux server left on either side afterwards.
+- **App.** The smoke test (25 of 25), the Open Remote Project flow, the
+  dashboard, Files, local-only features disabled with their reason, and no
+  renderer console error or critical error log entry.
+
+Still manual:
+
+- **A logged-in remote chat.** No credential may be copied to a test host, so
+  only the not-logged-in path ran: a long streaming turn and interrupting it,
+  permission prompts, tools writing on the host, and `/login` from a Claude
+  terminal tab of the project remain to be tried by hand.
+- **macOS and Linux clients**, where ControlMaster multiplexing is on, and
+  **BSD or macOS hosts** (BSD `ps` and `awk` in the cancellation script, no
+  inotify so the watcher polls).
+- **Password-only and keyboard-interactive (2FA) hosts.** Lanes run with
+  BatchMode, so only a terminal tab can prompt; neither case was run.
+- **Resume from sleep and a Wi-Fi change.** Only a link taken down inside the
+  container was tested, and nothing over a high-latency link.
+- **`LogLevel QUIET` in the user's ssh_config.** An `exit 255` is then judged
+  by probing the host (5.1); not run against a real sshd.
+- **tmux through Windows OpenSSH** shows a garbage line on attach unless the
+  host's `~/.tmux.conf` sets `escape-time 100` (5.1).
+- **Agent forwarding**, `Match` and `Include` in ssh_config, a Windows sshd
+  (only its "unsupported" message, through fake-ssh), large repositories, and
+  the packaged app (the bundled CLI version is read from `app.asar` there).
 
 ---
 
