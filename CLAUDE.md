@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 257 test files)
+npm test                 # Run Jest tests (jsdom, 260 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -756,7 +756,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 257 unit test files (jsdom environment)
+npm test                    # Run all 260 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -765,7 +765,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 257 test files
+- **Framework:** Jest with jsdom, 260 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -842,6 +842,9 @@ script, run with `node tests/e2e/smoke.js`) and asserts three things:
    attributed to the tab that produced it.
 3. `ErrorLogService` recorded no `critical` entry - which, per that service, means no
    `uncaughtException` and no `unhandledRejection` in the main process.
+
+`CT_E2E_ELECTRON` names another Electron binary to launch, for a checkout whose
+`node_modules` holds none (a git worktree sharing another checkout's dependencies).
 
 Isolation is the fiddly part, and there are three separate reasons for it:
 
