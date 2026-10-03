@@ -36,7 +36,7 @@ const {
   deleteHostProfile,
   testHostProfile,
 } = require('../../state/remoteHosts.state');
-const { projectsState, addProject } = require('../../state/projects.state');
+const { projectsState, addProject, flushProjectsSave } = require('../../state/projects.state');
 const { stateLabel, stateTooltip, unsupportedReason } = require('./RemoteHostBadge');
 
 const MODAL_ID = 'remote-project-modal';
@@ -314,6 +314,9 @@ function renderProfileEditor(root, opts = {}) {
     let res;
     try { res = await testHostProfile(profile.id); } catch (err) { res = { success: false, error: err.message }; }
     renderTest(res);
+    // The result sits under the whole form, below the fold of the dialog at
+    // its usual height: bring it (and its Verify host button) into view.
+    if (typeof resultEl.scrollIntoView === 'function') resultEl.scrollIntoView({ block: 'nearest' });
     if (res && res.success && res.result && res.result.ok && opts.onTested) opts.onTested(profile);
   };
 
@@ -556,6 +559,9 @@ function renderBrowser(root, profileId, opts) {
       remote: { profileId, path: canonical, hostLabel },
     });
     if (!project) { setStatus(t('ssh.browser.createFailed'), 'error'); return; }
+    // The project is opened right away, and main resolves its URI against
+    // projects.json: write it before anything asks main about it.
+    try { await flushProjectsSave(); } catch (e) { console.warn('[RemoteProjectModal] Saving projects:', e.message); }
     Toast.showToast({ type: 'success', message: t('ssh.projectAdded', { name: project.name, host: hostLabel }) });
     opts.onCreated(project);
   };
