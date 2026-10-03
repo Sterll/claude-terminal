@@ -1390,9 +1390,9 @@ async function withProfile(changes, fn) {
 }
 
 /** Open a remote tab through the real terminal-create IPC. */
-async function openTab({ runClaude = false, sessionKey = undefined, dir = null, projectId = EXEC_PROJECT_ID } = {}) {
+async function openTab({ runClaude = false, sessionKey = undefined, dir = null, projectId = EXEC_PROJECT_ID, claudeCommand = undefined } = {}) {
   const uri = remotePathLib.format(ctx.profile.id, dir || execDir());
-  const res = await ipcHandlers.get('terminal-create')({}, { cwd: uri, projectPath: uri, projectId, runClaude, sessionKey });
+  const res = await ipcHandlers.get('terminal-create')({}, { cwd: uri, projectPath: uri, projectId, runClaude, sessionKey, claudeCommand });
   check(res && res.success, `terminal-create: ${JSON.stringify(res)}`);
   return res.id;
 }
@@ -1402,6 +1402,20 @@ const typeIn = (id, text) => ipcListeners.get('terminal-input')({}, { id, data: 
 async function waitTabEnd(id, ms = 20000) {
   await waitUntil(() => tabEvent('terminal-exit', id) || tabEvent('terminal-disconnected', id), ms, `tab ${id} to end`);
   return { exit: tabEvent('terminal-exit', id), lost: tabEvent('terminal-disconnected', id) };
+}
+/**
+ * The first screen of an interactive `claude`: the login screen when the host
+ * is not logged in, the folder trust prompt or the input box when it is.
+ * Spaces are often cursor moves in the TUI, so the words are matched loosely.
+ */
+const CLAUDE_SCREEN = /log ?in|welcome|theme|select|trust|for ?shortcuts/i;
+async function waitClaudeScreen(id, { orNotFound = false } = {}) {
+  const seen = () => {
+    const text = stripAnsi(tabOutput(id));
+    return CLAUDE_SCREEN.test(text) || (orNotFound && /not found/i.test(text));
+  };
+  await waitUntil(() => seen() || tabEvent('terminal-exit', id), 60000, 'the Claude screen')
+    .catch((e) => { throw new Error(`${e.message}: ${JSON.stringify(stripAnsi(tabOutput(id)).replace(/\s+/g, ' ').slice(-160))}`); });
 }
 /** Wait for the tab's output to settle (the prompt is up), then type. */
 async function settleThenType(id, text) {
@@ -1509,10 +1523,10 @@ async function groupTerminals() {
     });
   }, { timeoutMs: 180000 });
 
-  await scenario('terminals', 'Claude tab: the CLI starts in the project through the login shell and stops at its login screen', async () => {
+  await scenario('terminals', 'Claude tab: the CLI starts in the project through the login shell and stops at its first screen', async () => {
     if (!ctx.caps.claude) skip('claude is not installed on the host');
     const id = await openTab({ runClaude: true });
-    await waitUntil(() => /log ?in|welcome|theme|select/i.test(stripAnsi(tabOutput(id))) || tabEvent('terminal-exit', id), 60000, 'the Claude screen');
+    await waitClaudeScreen(id);
     await wait(1500);
     check(!tabEvent('terminal-exit', id), `the Claude tab stays open: ${JSON.stringify(stripAnsi(tabOutput(id)).slice(-300))}`);
     let detail = '';
@@ -1526,6 +1540,23 @@ async function groupTerminals() {
     ipcListeners.get('terminal-kill')({}, { id });
     if (hasAdmin()) await waitUntil(async () => (await remoteClaudeProcs()).length === 0, 20000, 'claude to end after the tab closed');
     return `${detail}; screen: ${JSON.stringify(screen.slice(0, 160))}`;
+  }, { timeoutMs: 120000 });
+
+  await scenario('terminals', 'a command handed over from the chat runs as claude /<command> on the host', async () => {
+    if (!ctx.caps.claude) skip('claude is not installed on the host');
+    if (!hasAdmin()) skip('needs CT_REMOTE_LIVE_ADMIN to read the remote argv');
+    // /hooks: a configuration screen that sends no prompt and shows no account.
+    const refused = await ipcHandlers.get('terminal-create')({}, { cwd: execUri(), projectPath: execUri(), projectId: EXEC_PROJECT_ID, runClaude: true, claudeCommand: '/hooks $(id)' });
+    check(refused && !refused.success, `an unsafe argument is refused before ssh: ${JSON.stringify(refused)}`);
+    const id = await openTab({ runClaude: true, claudeCommand: '/hooks' });
+    await waitUntil(async () => (await remoteClaudeProcs()).some((p) => p.cwd === execDir() && p.argv.includes('/hooks')) || tabEvent('terminal-exit', id), 60000, 'the remote claude to start');
+    const mine = (await remoteClaudeProcs()).filter((p) => p.cwd === execDir() && p.argv.includes('/hooks'));
+    check(mine.length === 1, `one claude running /hooks in the project directory: ${mine.length}`);
+    const argv = mine[0].argv.slice(1);
+    eq(argv[argv.length - 1], '/hooks', `the command is the last argv word: ${argv.join(' ')}`);
+    ipcListeners.get('terminal-kill')({}, { id });
+    await waitUntil(async () => (await remoteClaudeProcs()).length === 0, 20000, 'claude to end after the tab closed');
+    return `remote argv: ${argv.join(' ')}`;
   }, { timeoutMs: 120000 });
 
   await scenario('terminals', 'Claude tab with no claude at the profile path ends with 127 (the tab says "not found on <host>")', async () => {
@@ -1558,7 +1589,7 @@ async function groupTerminals() {
         eq(ctx.caps.shell, bin, 'handshake shell');
         check(ctx.caps.claude, `handshake finds claude through the ${shell} PATH (${ctx.caps.path})`);
         const id = await openTab({ runClaude: true });
-        await waitUntil(() => /log ?in|welcome|theme|select|not found/i.test(stripAnsi(tabOutput(id))) || tabEvent('terminal-exit', id), 60000, 'the Claude screen');
+        await waitClaudeScreen(id, { orNotFound: true });
         await wait(1500);
         const screen = stripAnsi(tabOutput(id)).replace(/\s+/g, ' ').trim();
         check(!tabEvent('terminal-exit', id) && !/not found/i.test(screen), `Claude tab under ${shell}: ${JSON.stringify(screen.slice(-300))}`);

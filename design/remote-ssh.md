@@ -1276,7 +1276,12 @@ The live runs used a Windows 11 client with its System32 OpenSSH 9.5p2 (so no
 ControlMaster), a Debian 13 container whose `/bin/sh` is dash, reached through
 a ProxyJump with key authentication, a `claude` 2.1.288 installed on the host
 and never logged in, and both the harness above and the real Electron 43 app
-under a throwaway home (`CT_E2E_ELECTRON` for the smoke test).
+under a throwaway home (`CT_E2E_ELECTRON` for the smoke test). After main was
+merged in, the CLI on the host was logged in by hand and every group but
+`chat` ran again (its scenarios expect the "Not logged in" answer and would
+spend real turns): the terminals group now also accepts the trust prompt of a
+logged-in CLI as its first screen, and checks that a command handed over from
+the chat reaches the host as the last word of the remote `claude` argv.
 
 Verified:
 
