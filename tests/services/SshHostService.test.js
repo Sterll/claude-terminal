@@ -599,7 +599,13 @@ const SH = findSh();
     const res = await svc.exec(profile.id, "printf '%s' hello");
     expect(res).toMatchObject({ ok: true });
     expect(res.stdout.toString()).toBe('hello');
-    const listed = await svc.listProfiles();
+    // The last connection is recorded in the background so a connect never
+    // waits on a disk write; give that write a moment instead of racing it.
+    let listed = await svc.listProfiles();
+    for (let i = 0; i < 50 && listed[0].lastConnectedAt == null; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      listed = await svc.listProfiles();
+    }
     expect(listed[0].lastConnectedAt).toEqual(expect.any(Number));
   });
 
