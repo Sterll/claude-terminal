@@ -185,11 +185,13 @@ describeSh('SshLane against fake-ssh and a real sh', () => {
     const b = makeLane();
     await Promise.all([a.open(), b.open()]);
     const started = Date.now();
-    const [ra, rb] = await Promise.all([a.request('sleep 1; echo a'), b.request('sleep 1; echo b')]);
+    const [ra, rb] = await Promise.all([a.request('sleep 2; echo a'), b.request('sleep 2; echo b')]);
     const elapsed = Date.now() - started;
     expect(ra.stdout.toString()).toBe('a\n');
     expect(rb.stdout.toString()).toBe('b\n');
-    expect(elapsed).toBeLessThan(1900);
+    // In turn they would take 4 s. The margin is for a loaded machine, where
+    // spawning and piping through sh alone has been seen to cost a second.
+    expect(elapsed).toBeLessThan(3500);
   });
 
   test("a timeout kills the remote process group and returns reason 'timeout'", async () => {

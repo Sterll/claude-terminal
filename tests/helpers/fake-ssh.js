@@ -17,7 +17,10 @@
  *   dns               "Could not resolve hostname", exit 255
  *   nosh              what a Windows sshd with cmd.exe prints, exit 1
  *   die               run the local sh, then die with "Connection reset" and
- *                     exit 255 after FAKE_SSH_DIE_AFTER_MS (default 300)
+ *                     exit 255 FAKE_SSH_DIE_AFTER_MS (default 300) after the
+ *                     first request reaches it. Counted from the request, not
+ *                     from the start: on a loaded machine the lane can take
+ *                     longer than that to open, and would die before ready
  *   dropped           as die, but the server ended the session: "closed by
  *                     remote host", then exit(-1), which POSIX reports as 255
  *                     and Windows as 4294967295, like the real Windows OpenSSH
@@ -107,7 +110,17 @@ function main() {
       const child = spawn(sh, ['-s'], { stdio: ['pipe', 'inherit', 'inherit'], env: shEnv(sh), windowsHide: true });
       process.stdin.pipe(child.stdin);
       child.stdin.on('error', () => {});
-      setTimeout(() => {
+      // The client sends nothing after the driver until it has seen the ready
+      // marker, so the first request header marks a lane that is open.
+      let seen = '';
+      const onData = (chunk) => {
+        seen = (seen + chunk.toString('latin1')).slice(-64 * 1024);
+        if (!/(?:^|\n)(?:REQ|PUT|PATH) \d/.test(seen)) return;
+        process.stdin.removeListener('data', onData);
+        die();
+      };
+      process.stdin.on('data', onData);
+      const die = () => setTimeout(() => {
         const last = mode === 'dropped'
           ? 'Connection to fakehost closed by remote host.\r\n'
           : 'client_loop: send disconnect: Connection reset\r\n';
