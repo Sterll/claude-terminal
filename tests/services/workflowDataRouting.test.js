@@ -12,7 +12,7 @@
 
 jest.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => '/mock/app', getPath: () => '/mock/data' },
-}), { virtual: true });
+}));
 
 jest.mock('../../src/main/utils/git', () => ({
   gitCommit: jest.fn(), gitPull: jest.fn(), gitPush: jest.fn(),

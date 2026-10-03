@@ -14,7 +14,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-mcp-save-'));
 const mockClaudeConfigFile = path.join(tmpDir, '.claude.json');
 const mockLegacyMcpsFile = path.join(tmpDir, 'mcps.json');
 const mockHandlers = new Map();
-jest.mock('electron', () => ({ ipcMain: { handle: (name, handler) => mockHandlers.set(name, handler) } }), { virtual: true });
+jest.mock('electron', () => ({ ipcMain: { handle: (name, handler) => mockHandlers.set(name, handler) } }));
 jest.mock('../../src/main/services/McpService', () => ({}));
 jest.mock('../../src/main/services/TelemetryService', () => ({ sendFeaturePing: jest.fn() }));
 

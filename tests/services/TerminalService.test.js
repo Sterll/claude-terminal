@@ -20,9 +20,20 @@
  * the listener for any reason.
  */
 
+// Not `{ virtual: true }`: electron is installed, and a virtual mock is keyed
+// on the bare name rather than the resolved path. Jest's resolver cache is
+// shared by every test file in a worker and keyed on the requiring file, so
+// once a module required electron here, the next file in the worker resolved
+// that same require to this file's virtual id, missed its own mock and loaded
+// the real electron, which downloads its binary on first require.
 jest.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => '/mock/app', getPath: () => '/mock/data' },
-}), { virtual: true });
+}));
+
+// `--rc` is decided there, and loading it pulls in the Remote Control bridge.
+jest.mock('../../src/main/services/RemoteControlService', () => ({
+  launchesTerminalsConnected: () => false,
+}));
 
 const spawned = [];
 
