@@ -2071,6 +2071,9 @@
     "runInBackground": "转入后台运行",
     "backgroundWorkFailed": "无法将任务转入后台。 {error}",
     "slashRemoteControl": "将此对话分享到 claude.ai（on / off）",
+    "terminalCommandOpened": "已在 Claude 终端中打开 {command}：此命令只能在 CLI 的交互模式下运行。完成后请回到这里。",
+    "terminalCommandFailed": "无法为 {command} 打开终端。",
+    "terminalCommandUnsafeArgs": "未运行 {command}：其某个参数包含无法安全传递给终端的字符。",
     "mentionKnowledge": "全局知识"
   },
   "hooks": {

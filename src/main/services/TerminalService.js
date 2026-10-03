@@ -8,6 +8,7 @@ const fs = require('fs');
 const pty = require('node-pty');
 const { execFileSync } = require('child_process');
 const terminalCapture = require('./TerminalOutputCapture');
+const { terminalCommandArgv } = require('../../shared/terminal-commands');
 
 /**
  * Whether a spawned `claude` should carry `--rc`.
@@ -65,9 +66,20 @@ class TerminalService {
    * @param {boolean} options.runClaude - Whether to run Claude CLI on start
    * @param {boolean} options.skipPermissions - Skip permissions flag for Claude
    * @param {string} options.resumeSessionId - Session ID to resume
+   * @param {string} [options.claudeCommand] - A terminal-only slash command for
+   *   the CLI to run on start (see src/shared/terminal-commands.js)
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, claudeCommand = null }) {
+    // Validated again here rather than trusted from the renderer: these words
+    // end up on a cmd.exe or shell command line.
+    let commandArgv = [];
+    if (claudeCommand) {
+      commandArgv = terminalCommandArgv(claudeCommand);
+      if (!commandArgv) return { success: false, error: `Refusing to run "${claudeCommand}" in a terminal.` };
+      if (!runClaude) return { success: false, error: 'A Claude command needs a Claude terminal.' };
+    }
+
     const id = ++this.terminalId;
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
@@ -100,6 +112,7 @@ class TerminalService {
       if (_remoteControlEnabled()) {
         claudeArgs.push('--rc');
       }
+      claudeArgs.push(...commandArgv);
       shellPath = 'cmd.exe';
       shellArgs = ['/c', ...claudeArgs];
     }
@@ -225,6 +238,7 @@ class TerminalService {
         if (_remoteControlEnabled()) {
           claudeCmd += ' --rc';
         }
+        if (commandArgv.length) claudeCmd += ' ' + commandArgv.join(' ');
         try { ptyProcess.write(claudeCmd + '\r'); } catch (e) {}
       }, 500);
     }

@@ -2071,6 +2071,9 @@
     "runInBackground": "Passer en arrière-plan",
     "backgroundWorkFailed": "Impossible de passer le travail en arrière-plan. {error}",
     "slashRemoteControl": "Partager cette conversation avec claude.ai (on / off)",
+    "terminalCommandOpened": "{command} s'ouvre dans un terminal Claude : cette commande ne fonctionne qu'en mode interactif du CLI. Revenez ici une fois terminé.",
+    "terminalCommandFailed": "Impossible d'ouvrir un terminal pour {command}.",
+    "terminalCommandUnsafeArgs": "{command} n'a pas été lancée : un de ses arguments contient des caractères qui ne peuvent pas être transmis à un terminal sans risque.",
     "mentionKnowledge": "Connaissances globales"
   },
   "hooks": {

@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 219 test files)
+npm test                 # Run Jest tests (jsdom, 220 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -104,14 +104,14 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3867 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (3870 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
 
 Shared code
-└── src/shared/                      # 20 modules shared between main, renderer and the MCP server
+└── src/shared/                      # 21 modules shared between main, renderer and the MCP server
 
 Styles
 └── styles/                          # 31 modular CSS files (~57,000 lines total)
@@ -417,7 +417,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 3867 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 3870 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -678,6 +678,7 @@ Worker); neither is bundled into the desktop app.
 - **Usage reads the credential store on a bounded ladder, and eventually stops.** A store read that yields no usable token parks the account for 5, 10, 20, 40 then 60 minutes; a usable token clears the ladder and an explicit refresh restarts it. That interval used to be `Infinity`, so one transient failure — an expired token between two CLI rotations, a 401, a refused Keychain — froze the chip for the life of the process. But capping the interval bounds only how *often*: after `TOKEN_BACKOFF_GIVE_UP` consecutive failures the automatic retry stops altogether, because on darwin each reopen of a refused store is a password dialog raised behind the window, and one an hour forever is the timer-driven prompt the `Infinity` was there to prevent. Only the explicit refresh lifts it. `retryAt` and `gaveUp` ride on **both** `getUsageData` (the 30 s poll) and `getFetchState` (the refresh), since the chip reads one on each path and the tooltip has to distinguish waiting from broken from stopped
 - **Multiple accounts:** `AccountManager` snapshots the CLI's live credential store per named account and swaps it on demand; a project can be bound to one. Login itself is never reimplemented - the user runs `claude /login` once and the result is captured. Switching mid-conversation resumes with the CLI session id, and MCP tokens are deliberately left alone. **One account authenticates from exactly one store at a time**: the account holding the machine-wide login gets no `CLAUDE_SECURESTORAGE_CONFIG_DIR` overlay, because two stores refreshing the same OAuth grant sign each other out - a refresh rotates the refresh token and invalidates whichever copy the other store still holds, and the CLI blanks the loser to `accessToken: ''`. For the same reason a snapshot is a decaying asset, not an archive: `startCredentialWatch()` re-reads the machine-wide store every 5 min so the snapshot tracks the CLI's rotations, and `ensureAccountStore()` copies a bound account's own store back the same way. `isRotationOf()` is what attributes a refreshed store to the account that owns it - note `refreshTokenExpiresAt` is recomputed on every rotation and drifts by a round-trip, so it is matched within a tolerance, never for equality
 - **What travels with an account is what the CLI's `/logout` deletes:** `claudeAiOauth`, `organizationUuid`, `trustedDeviceToken`, `enterpriseGateway` and `designOauth` (`ACCOUNT_KEYS` in `AccountManager`). A snapshot keeps exactly those, and a swap drops the outgoing account's before laying the incoming one's on, so a key the incoming snapshot lacks is absent rather than inherited. Everything else in the store, `mcpOAuth` above all, belongs to the machine and stays. Snapshotting `claudeAiOauth` alone used to hand one account's Claude Design grant (`/design-login`) to whichever account was switched in next
+- **Terminal-only CLI commands open in a terminal:** the chat drives the CLI headless, where every `local-jsx` command answers "isn't available in this environment". Those that act on the machine or the account rather than on the conversation (`/design-login`, `/login`, `/logout`, `/permissions`, `/plugin`... listed in `src/shared/terminal-commands.js`) are caught in `handleSend` and run as `claude /<command>` in a new Claude terminal tab, on the account the conversation runs on (`conversationAccountId()`). Anything the CLI also runs headless (`/config`, `/mcp`, `/design consent`...) is left to it. The command line is built from user input and goes through `cmd.exe /c` or a shell, so `TerminalService.create` re-validates it against the same allowlist and refuses any argument that is not a plain word
 - **Voice:** the renderer captures the mic and sends raw PCM to main; the Groq key stays in the OS credential store and never crosses to the renderer. Transcription output goes to the screen only, routed to the focused tab
 - **Artifacts:** `src/shared/artifact-store.js` is shared verbatim with the MCP server process, which writes `index.json` directly. Since an out-of-process writer cannot reach a BrowserWindow, `ArtifactService` polls the file and broadcasts `artifacts-changed`
 - **Error log:** every `console.error`/`console.warn` in main is mirrored into `ErrorLogService`, but as `warning`. `critical` is reserved for `uncaughtException` and `unhandledRejection`, so the panel's critical count means "the app broke", not "something logged"
@@ -690,7 +691,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 219 unit test files (jsdom environment)
+npm test                    # Run all 220 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -699,7 +700,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 219 test files
+- **Framework:** Jest with jsdom, 220 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -712,7 +713,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
   - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, and the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself)
-  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task
+  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task, terminal-only CLI commands
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`
   - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist)

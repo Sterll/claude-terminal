@@ -2071,6 +2071,9 @@
     "runInBackground": "Jalankan di latar belakang",
     "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}",
     "slashRemoteControl": "Bagikan percakapan ini ke claude.ai (on / off)",
+    "terminalCommandOpened": "{command} dibuka di terminal Claude: perintah ini hanya berjalan dalam mode interaktif CLI. Kembali ke sini setelah selesai.",
+    "terminalCommandFailed": "Tidak dapat membuka terminal untuk {command}.",
+    "terminalCommandUnsafeArgs": "{command} tidak dijalankan: salah satu argumennya berisi karakter yang tidak dapat diteruskan ke terminal dengan aman.",
     "mentionKnowledge": "Pengetahuan global"
   },
   "hooks": {

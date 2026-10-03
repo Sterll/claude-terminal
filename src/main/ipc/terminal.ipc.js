@@ -13,13 +13,13 @@ const { sendFeaturePing } = require('../services/TelemetryService');
  */
 function registerTerminalHandlers() {
   // Create terminal
-  ipcMain.handle('terminal-create', async (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountId }) => {
+  ipcMain.handle('terminal-create', async (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountId, claudeCommand }) => {
     try {
       sendFeaturePing('terminal:create');
       // Resolved here rather than inside create(), which stays synchronous:
       // reading an account's store can hit the Keychain.
       const accountEnv = await AccountManager.accountEnv(accountId || null);
-      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv });
+      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv, claudeCommand });
     } catch (error) {
       console.error('[Terminal IPC] Create error:', error);
       return { success: false, error: error.message };

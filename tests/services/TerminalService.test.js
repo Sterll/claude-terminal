@@ -86,3 +86,54 @@ describe('TerminalService.create', () => {
     expect(console.warn).not.toHaveBeenCalled();
   });
 });
+
+describe('TerminalService.create with a terminal-only Claude command', () => {
+  const pty = require('node-pty');
+  const realPlatform = process.platform;
+  const setPlatform = (value) => Object.defineProperty(process, 'platform', { value, configurable: true });
+
+  afterEach(() => {
+    setPlatform(realPlatform);
+    jest.useRealTimers();
+  });
+
+  it('appends the command to the claude argv on Windows', () => {
+    setPlatform('win32');
+    const result = terminalService.create({ cwd: null, runClaude: true, claudeCommand: '/design-login' });
+
+    expect(result.success).toBe(true);
+    const [shell, args] = pty.spawn.mock.calls.at(-1);
+    expect(shell).toBe('cmd.exe');
+    expect(args).toEqual(expect.arrayContaining(['/c', 'claude', '/design-login']));
+    expect(args.at(-1)).toBe('/design-login');
+  });
+
+  it('types the command after claude on POSIX', () => {
+    setPlatform('linux');
+    jest.useFakeTimers();
+    terminalService.create({ cwd: null, runClaude: true, claudeCommand: '/plugin install foo@bar' });
+    jest.runAllTimers();
+
+    expect(spawned[0].write).toHaveBeenCalledWith(expect.stringMatching(/^claude.* \/plugin install foo@bar\r$/));
+  });
+
+  it('refuses a command outside the allowlist, before spawning anything', () => {
+    setPlatform('win32');
+    const calls = pty.spawn.mock.calls.length;
+    const result = terminalService.create({ cwd: null, runClaude: true, claudeCommand: '/model opus' });
+
+    expect(result.success).toBe(false);
+    expect(pty.spawn.mock.calls.length).toBe(calls);
+  });
+
+  it('refuses an argument a shell would read as more than a word', () => {
+    setPlatform('win32');
+    for (const claudeCommand of ['/login & calc', '/plugin install "x"', '/login %PATH%', '/login a|b', '/login $(id)']) {
+      expect(terminalService.create({ cwd: null, runClaude: true, claudeCommand }).success).toBe(false);
+    }
+  });
+
+  it('refuses a command for a plain shell', () => {
+    expect(terminalService.create({ cwd: null, runClaude: false, claudeCommand: '/login' }).success).toBe(false);
+  });
+});
