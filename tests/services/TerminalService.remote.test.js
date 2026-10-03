@@ -393,6 +393,18 @@ describe('a remote exit 255 that is the remote command exiting', () => {
     expect(terminalService.hostLiveness.probe).not.toHaveBeenCalled();
   });
 
+  test('Windows: ssh exiting -1 after the server dropped the session is a lost connection', () => {
+    // Seen live through Windows OpenSSH: the sshd session was killed, ssh got
+    // no exit status and exited with -1, which node-pty reports as is.
+    const { id } = createRemote();
+    last().emitData('\x1b[?25h\x1b[mConnection to 10.10.10.240 closed by remote host.\r\nConnection to 10.10.10.240 closed.\r\n');
+    last().emitExit(-1);
+    expect(sent.some(m => m.channel === 'terminal-exit')).toBe(false);
+    expect(sent.find(m => m.channel === 'terminal-disconnected').payload).toEqual({ id, exitCode: 255, kind: 'network', profileId: 'abcd1234' });
+    expect(terminalService.onExitCallback).not.toHaveBeenCalled();
+    expect(terminalService.remoteContext(id)).toMatchObject({ remotePath: '/home/yanis/api' });
+  });
+
   test('a server that dropped the session is still a lost connection', () => {
     const { id } = createRemote();
     last().emitData('Connection to build.example.com closed by remote host.\r\nConnection to build.example.com closed.\r\n');

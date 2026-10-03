@@ -258,6 +258,21 @@ describe('classifyPtyExit: a remote command exiting 255 versus a lost connection
     expect(classifyPtyExit(255, 'yanis@build: Permission denied (publickey).\r\n')).toEqual({ verdict: 'lost', kind: 'auth' });
   });
 
+  test('Windows reports ssh exit(-1) as -1 or 4294967295, read as 255', () => {
+    const { sshExitStatus, classifySshFailure } = require('../../src/shared/remote-shell');
+    expect(sshExitStatus(-1)).toBe(255);
+    expect(sshExitStatus(4294967295)).toBe(255);
+    expect(sshExitStatus(255)).toBe(255);
+    expect(sshExitStatus(3)).toBe(3);
+    expect(sshExitStatus(null)).toBeNull();
+    // Other Windows statuses (a killed process) are left alone
+    expect(sshExitStatus(3221225786)).toBe(3221225786);
+    expect(classifyPtyExit(-1, 'Connection to h closed by remote host.\r\nConnection to h closed.\r\n')).toEqual({ verdict: 'lost', kind: 'network' });
+    expect(classifyPtyExit(4294967295, '$ exit\r\nConnection to h closed.\r\n')).toEqual({ verdict: 'exit' });
+    expect(classifySshFailure(4294967295, '')).toBe('network');
+    expect(classifySshFailure(-1, '')).toBe('network');
+  });
+
   test('nothing from ssh either way is unknown: the caller asks the host', () => {
     expect(classifyPtyExit(255, '')).toEqual({ verdict: 'unknown' });
     expect(classifyPtyExit(255, '$ exit 255\r\n')).toEqual({ verdict: 'unknown' });

@@ -18,6 +18,9 @@
  *   nosh              what a Windows sshd with cmd.exe prints, exit 1
  *   die               run the local sh, then die with "Connection reset" and
  *                     exit 255 after FAKE_SSH_DIE_AFTER_MS (default 300)
+ *   dropped           as die, but the server ended the session: "closed by
+ *                     remote host", then exit(-1), which POSIX reports as 255
+ *                     and Windows as 4294967295, like the real Windows OpenSSH
  *
  * `FAKE_SSH_ARGV_FILE`, when set, receives the argv as JSON so a test can
  * assert what the service would have handed to the real ssh.
@@ -100,14 +103,17 @@ function main() {
     return;
   }
   const start = () => {
-    if (mode === 'die') {
+    if (mode === 'die' || mode === 'dropped') {
       const child = spawn(sh, ['-s'], { stdio: ['pipe', 'inherit', 'inherit'], env: shEnv(sh), windowsHide: true });
       process.stdin.pipe(child.stdin);
       child.stdin.on('error', () => {});
       setTimeout(() => {
-        process.stderr.write('client_loop: send disconnect: Connection reset\r\n', () => {
+        const last = mode === 'dropped'
+          ? 'Connection to fakehost closed by remote host.\r\n'
+          : 'client_loop: send disconnect: Connection reset\r\n';
+        process.stderr.write(last, () => {
           try { child.kill(); } catch { /* gone */ }
-          process.exit(255);
+          process.exit(mode === 'dropped' ? -1 : 255);
         });
       }, Number(process.env.FAKE_SSH_DIE_AFTER_MS || 300));
       return;

@@ -555,6 +555,14 @@ describe('profile validation', () => {
     expect(classifyOpenFailure({ failKind: 'exit', exitCode: 127, stderr: 'sh: /bin/sh: not found' })).toMatchObject({ retry: false, state: 'unsupported', detail: { code: 'no-posix-shell' } });
     expect(classifyOpenFailure({ failKind: 'timeout', sshFailure: 'timeout' })).toMatchObject({ retry: true, kind: 'timeout' });
   });
+
+  test('Windows ssh exiting -1 before ready (the server dropped the session) is retried, not unsupported', () => {
+    // child_process reports Windows OpenSSH's exit(-1) as 4294967295, node-pty as -1.
+    const dropped = 'Connection to build.example.com closed by remote host.\r\n';
+    expect(classifyOpenFailure({ failKind: 'exit', exitCode: 4294967295, stderr: dropped })).toMatchObject({ retry: true, kind: 'network' });
+    expect(classifyOpenFailure({ failKind: 'exit', exitCode: 4294967295, stderr: '' })).toMatchObject({ retry: true, kind: 'network' });
+    expect(classifyOpenFailure({ failKind: 'exit', exitCode: -1, stderr: '' })).toMatchObject({ retry: true, kind: 'network' });
+  });
 });
 
 const SH = findSh();

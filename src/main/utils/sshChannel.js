@@ -25,7 +25,7 @@ const { EventEmitter } = require('events');
 const { spawn } = require('child_process');
 const crypto = require('crypto');
 const { driverPreamble, killScript } = require('./sshDriver');
-const { assertOneLine, classifySshFailure } = require('../../shared/remote-shell');
+const { assertOneLine, classifySshFailure, sshExitStatus } = require('../../shared/remote-shell');
 
 const DEFAULT_MAX_BUFFER = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -468,8 +468,10 @@ class SshLane extends EventEmitter {
     }
   }
 
-  _finalize(code, signal) {
+  _finalize(rawCode, signal) {
     if (this.exited) return;
+    // -1 on Windows when the server ended the session without a status (see sshExitStatus)
+    const code = sshExitStatus(rawCode);
     this.exited = true;
     clearTimeout(this._readyTimer);
     clearTimeout(this._finalizeTimer);

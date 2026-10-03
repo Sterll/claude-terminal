@@ -310,6 +310,15 @@ describeSh('SshLane against fake-ssh and a real sh', () => {
     const info = await exited;
     expect(info).toMatchObject({ expected: false, code: 255, sshFailure: 'network' });
   });
+
+  test('a server that ended the session (ssh exit -1, 4294967295 on Windows) reads as 255', async () => {
+    const lane = makeLane({ FAKE_SSH_MODE: 'dropped', FAKE_SSH_DIE_AFTER_MS: '800' });
+    await lane.open();
+    const exited = new Promise((resolve) => lane.once('exit', resolve));
+    const res = await lane.request('sleep 10');
+    expect(res).toMatchObject({ ok: false, reason: 'disconnected' });
+    expect(await exited).toMatchObject({ expected: false, code: 255, sshFailure: 'network' });
+  });
 });
 
 describe('killScript', () => {

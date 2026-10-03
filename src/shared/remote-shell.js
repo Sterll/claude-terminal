@@ -193,6 +193,27 @@ const SSH_FAILURE_PATTERNS = [
 
 const SSH_FAILURE_KINDS = ['auth', 'hostkey-unknown', 'hostkey-changed', 'dns', 'timeout', 'refused', 'network', 'not-installed'];
 
+/** ssh's own failure status, as a POSIX system reports it. */
+const SSH_FAILURE_STATUS = 255;
+
+/**
+ * ssh's exit status as a POSIX system reads it.
+ *
+ * ssh exits with -1 when the server ended the session without sending an exit
+ * status: its sshd session was killed, the host went down, sshd was stopped.
+ * POSIX truncates that to 255, ssh's own failure code, but Windows keeps the
+ * 32-bit value, which node-pty reports as -1 and child_process as 4294967295.
+ * Compared with 255 as is, a dropped connection read as an ordinary exit on
+ * Windows (seen live: a remote tab closed instead of offering to reconnect).
+ * Every comparison with 255 goes through this.
+ *
+ * @param {number|null|undefined} code
+ * @returns {number|null|undefined}
+ */
+function sshExitStatus(code) {
+  return code === -1 || code === 0xffffffff ? SSH_FAILURE_STATUS : code;
+}
+
 /**
  * Classify a failed ssh invocation.
  *
@@ -207,8 +228,9 @@ function classifySshFailure(exitCode, stderr) {
   const text = String(stderr || '');
   const kind = sshTransportFailure(text);
   if (kind) return kind;
-  if (exitCode === 127 || /command not found|: not found\s*$/im.test(text)) return 'not-installed';
-  if (exitCode === 255) return 'network';
+  const code = sshExitStatus(exitCode);
+  if (code === 127 || /command not found|: not found\s*$/im.test(text)) return 'not-installed';
+  if (code === SSH_FAILURE_STATUS) return 'network';
   return null;
 }
 
@@ -266,7 +288,7 @@ const SSH_CLEAN_CLOSE_RE = /(?:^|\s)(?:Shared c|C)onnection to \S+ closed\.$/;
  * @returns {{ verdict: 'exit' } | { verdict: 'lost', kind: string } | { verdict: 'unknown' }}
  */
 function classifyPtyExit(exitCode, tail) {
-  if (exitCode !== 255) return { verdict: 'exit' };
+  if (sshExitStatus(exitCode) !== SSH_FAILURE_STATUS) return { verdict: 'exit' };
   const lines = String(tail || '').replace(ANSI_RE, '').split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
   const last = lines[lines.length - 1] || '';
   const before = lines[lines.length - 2] || '';
@@ -297,6 +319,8 @@ module.exports = {
   tmuxKillScript,
   TMUX_SESSION_RE,
   classifySshFailure,
+  sshExitStatus,
+  SSH_FAILURE_STATUS,
   sshTransportFailure,
   classifyPtyExit,
   isTerminalFailure,

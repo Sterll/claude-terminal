@@ -14,13 +14,15 @@ const {
   terminalShellScript,
   terminalClaudeScript,
   classifyPtyExit,
+  sshExitStatus,
+  SSH_FAILURE_STATUS,
 } = require('../../shared/remote-shell');
 
 /** What `--resume` accepts. Also what keeps a session id from smuggling shell syntax. */
 const RESUME_ID_RE = /^[a-f0-9-]{8,64}$/;
 
 /** ssh's own failure status (connection or authentication), which a remote command can also exit with. */
-const SSH_FAILURE_EXIT = 255;
+const SSH_FAILURE_EXIT = SSH_FAILURE_STATUS;
 
 /**
  * How long a remote tab whose ssh exited 255 without saying why waits for its
@@ -420,7 +422,9 @@ class TerminalService {
     const exitDisposable = ptyProcess.onExit((evt) => {
       if (ptyProcess._exited) return;
       ptyProcess._exited = true;
-      const exitCode = (evt && Number.isFinite(evt.exitCode)) ? evt.exitCode : null;
+      // Windows reports ssh's exit(-1), a session the server ended without
+      // an exit status, as -1: read it the way POSIX does, as 255.
+      const exitCode = (evt && Number.isFinite(evt.exitCode)) ? sshExitStatus(evt.exitCode) : null;
       const signal   = (evt && evt.signal != null) ? evt.signal : null;
       try { ptyProcess.kill(); } catch (e) {}
       if (this.terminals.get(id) === ptyProcess) this.terminals.delete(id);

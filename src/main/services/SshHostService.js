@@ -49,7 +49,7 @@ const { EventEmitter } = require('events');
 const { SshLane } = require('../utils/sshChannel');
 const { handshakeScript, parseHandshake } = require('../utils/sshDriver');
 const sshCommand = require('../utils/sshCommand');
-const { shC, withPath, tmuxKillScript, classifySshFailure, isTerminalFailure } = require('../../shared/remote-shell');
+const { shC, withPath, tmuxKillScript, classifySshFailure, isTerminalFailure, sshExitStatus, SSH_FAILURE_STATUS } = require('../../shared/remote-shell');
 const { isValidProfileId } = require('../../shared/remote-path');
 
 const STORE_VERSION = 1;
@@ -169,7 +169,7 @@ function classifyOpenFailure(err) {
   // ssh exits 255 for its own failures. Any other exit before the ready
   // marker means ssh connected and the remote side could not run the driver:
   // no /bin/sh, or a Windows sshd whose shell is cmd.exe or PowerShell.
-  if (err.failKind === 'exit' && Number.isInteger(err.exitCode) && err.exitCode !== 255) {
+  if (err.failKind === 'exit' && Number.isInteger(err.exitCode) && sshExitStatus(err.exitCode) !== SSH_FAILURE_STATUS) {
     return { retry: false, state: 'unsupported', detail: { code: 'no-posix-shell', exitCode: err.exitCode, stderr } };
   }
   return { retry: true, kind, stderr };
@@ -942,15 +942,17 @@ class SshHostService extends EventEmitter {
         errText = (errText + chunk.toString('utf8')).slice(-65536);
       });
       child.stdin.on('error', () => { /* the remote side closed early; the exit code tells */ });
-      const finish = (code) => {
+      const finish = (rawCode) => {
         if (settled) return;
+        // -1 on Windows when the server ended the session without a status (see sshExitStatus)
+        const code = sshExitStatus(rawCode);
         settled = true;
         clearTimeout(timer);
         if (signal) signal.removeEventListener('abort', onAbort);
         this.oneShots.delete(child);
         const stderr = Buffer.from(errText, 'utf8');
         if (abortReason) { resolve({ ok: false, reason: abortReason, code, stdout: Buffer.alloc(0), stderr }); return; }
-        if (code === 255) {
+        if (code === SSH_FAILURE_STATUS) {
           resolve({ ok: false, reason: 'disconnected', code, stdout: Buffer.concat(out), stderr, sshFailure: classifySshFailure(code, errText) });
           return;
         }
