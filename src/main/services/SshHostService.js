@@ -640,6 +640,30 @@ class SshHostService extends EventEmitter {
     if (res.reason === 'timeout') this._scheduleRetry(host, 'timeout');
   }
 
+  /**
+   * Whether the link to a host is alive right now, for a caller that has to
+   * tell a dropped connection from a remote command's own failure (a PTY
+   * whose ssh exited 255 without saying why).
+   *
+   * Never connects a host and never waits for one: `alive` needs a connected
+   * host answering a no-op on a lane within `timeoutMs`; `dead` is a host
+   * that is not connected or did not answer; `unknown` is a host this service
+   * has not reached yet (idle, or still on its first attempt), about which it
+   * knows nothing. The state
+   * machine is left alone: the regular ping and keepalives decide reconnects.
+   *
+   * @param {string} profileId
+   * @param {{ timeoutMs?: number }} [options]
+   * @returns {Promise<'alive'|'dead'|'unknown'>}
+   */
+  async probe(profileId, { timeoutMs = 5000 } = {}) {
+    const host = this.hosts.get(profileId);
+    if (!host || host.state === 'idle' || host.state === 'connecting') return 'unknown';
+    if (host.state !== 'connected') return 'dead';
+    const res = await this.exec(profileId, ':', { write: true, timeoutMs });
+    return res && res.ok ? 'alive' : 'dead';
+  }
+
   /** The user disconnected. A host that was retrying goes `offline`, anything else `idle`. */
   disconnect(profileId) {
     const host = this.hosts.get(profileId);

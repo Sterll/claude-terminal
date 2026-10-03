@@ -13,14 +13,20 @@ const {
   shC,
   terminalShellScript,
   terminalClaudeScript,
-  classifySshFailure,
+  classifyPtyExit,
 } = require('../../shared/remote-shell');
 
 /** What `--resume` accepts. Also what keeps a session id from smuggling shell syntax. */
 const RESUME_ID_RE = /^[a-f0-9-]{8,64}$/;
 
-/** ssh's own exit status: the connection or authentication failed, not the remote shell. */
+/** ssh's own failure status (connection or authentication), which a remote command can also exit with. */
 const SSH_FAILURE_EXIT = 255;
+
+/**
+ * How long a remote tab whose ssh exited 255 without saying why waits for its
+ * host to answer, before the exit is read as a lost connection.
+ */
+const HOST_PROBE_TIMEOUT_MS = 5000;
 
 /** How much of a remote PTY's latest output is kept to classify an ssh failure. */
 const REMOTE_TAIL_BYTES = 4096;
@@ -53,6 +59,13 @@ class TerminalService {
      * land here.
      */
     this.disconnected = new Map();
+    /** Remote terminals whose exit 255 is being checked against their host. */
+    this._judging = new Set();
+    /**
+     * Injectable host liveness check (`probe(profileId)`), for tests. Null
+     * means SshHostService.
+     */
+    this.hostLiveness = null;
     this.terminalId = 0;
     this.mainWindow = null;
     /**
@@ -294,8 +307,11 @@ class TerminalService {
   // ssh exits 255 when the connection or authentication failed. That is not
   // the user typing `exit`, so it is reported as `terminal-disconnected`, the
   // tab stays, and `respawn()` brings it back under the same id once the host
-  // is reachable: a Claude tab with `--resume`, a shell in the same directory
-  // (or reattached to its tmux session when the profile opted into tmux).
+  // is reachable. ssh also passes on the remote command's own status, though,
+  // and a remote `exit 255` is an exit: classifyPtyExit() reads ssh's last
+  // words to tell them apart, and the host is asked when those settle nothing.
+  // A tab that comes back is a Claude tab with `--resume`, or a shell in the
+  // same directory (reattached to its tmux session when the profile opted in).
 
   /** The CLI argv for a remote Claude tab: the same flags and session id check as a local one. */
   _remoteClaudeArgv(ctx) {
@@ -409,33 +425,98 @@ class TerminalService {
       try { ptyProcess.kill(); } catch (e) {}
       if (this.terminals.get(id) === ptyProcess) this.terminals.delete(id);
       terminalCapture.flush();
-      if (exitCode === SSH_FAILURE_EXIT) {
-        // The connection dropped, or never came up. Not an exit: the tab
-        // stays, and no terminal_exit_code workflow fires for it.
-        const kind = classifySshFailure(exitCode, ptyProcess._tail) || 'network';
-        this.disconnected.set(id, ctx);
-        this.sendToRenderer('terminal-disconnected', { id, exitCode, kind, profileId: ctx.profileId || null });
+      if (exitCode !== SSH_FAILURE_EXIT) {
+        this._remoteExited(id, ptyProcess, exitCode, signal);
         return;
       }
-      this.sendToRenderer('terminal-exit', { id, exitCode, signal });
-      if (typeof this.onExitCallback === 'function') {
-        try {
-          this.onExitCallback({
-            terminalId:  id,
-            exitCode,
-            signal,
-            projectId:   ptyProcess._meta?.projectId || null,
-            projectPath: ptyProcess._meta?.projectPath || null,
-            command:     ptyProcess._meta?.command || null,
-          });
-        } catch (cbErr) {
-          console.warn('[TerminalService] onExitCallback error:', cbErr.message);
-        }
+      // 255 is ssh's own failure, but also whatever status the remote
+      // command chose (`exit 255`). What ssh printed decides first; when it
+      // printed nothing that settles it, the host is asked.
+      const judged = classifyPtyExit(exitCode, ptyProcess._tail);
+      if (judged.verdict === 'exit') {
+        this._remoteExited(id, ptyProcess, exitCode, signal);
+        return;
       }
+      if (judged.verdict === 'lost') {
+        this._remoteLost(id, ctx, exitCode, judged.kind);
+        return;
+      }
+      this._judgeByHost(id, ptyProcess, ctx, exitCode, signal);
     });
 
     ptyProcess._disposables = [tailDisposable, dataDisposable, exitDisposable];
     return { success: true, id };
+  }
+
+  /** The remote command ended: the tab closes like a local one, and the workflow trigger fires. */
+  _remoteExited(id, ptyProcess, exitCode, signal) {
+    this.sendToRenderer('terminal-exit', { id, exitCode, signal });
+    if (typeof this.onExitCallback === 'function') {
+      try {
+        this.onExitCallback({
+          terminalId:  id,
+          exitCode,
+          signal,
+          projectId:   ptyProcess._meta?.projectId || null,
+          projectPath: ptyProcess._meta?.projectPath || null,
+          command:     ptyProcess._meta?.command || null,
+        });
+      } catch (cbErr) {
+        console.warn('[TerminalService] onExitCallback error:', cbErr.message);
+      }
+    }
+  }
+
+  /**
+   * The connection dropped, or never came up. Not an exit: the tab stays,
+   * main keeps what respawn() needs, and no terminal_exit_code workflow fires.
+   */
+  _remoteLost(id, ctx, exitCode, kind) {
+    this.disconnected.set(id, ctx);
+    this.sendToRenderer('terminal-disconnected', { id, exitCode, kind: kind || 'network', profileId: ctx.profileId || null });
+  }
+
+  /** The host liveness check: SshHostService, unless a test handed one in. */
+  _hostLiveness() {
+    if (this.hostLiveness) return this.hostLiveness;
+    try {
+      return require('./SshHostService');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * An exit 255 that ssh explained neither way (`LogLevel QUIET`, or its last
+   * words never reached the PTY). A host whose channel still answers means the
+   * link is fine and 255 was the remote command's own status; a host that is
+   * not connected, or does not answer, means the link went. A host this app
+   * has not reached yet tells nothing, and is read as a lost connection, the
+   * safe side: the overlay offers Close as well as Reconnect.
+   */
+  _judgeByHost(id, ptyProcess, ctx, exitCode, signal) {
+    const liveness = this._hostLiveness();
+    if (!liveness || typeof liveness.probe !== 'function' || !ctx.profileId) {
+      this._remoteLost(id, ctx, exitCode, 'network');
+      return;
+    }
+    // Only a connected host can vouch for the link; anything else is decided
+    // now, without a round trip.
+    const status = typeof liveness.getStatus === 'function' ? liveness.getStatus(ctx.profileId) : null;
+    if (!status || status.state !== 'connected') {
+      this._remoteLost(id, ctx, exitCode, 'network');
+      return;
+    }
+    this._judging.add(id);
+    const settle = (verdict) => {
+      // Closed while the host was being asked: nothing is left to report.
+      if (!this._judging.delete(id)) return;
+      if (verdict === 'alive') this._remoteExited(id, ptyProcess, exitCode, signal);
+      else this._remoteLost(id, ctx, exitCode, 'network');
+    };
+    Promise.resolve()
+      .then(() => liveness.probe(ctx.profileId, { timeoutMs: HOST_PROBE_TIMEOUT_MS }))
+      .then(settle, () => settle('dead'));
   }
 
   /**
@@ -540,6 +621,12 @@ class TerminalService {
   kill(id) {
     const term = this.terminals.get(id);
     if (!term) {
+      // Closed while its exit 255 was being checked against the host: the
+      // check reports nothing once it lands, and the tab is told now.
+      if (this._judging.delete(id)) {
+        this.sendToRenderer('terminal-exit', { id });
+        return;
+      }
       // A remote tab waiting to reconnect has no process left, only the
       // context respawn() would use. Closing it drops that, and says so the
       // way a live kill does.
@@ -592,6 +679,7 @@ class TerminalService {
     });
     this.terminals.clear();
     this.disconnected.clear();
+    this._judging.clear();
 
     // Ensure all process trees are dead on Windows
     if (process.platform === 'win32') {

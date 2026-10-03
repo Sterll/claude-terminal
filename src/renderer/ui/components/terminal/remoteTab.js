@@ -6,8 +6,9 @@
  *   current from the host status mirror.
  * - While the tab is open its host is held, so the idle disconnect in
  *   remoteHosts.state does not drop a host whose only user is a terminal.
- * - When the tab's ssh exits 255 (the connection dropped, not the user typing
- *   `exit`) main reports `terminal-disconnected`. The tab stays, a "connection
+ * - When the tab's ssh exits 255 because the connection dropped (main tells
+ *   that apart from a remote command's own `exit 255`, which closes the tab
+ *   like any exit) main reports `terminal-disconnected`. The tab stays, a "connection
  *   lost" overlay says why, and the tab is respawned under the same PTY id as
  *   soon as the host is connected again: a Claude tab with `--resume`, a shell
  *   in the same directory, or reattached to its tmux session.

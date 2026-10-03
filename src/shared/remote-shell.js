@@ -205,12 +205,75 @@ const SSH_FAILURE_KINDS = ['auth', 'hostkey-unknown', 'hostkey-changed', 'dns', 
  */
 function classifySshFailure(exitCode, stderr) {
   const text = String(stderr || '');
-  for (const [kind, patterns] of SSH_FAILURE_PATTERNS) {
-    if (patterns.some((re) => re.test(text))) return kind;
-  }
+  const kind = sshTransportFailure(text);
+  if (kind) return kind;
   if (exitCode === 127 || /command not found|: not found\s*$/im.test(text)) return 'not-installed';
   if (exitCode === 255) return 'network';
   return null;
+}
+
+/**
+ * What ssh itself printed about a failed connection, from its diagnostics
+ * alone: one of the transport kinds of SSH_FAILURE_PATTERNS, or null. Unlike
+ * classifySshFailure, no exit code is consulted, so an exit status the remote
+ * command chose is never read as a transport failure.
+ *
+ * @param {string} text
+ * @returns {string|null}
+ */
+function sshTransportFailure(text) {
+  const value = String(text || '');
+  for (const [kind, patterns] of SSH_FAILURE_PATTERNS) {
+    if (patterns.some((re) => re.test(value))) return kind;
+  }
+  return null;
+}
+
+/** Terminal escape sequences (CSI, OSC, and the two-byte ones), so a line reads as the text it shows. */
+const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]/g;
+
+/**
+ * OpenSSH's last words when an interactive session ends normally: with a PTY
+ * and the default LogLevel it prints "Connection to <host> closed." (or
+ * "Shared connection to <host> closed." through a ControlMaster) once the
+ * remote command has exited, whatever its status. A connection the server
+ * dropped prints "Connection to <host> closed by remote host." first, and a
+ * broken link or a keepalive timeout dies on a fatal message instead.
+ */
+const SSH_CLEAN_CLOSE_RE = /(?:^|\s)(?:Shared c|C)onnection to \S+ closed\.$/;
+
+/**
+ * Why the ssh of an interactive (PTY) session exited 255, read from the last
+ * output of the PTY, which carries ssh's own diagnostics as well as the
+ * remote side's.
+ *
+ * ssh exits 255 when the connection or authentication failed, but it also
+ * passes on the remote command's own status, and a remote shell can end with
+ * 255 too (`exit 255`, a script that does). That must close the tab like any
+ * other exit rather than be taken for a lost connection, or the tab respawns
+ * the shell the user just left, again and again.
+ *
+ * - `exit`: ssh said the session closed normally, so 255 is the remote
+ *   command's own status;
+ * - `lost` with a kind: ssh printed a transport or authentication failure;
+ * - `unknown`: ssh printed neither (`LogLevel QUIET`, or nothing came
+ *   through), and the caller has to ask the host.
+ *
+ * Any other exit code is always `exit`.
+ *
+ * @param {number|null} exitCode
+ * @param {string} tail  the last few KB of the PTY's output
+ * @returns {{ verdict: 'exit' } | { verdict: 'lost', kind: string } | { verdict: 'unknown' }}
+ */
+function classifyPtyExit(exitCode, tail) {
+  if (exitCode !== 255) return { verdict: 'exit' };
+  const lines = String(tail || '').replace(ANSI_RE, '').split(/\r\n|\r|\n/).map((l) => l.trim()).filter(Boolean);
+  const last = lines[lines.length - 1] || '';
+  const before = lines[lines.length - 2] || '';
+  if (SSH_CLEAN_CLOSE_RE.test(last) && !/closed by remote host/i.test(before)) return { verdict: 'exit' };
+  const kind = sshTransportFailure(lines.join('\n'));
+  if (kind) return { verdict: 'lost', kind };
+  return { verdict: 'unknown' };
 }
 
 /** Kinds after which an automatic retry would be wrong (account lockout, a human must check a key). */
@@ -234,6 +297,8 @@ module.exports = {
   tmuxKillScript,
   TMUX_SESSION_RE,
   classifySshFailure,
+  sshTransportFailure,
+  classifyPtyExit,
   isTerminalFailure,
   SSH_FAILURE_KINDS,
 };

@@ -123,6 +123,8 @@ beforeEach(() => {
 afterEach(() => {
   terminalService.terminals.clear();
   terminalService.disconnected.clear();
+  terminalService._judging.clear();
+  terminalService.hostLiveness = null;
   terminalService.onExitCallback = null;
   terminalService.setMainWindow(null);
   jest.restoreAllMocks();
@@ -361,5 +363,83 @@ describe('remote exit and reconnect', () => {
     expect(sent).toEqual([{ channel: 'terminal-exit', payload: { id } }]);
     expect(terminalService.remoteContext(id)).toBeNull();
     expect(terminalService.respawn(id, { remote: remoteContext() }).success).toBe(false);
+  });
+});
+
+describe('a remote exit 255 that is the remote command exiting', () => {
+  const flush = async () => { for (let i = 0; i < 5; i++) await Promise.resolve(); };
+  /** A host liveness check with a fixed state and probe answer. */
+  function liveness(state, answer) {
+    let resolve;
+    const pending = answer === 'pending' ? new Promise((r) => { resolve = r; }) : null;
+    return {
+      getStatus: jest.fn(() => ({ state })),
+      probe: jest.fn(() => (pending || Promise.resolve(answer))),
+      answer: (value) => resolve(value),
+    };
+  }
+
+  test('"exit 255" in the shell closes the tab: ssh said the session closed normally', () => {
+    terminalService.hostLiveness = liveness('connected', 'alive');
+    const { id } = createRemote();
+    last().emitData('$ exit 255\r\nlogout\r\nConnection to build.example.com closed.\r\n');
+    last().emitExit(255);
+    expect(sent.find(m => m.channel === 'terminal-exit').payload).toEqual({ id, exitCode: 255, signal: null });
+    expect(sent.some(m => m.channel === 'terminal-disconnected')).toBe(false);
+    expect(terminalService.onExitCallback).toHaveBeenCalledWith(expect.objectContaining({ terminalId: id, exitCode: 255, projectId: 'r1' }));
+    expect(terminalService.remoteContext(id)).toBeNull();
+    // Nothing is kept to respawn, so there is no loop
+    expect(terminalService.respawn(id, { remote: remoteContext() }).success).toBe(false);
+    expect(terminalService.hostLiveness.probe).not.toHaveBeenCalled();
+  });
+
+  test('a server that dropped the session is still a lost connection', () => {
+    const { id } = createRemote();
+    last().emitData('Connection to build.example.com closed by remote host.\r\nConnection to build.example.com closed.\r\n');
+    last().emitExit(255);
+    expect(sent.find(m => m.channel === 'terminal-disconnected').payload).toEqual({ id, exitCode: 255, kind: 'network', profileId: 'abcd1234' });
+    expect(sent.some(m => m.channel === 'terminal-exit')).toBe(false);
+  });
+
+  test('ssh silent, host connected and answering: the command exited, the tab closes', async () => {
+    terminalService.hostLiveness = liveness('connected', 'alive');
+    const { id } = createRemote();
+    last().emitExit(255);
+    expect(sent).toEqual([]);
+    await flush();
+    expect(terminalService.hostLiveness.probe).toHaveBeenCalledWith('abcd1234', expect.objectContaining({ timeoutMs: expect.any(Number) }));
+    expect(sent.find(m => m.channel === 'terminal-exit').payload).toEqual({ id, exitCode: 255, signal: null });
+    expect(sent.some(m => m.channel === 'terminal-disconnected')).toBe(false);
+    expect(terminalService.onExitCallback).toHaveBeenCalled();
+  });
+
+  test('ssh silent, host connected but not answering: a lost connection', async () => {
+    terminalService.hostLiveness = liveness('connected', 'dead');
+    const { id } = createRemote();
+    last().emitExit(255);
+    await flush();
+    expect(sent.find(m => m.channel === 'terminal-disconnected').payload).toEqual({ id, exitCode: 255, kind: 'network', profileId: 'abcd1234' });
+    expect(terminalService.onExitCallback).not.toHaveBeenCalled();
+    expect(terminalService.remoteContext(id)).toMatchObject({ remotePath: '/home/yanis/api' });
+  });
+
+  test('ssh silent, host not connected: a lost connection at once, nothing asked', () => {
+    terminalService.hostLiveness = liveness('reconnecting', 'alive');
+    const { id } = createRemote();
+    last().emitExit(255);
+    expect(sent.find(m => m.channel === 'terminal-disconnected').payload).toMatchObject({ id, kind: 'network' });
+    expect(terminalService.hostLiveness.probe).not.toHaveBeenCalled();
+  });
+
+  test('a tab closed while its host is being asked is reported closed once, and the answer is dropped', async () => {
+    terminalService.hostLiveness = liveness('connected', 'pending');
+    const { id } = createRemote();
+    last().emitExit(255);
+    terminalService.kill(id);
+    expect(sent).toEqual([{ channel: 'terminal-exit', payload: { id } }]);
+    terminalService.hostLiveness.answer('dead');
+    await flush();
+    expect(sent).toEqual([{ channel: 'terminal-exit', payload: { id } }]);
+    expect(terminalService.remoteContext(id)).toBeNull();
   });
 });

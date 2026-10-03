@@ -468,7 +468,22 @@ Exit code 255 from ssh means the connection or authentication failed, not that
 the user typed `exit`. The terminal emits `terminal-disconnected` (with the
 failure kind, classified from the PTY's last 4 KB of output) instead of
 `terminal-exit`, no `terminal_exit_code` workflow fires, and main keeps what the
-tab needs to come back. The tab shows a "connection lost" overlay with the host
+tab needs to come back.
+
+But ssh also passes on the remote command's own status, and a shell that ends
+with `exit 255` (or a script that does) must close its tab like any other exit,
+or the tab respawns the shell the user just left, again and again.
+`remote-shell.classifyPtyExit` reads ssh's own last words from the same tail:
+with a PTY and the default `LogLevel`, a session that ended normally finishes on
+"Connection to <host> closed." (or "Shared connection ..." through a
+ControlMaster), and that is an exit; a server that dropped the session prints
+"closed by remote host" first, and a broken link, a keepalive timeout or an auth
+failure dies on a fatal message instead, and those are a lost connection with
+their kind. When ssh printed neither (`LogLevel QUIET`), the host is asked:
+`SshHostService.probe` runs a no-op on a channel lane within 5 s, without ever
+connecting a host. A connected host that answers means the link is fine and the
+255 was the command's; a host that is not connected, does not answer, or has not
+been reached yet is read as a lost connection, the safe side. The tab shows a "connection lost" overlay with the host
 state and Reconnect / Close buttons, and when the host is connected again
 `terminal-respawn` brings it back **under the same PTY id**, so the renderer's
 handlers, the tab and its scrollback carry on untouched: plain shells reopen in

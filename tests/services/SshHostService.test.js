@@ -307,6 +307,35 @@ describe('SshHostService connection state machine (fake timers)', () => {
     service.disposeAll();
   });
 
+  test('probe: unknown for a host never reached, dead for one that is not connected, never connects', async () => {
+    const { service, createLane } = makeService({ modes: ['ok'] });
+    expect(await service.probe(PROFILE_ID)).toBe('unknown');
+    expect(createLane).not.toHaveBeenCalled();
+    await service.connect(PROFILE_ID);
+    service.hosts.get(PROFILE_ID).lanes[0].die();
+    expect(service.getStatus(PROFILE_ID).state).toBe('reconnecting');
+    expect(await service.probe(PROFILE_ID)).toBe('dead');
+    service.disposeAll();
+  });
+
+  test('probe: alive when the connected host answers a no-op, dead when it does not in time', async () => {
+    let answer = true;
+    const handler = async (script, opts) => {
+      // A real lane gives up after the request's own timeout; this one is told to.
+      if (script === ':' && !answer) return new Promise((r) => setTimeout(() => r({ ok: false, reason: 'timeout', code: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }), opts.timeoutMs));
+      return { ok: true, code: 0, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
+    };
+    const { service, lanes } = makeService({ handler });
+    await service.connect(PROFILE_ID);
+    expect(await service.probe(PROFILE_ID)).toBe('alive');
+    expect(lanes[0].requests.some((r) => r.script === ':')).toBe(true);
+    answer = false;
+    const probing = service.probe(PROFILE_ID, { timeoutMs: 3000 });
+    await jest.advanceTimersByTimeAsync(3000);
+    expect(await probing).toBe('dead');
+    service.disposeAll();
+  });
+
   test('a missing profile is reported rather than retried', async () => {
     const { service, createLane } = makeService({ profiles: [] });
     expect((await service.connect(PROFILE_ID)).state).toBe('unsupported');

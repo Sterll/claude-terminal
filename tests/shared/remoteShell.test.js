@@ -231,3 +231,40 @@ describe('terminal scripts', () => {
     expect(r.stdout).toBe("csh:'claude'");
   });
 });
+
+describe('classifyPtyExit: a remote command exiting 255 versus a lost connection', () => {
+  const { classifyPtyExit, sshTransportFailure } = require('../../src/shared/remote-shell');
+
+  test('any status other than 255 is an exit, whatever was printed', () => {
+    expect(classifyPtyExit(0, 'client_loop: send disconnect: Broken pipe')).toEqual({ verdict: 'exit' });
+    expect(classifyPtyExit(1, '')).toEqual({ verdict: 'exit' });
+  });
+
+  test('the normal close line ssh prints after the shell exited 255 is an exit', () => {
+    expect(classifyPtyExit(255, '$ exit 255\r\nlogout\r\nConnection to build.example.com closed.\r\n')).toEqual({ verdict: 'exit' });
+    // Through a ControlMaster, and with the prompt's escape sequences around it
+    expect(classifyPtyExit(255, '\x1b[?2004l\r\x1b[0mlogout\r\nShared connection to build closed.\r\n')).toEqual({ verdict: 'exit' });
+    // Something the session printed earlier does not outweigh the close line
+    expect(classifyPtyExit(255, 'curl: (7) Connection refused\r\n$ exit 255\r\nConnection to h closed.\r\n')).toEqual({ verdict: 'exit' });
+  });
+
+  test('a server that dropped the connection is lost, even with the close line after it', () => {
+    expect(classifyPtyExit(255, 'Connection to h closed by remote host.\r\nConnection to h closed.\r\n')).toEqual({ verdict: 'lost', kind: 'network' });
+  });
+
+  test('a broken link, a keepalive timeout or an auth failure is lost with its kind', () => {
+    expect(classifyPtyExit(255, 'client_loop: send disconnect: Broken pipe\r\n')).toEqual({ verdict: 'lost', kind: 'network' });
+    expect(classifyPtyExit(255, 'Timeout, server build not responding.\r\n')).toEqual({ verdict: 'lost', kind: 'timeout' });
+    expect(classifyPtyExit(255, 'yanis@build: Permission denied (publickey).\r\n')).toEqual({ verdict: 'lost', kind: 'auth' });
+  });
+
+  test('nothing from ssh either way is unknown: the caller asks the host', () => {
+    expect(classifyPtyExit(255, '')).toEqual({ verdict: 'unknown' });
+    expect(classifyPtyExit(255, '$ exit 255\r\n')).toEqual({ verdict: 'unknown' });
+  });
+
+  test('sshTransportFailure reads diagnostics only, never an exit code', () => {
+    expect(sshTransportFailure('')).toBeNull();
+    expect(sshTransportFailure('Could not resolve hostname build')).toBe('dns');
+  });
+});
