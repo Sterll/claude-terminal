@@ -4629,7 +4629,7 @@
       "forwardAgent": "转发 ssh-agent (-A)",
       "forwardAgentWarning": "允许主机上的 git 使用你的本地密钥。连接期间，主机上拥有 root 权限的任何人都可以使用该代理。",
       "tmuxSessions": "在 tmux 中保留终端",
-      "tmuxSessionsHint": "连接中断后，终端标签页会重新连接到同一个 shell。需要主机上安装 tmux。",
+      "tmuxSessionsHint": "连接中断后，终端标签页会重新连接到同一个 shell。需要主机上安装 tmux。在 Windows 上，如果标签页重新连接时出现类似 61;6;7;21;22... 的一行，请在主机的 ~/.tmux.conf 中加入 set -sg escape-time 100。",
       "reconnectNotice": "此主机已连接。保存后将使用新设置重新连接。",
       "save": "保存",
       "saveAndTest": "保存并测试",

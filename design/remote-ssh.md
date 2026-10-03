@@ -487,7 +487,10 @@ given (main resolves `project.remote`; the renderer sends nothing host-related):
   attach it can land on the prompt as typed text (`61;6;7;21;22;23;24;28;32;42c`).
   `set -sg escape-time 100` in the host's `~/.tmux.conf` avoids it (measured:
   50 ms still leaks through a ProxyJump, 100 ms does not). The app does not set
-  it, since it is a server-wide option of the user's own tmux;
+  it, since it is a server-wide option of the user's own tmux. **Decided:
+  documented, no product change.** The profile editor's "Keep terminals in
+  tmux" hint gives the line to add, and neither the ssh invocation nor the
+  attach command works around it;
 - no local `existsSync` on the cwd, no `accountEnv` overlay (the remote host has
   its own `claude /login`); the ssh process starts in the local home directory;
 - a terminal-only CLI command the chat hands over (`/login`, `/design-login`,
@@ -1330,7 +1333,9 @@ Still manual:
 - **`LogLevel QUIET` in the user's ssh_config.** An `exit 255` is then judged
   by probing the host (5.1); not run against a real sshd.
 - **tmux through Windows OpenSSH** shows a garbage line on attach unless the
-  host's `~/.tmux.conf` sets `escape-time 100` (5.1).
+  host's `~/.tmux.conf` sets `escape-time 100` (5.1). Decided: documented in
+  the profile editor's tmux hint, no product change, so this stays the user's
+  one line of host configuration rather than something left to verify.
 - **Agent forwarding**, `Match` and `Include` in ssh_config, a Windows sshd
   (only its "unsupported" message, through fake-ssh), large repositories, and
   the packaged app (the bundled CLI version is read from `app.asar` there).

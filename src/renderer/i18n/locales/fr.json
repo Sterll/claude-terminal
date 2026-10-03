@@ -4629,7 +4629,7 @@
       "forwardAgent": "Transférer ssh-agent (-A)",
       "forwardAgentWarning": "Permet à git sur l'hôte d'utiliser vos clés locales. Toute personne root sur l'hôte peut utiliser l'agent pendant que vous êtes connecté.",
       "tmuxSessions": "Garder les terminaux dans tmux",
-      "tmuxSessionsHint": "Les onglets terminal retrouvent le même shell après une coupure. Nécessite tmux sur l'hôte.",
+      "tmuxSessionsHint": "Les onglets terminal retrouvent le même shell après une coupure. Nécessite tmux sur l'hôte. Depuis Windows, si une ligne comme 61;6;7;21;22... s'affiche quand un onglet se rattache, ajoutez set -sg escape-time 100 au ~/.tmux.conf de l'hôte.",
       "reconnectNotice": "Cet hôte est connecté. Enregistrer le reconnecte avec les nouveaux réglages.",
       "save": "Enregistrer",
       "saveAndTest": "Enregistrer et tester",

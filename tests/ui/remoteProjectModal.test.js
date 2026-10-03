@@ -89,6 +89,20 @@ describe('profile editor', () => {
     expect(fields.join(' ')).not.toMatch(/pass|secret|key(?!s)/i);
   });
 
+  // design/remote-ssh.md 5.1: the tmux garbage line through Windows OpenSSH is
+  // fixed on the host, not by the app, so the hint is the whole fix and must
+  // carry the exact line in every language.
+  test('the tmux hint gives the escape-time line to add on the host', () => {
+    Modal.openHostEditor({});
+    const label = $('input[data-field="tmuxSessions"]').closest('label');
+    expect(label.textContent).toContain('set -sg escape-time 100');
+    for (const lang of ['en', 'fr', 'es', 'id', 'zh-CN', 'pt-BR']) {
+      const hint = require(`../../src/renderer/i18n/locales/${lang}.json`).ssh.editor.tmuxSessionsHint;
+      expect(hint).toContain('set -sg escape-time 100');
+      expect(hint).toContain('~/.tmux.conf');
+    }
+  });
+
   test('save goes through IPC with the editor fields only', async () => {
     const onSaved = jest.fn();
     Modal.openHostEditor({ onSaved });

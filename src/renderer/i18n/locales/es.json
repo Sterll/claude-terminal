@@ -4629,7 +4629,7 @@
       "forwardAgent": "Reenviar ssh-agent (-A)",
       "forwardAgentWarning": "Permite que git en el host use tus claves locales. Cualquiera con root en el host puede usar el agente mientras estés conectado.",
       "tmuxSessions": "Mantener los terminales en tmux",
-      "tmuxSessionsHint": "Las pestañas de terminal recuperan el mismo shell tras un corte. Requiere tmux en el host.",
+      "tmuxSessionsHint": "Las pestañas de terminal recuperan el mismo shell tras un corte. Requiere tmux en el host. Desde Windows, si aparece una línea como 61;6;7;21;22... al reconectar una pestaña, añade set -sg escape-time 100 al ~/.tmux.conf del host.",
       "reconnectNotice": "Este host está conectado. Al guardar se reconecta con la nueva configuración.",
       "save": "Guardar",
       "saveAndTest": "Guardar y probar",

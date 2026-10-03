@@ -4629,7 +4629,7 @@
       "forwardAgent": "Teruskan ssh-agent (-A)",
       "forwardAgentWarning": "Mengizinkan git di host memakai kunci lokal Anda. Siapa pun yang punya root di host dapat memakai agen selama Anda terhubung.",
       "tmuxSessions": "Simpan terminal di tmux",
-      "tmuxSessionsHint": "Tab terminal tersambung kembali ke shell yang sama setelah koneksi terputus. Memerlukan tmux di host.",
+      "tmuxSessionsHint": "Tab terminal tersambung kembali ke shell yang sama setelah koneksi terputus. Memerlukan tmux di host. Dari Windows, jika muncul baris seperti 61;6;7;21;22... saat tab tersambung kembali, tambahkan set -sg escape-time 100 ke ~/.tmux.conf di host.",
       "reconnectNotice": "Host ini sedang terhubung. Menyimpan akan menghubungkannya ulang dengan pengaturan baru.",
       "save": "Simpan",
       "saveAndTest": "Simpan dan uji",

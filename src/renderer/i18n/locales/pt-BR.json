@@ -4629,7 +4629,7 @@
       "forwardAgent": "Encaminhar o ssh-agent (-A)",
       "forwardAgentWarning": "Permite que o git no host use suas chaves locais. Qualquer pessoa com root no host pode usar o agente enquanto você estiver conectado.",
       "tmuxSessions": "Manter terminais no tmux",
-      "tmuxSessionsHint": "As abas de terminal voltam ao mesmo shell após uma queda de conexão. Requer tmux no host.",
+      "tmuxSessionsHint": "As abas de terminal voltam ao mesmo shell após uma queda de conexão. Requer tmux no host. No Windows, se aparecer uma linha como 61;6;7;21;22... quando uma aba se reconecta, adicione set -sg escape-time 100 ao ~/.tmux.conf do host.",
       "reconnectNotice": "Este host está conectado. Salvar reconecta com as novas configurações.",
       "save": "Salvar",
       "saveAndTest": "Salvar e testar",

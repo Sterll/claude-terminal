@@ -4629,7 +4629,7 @@
       "forwardAgent": "Forward the ssh-agent (-A)",
       "forwardAgentWarning": "Lets git on the host use your local keys. Anyone with root on the host can use the agent while you are connected.",
       "tmuxSessions": "Keep terminals in tmux",
-      "tmuxSessionsHint": "Terminal tabs reattach to the same shell after a dropped connection. Needs tmux on the host.",
+      "tmuxSessionsHint": "Terminal tabs reattach to the same shell after a dropped connection. Needs tmux on the host. From Windows, if a line like 61;6;7;21;22... appears when a tab reattaches, add set -sg escape-time 100 to ~/.tmux.conf on the host.",
       "reconnectNotice": "This host is connected. Saving reconnects it with the new settings.",
       "save": "Save",
       "saveAndTest": "Save and test",
