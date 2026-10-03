@@ -78,3 +78,28 @@ test('flushProjectsSave writes a just-added remote project without waiting for t
   const written = JSON.parse(fsMock.promises.writeFile.mock.calls[0][1]);
   expect(written.projects.map((p) => p.path)).toContain(project.path);
 });
+
+test('a projects.json that does not parse is not reloaded over the projects in memory', async () => {
+  jest.useFakeTimers();
+  setDisk({ projects: [ONE, TWO], folders: [], rootOrder: ['p1', 'p2'] }, 1000);
+  await loadProjects();
+  startExternalWatch();
+  await jest.advanceTimersByTimeAsync(10);
+
+  // Truncated by a writer that does not rename, or damaged on disk.
+  fsMock.promises.readFile.mockResolvedValue('{"projects": [{"id": "p1"');
+  fsMock.promises.stat.mockResolvedValue({ mtime: new Date(2000), size: 26 });
+  await jest.advanceTimersByTimeAsync(3100);
+  expect(projectsState.get().projects.map((p) => p.id)).toEqual(['p1', 'p2']);
+
+  // An empty file is the same case: loadProjects() would start fresh.
+  fsMock.promises.readFile.mockResolvedValue('');
+  fsMock.promises.stat.mockResolvedValue({ mtime: new Date(2500), size: 0 });
+  await jest.advanceTimersByTimeAsync(3100);
+  expect(projectsState.get().projects.map((p) => p.id)).toEqual(['p1', 'p2']);
+
+  // Once the file is whole again, the other writer's change is picked up.
+  setDisk({ projects: [TWO], folders: [], rootOrder: ['p2'] }, 3000);
+  await jest.advanceTimersByTimeAsync(3100);
+  expect(projectsState.get().projects.map((p) => p.id)).toEqual(['p2']);
+});
