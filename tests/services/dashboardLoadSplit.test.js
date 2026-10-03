@@ -25,9 +25,10 @@ jest.mock('../../src/renderer/ui/components/Modal', () => ({
 jest.mock('../../src/renderer/utils', () => ({ escapeHtml: (s) => String(s ?? '') }));
 jest.mock('../../src/renderer/utils/color', () => ({ sanitizeColor: (c) => c }));
 jest.mock('../../src/renderer/utils/format', () => ({ formatDuration: () => '0m', redactUrlCredentials: url => url }));
-jest.mock('../../src/project-types/registry', () => ({
-  get: jest.fn(() => ({ getDashboardBadge: () => ({ text: '', cssClass: '' }), getDashboardStats: () => '' })),
-}));
+jest.mock('../../src/project-types/registry', () => {
+  const get = jest.fn(() => ({ getDashboardBadge: () => ({ text: '', cssClass: '' }), getDashboardStats: () => '' }));
+  return { get, forProject: (p) => get(p && p.type) };
+});
 jest.mock('../../src/renderer/ui/panels/KanbanPanel', () => ({ render: jest.fn() }));
 jest.mock('../../src/renderer/events', () => ({
   getActiveProvider: () => 'scraping',

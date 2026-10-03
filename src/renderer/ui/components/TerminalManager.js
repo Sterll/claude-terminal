@@ -1976,7 +1976,7 @@ class TerminalManager extends BaseComponent {
    * @returns {Promise<string|null>}
    */
   createTypeConsole(project, projectIndex) {
-    const typeHandler = registry.get(project.type);
+    const typeHandler = registry.forProject(project);
     const config = typeHandler.getConsoleConfig(project, projectIndex);
     if (!config) return Promise.resolve(null);
 
@@ -2247,7 +2247,7 @@ class TerminalManager extends BaseComponent {
     const project = projects[projectIndex];
     if (!project) return;
 
-    const typeHandler = registry.get(project.type);
+    const typeHandler = registry.forProject(project);
     typeHandler.onConsoleError(projectIndex, error, this._getTmApi());
   }
 
@@ -2256,7 +2256,7 @@ class TerminalManager extends BaseComponent {
     const project = projects[projectIndex];
     if (!project) return;
 
-    const typeHandler = registry.get(project.type);
+    const typeHandler = registry.forProject(project);
     typeHandler.showErrorOverlay(projectIndex, error, this._getTmApi());
   }
 
@@ -2283,7 +2283,7 @@ class TerminalManager extends BaseComponent {
     const projects = projectsState.get().projects;
     const project = projects[projectIndex];
     if (project) {
-      const typeHandler = registry.get(project.type);
+      const typeHandler = registry.forProject(project);
       typeHandler.hideErrorOverlay(projectIndex);
     }
   }

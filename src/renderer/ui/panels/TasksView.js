@@ -15,6 +15,7 @@
 const { escapeHtml } = require('../../utils');
 const { t, getCurrentLanguage } = require('../../i18n');
 const { projectsState } = require('../../state/projects.state');
+const { can } = require('../../../shared/remote-capabilities');
 const { showContextMenu } = require('../components/ContextMenu');
 const { upgradeSelectsToDropdowns } = require('./WorkflowHelpers');
 const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options');
@@ -362,9 +363,19 @@ function eventProjectHtml(kind, selected) {
     `<button type="button" class="auto-pchip${active ? ' active' : ''}" data-pid="${escapeHtml(value)}"
       aria-pressed="${active}">${escapeHtml(label)}</button>`;
 
+  // git and file_change watch a local folder: a remote (SSH) project is shown
+  // disabled with the reason (WorkflowScheduler would skip it anyway).
+  const watchesLocally = kind === 'git' || kind === 'file_change';
+  const projectChip = (p) => {
+    const cap = watchesLocally ? can(p, 'workflowTriggers') : { ok: true };
+    if (cap.ok) return chip(p.id, p.name, !anyActive && ids.includes(p.id));
+    return `<button type="button" class="auto-pchip is-disabled" data-pid="${escapeHtml(p.id)}" aria-disabled="true"
+      data-reason-key="${escapeHtml(cap.reasonKey)}" title="${escapeHtml(t(cap.reasonKey))}">${escapeHtml(p.name)}</button>`;
+  };
+
   const chips = [
     anyAllowed ? chip(ANY_PROJECT, t('automation.event.anyProject'), anyActive) : '',
-    ...list.map(p => chip(p.id, p.name, !anyActive && ids.includes(p.id))),
+    ...list.map(projectChip),
   ].join('');
 
   const hint = anyAllowed
@@ -580,7 +591,15 @@ function projectOptionsHtml(selectedId, allowTrigger) {
     allowTrigger
       ? `<option value="${TRIGGER_PROJECT}"${selectedId === TRIGGER_PROJECT ? ' selected' : ''}>${escapeHtml(t('automation.form.triggerProject'))}</option>`
       : '',
-    ...list.map(p => `<option value="${escapeHtml(p.id)}"${selectedId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`),
+    // A task runs Claude on this machine (the claude node), so a remote (SSH)
+    // project is listed disabled with the reason.
+    ...list.map(p => {
+      const cap = can(p, 'workflowNodes');
+      if (!cap.ok) {
+        return `<option value="${escapeHtml(p.id)}" disabled data-remote-disabled="true"${selectedId === p.id ? ' selected' : ''} title="${escapeHtml(t(cap.reasonKey))}">${escapeHtml(t('ssh.workflow.remoteOption', { name: p.name }))}</option>`;
+      }
+      return `<option value="${escapeHtml(p.id)}"${selectedId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`;
+    }),
   ].join('');
 }
 
@@ -820,6 +839,11 @@ function openTaskModal(deps, existing, preset = null) {
   fieldsEl.addEventListener('click', (e) => {
     const chip = e.target.closest('.auto-pchip');
     if (!chip || !fieldsEl.contains(chip)) return;
+    // A remote project on a trigger that watches a local folder: say why.
+    if (chip.dataset.reasonKey) {
+      require('../components/Toast').showToast({ type: 'info', message: t(chip.dataset.reasonKey) });
+      return;
+    }
 
     const pid     = chip.dataset.pid;
     const current = simple.when.projectIds || [];

@@ -81,6 +81,12 @@ function registerDatabaseHandlers() {
   });
 
   ipcMain.handle('database-detect', async (event, { projectPath }) => {
+    // Detection reads .env files and SQLite databases in a local project
+    // folder; a remote (SSH) project has none here.
+    if (require('../../shared/remote-path').isRemotePath(projectPath)) {
+      const r = require('../../shared/remote-capabilities').refusal('databaseDetect');
+      return { success: false, error: r.message, code: r.code, reasonKey: r.reasonKey };
+    }
     try {
       return await databaseService.detectDatabases(projectPath);
     } catch (err) {

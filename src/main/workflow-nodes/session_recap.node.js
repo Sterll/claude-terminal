@@ -142,6 +142,8 @@ module.exports = {
 
     const projectPath = resolveProjectPath(resolveVars(config.projectId || '', vars), vars);
     if (!projectPath) throw new Error('Project path could not be resolved');
+    // A remote project's transcripts live in the host's ~/.claude/projects.
+    require('./_projects').assertLocalTargets(projectPath);
 
     let sessionId = resolveVars(config.sessionId || '', vars).trim();
     if (!sessionId) {

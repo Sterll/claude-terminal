@@ -144,6 +144,11 @@ module.exports = {
     const dest    = resolveVars(config.destination || '', vars);
     const content = resolveVars(config.content     || '', vars);
 
+    // A remote (SSH) project's files live on its host; path.resolve() would
+    // turn its URI into a local path under Electron's cwd.
+    const runCtx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
+    require('./_projects').assertLocalTargets(runCtx.project, p, dest);
+
     if (p && action !== 'list') assertPathWithinProject(p, vars);
     if (dest) assertPathWithinProject(dest, vars);
 

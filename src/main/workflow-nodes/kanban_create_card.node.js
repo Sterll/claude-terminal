@@ -102,8 +102,10 @@ module.exports = {
   },
 
   fields: [
+    // allowRemote: Kanban storage is local and keyed by project id, so a
+    // remote (SSH) project has a board like any other.
     { type: 'cwd-picker', key: 'projectId', label: 'wfn.kanban.project.label',
-      hint: 'wfn.kanban.project.hint' },
+      hint: 'wfn.kanban.project.hint', allowRemote: true },
     { type: 'text',     key: 'title',       label: 'wfn.kanban.title.label',
       placeholder: 'Implement feature X' },
     { type: 'textarea', key: 'description', label: 'wfn.kanban.description.label',

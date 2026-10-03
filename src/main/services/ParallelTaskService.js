@@ -12,6 +12,8 @@ const os = require('os');
 const crypto = require('crypto');
 const { createWorktree, removeWorktree, FORCE_UNLOCK, gitMerge, gitMergeAbort, gitMergeContinue, getMergeConflicts, checkoutBranch, createBranch, isMergeInProgress, execGit, execGitCallback } = require('../utils/git');
 const chatService = require('./ChatService');
+const { isRemotePath } = require('../../shared/remote-path');
+const { refusal } = require('../../shared/remote-capabilities');
 
 /**
  * Default model for a run whose caller didn't name one.
@@ -25,6 +27,19 @@ const DEFAULT_RUN_MODEL = 'sonnet';
 
 const HISTORY_FILE = path.join(os.homedir(), '.claude-terminal', 'parallel-runs.json');
 const MAX_HISTORY = 100;
+
+/**
+ * The result a refused remote (SSH) project gets, or null for a local path.
+ * Same `{ success, error }` shape as every other failure here, plus the
+ * capability's code and reason key for a renderer that wants to translate it.
+ * @param {string} projectPath
+ * @returns {{ success: false, error: string, code: string, reasonKey: string }|null}
+ */
+function refuseRemote(projectPath) {
+  if (!isRemotePath(projectPath)) return null;
+  const r = refusal('parallelTasks');
+  return { success: false, error: r.message, code: r.code, reasonKey: r.reasonKey };
+}
 
 class ParallelTaskService {
   constructor() {
@@ -45,6 +60,11 @@ class ParallelTaskService {
    * Start a parallel run. Returns immediately with runId; executes async.
    */
   async startRun({ projectPath, mainBranch, goal, maxTasks = 4, autoTasks = false, model, effort }) {
+    // A remote (SSH) project: worktrees and agents would be created on this
+    // machine, under a path that does not exist here. Refused for every caller
+    // (the panel, the parallel_spawn node, the MCP trigger), with the reason.
+    const remoteRefusal = refuseRemote(projectPath);
+    if (remoteRefusal) return remoteRefusal;
 
     const runId = `ptask-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const startedAt = parseInt(runId.split('-')[1], 10);
@@ -138,6 +158,8 @@ class ParallelTaskService {
   }
 
   async cleanupRun(runId, projectPath) {
+    const remoteRefusal = refuseRemote(projectPath);
+    if (remoteRefusal) return remoteRefusal;
     const worktreeBase = this._worktreeBase(runId);
     try {
       // Collect branch names from history before removing worktrees

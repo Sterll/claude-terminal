@@ -63,16 +63,17 @@ jest.mock('../../src/renderer/services/xtermLoader', () => ({
 
 // The console registry pulls in the whole project-type tree; a single stub
 // type with a WebApp-shaped console config is all that is exercised here.
-jest.mock('../../src/project-types/registry', () => ({
-  get: () => ({
+jest.mock('../../src/project-types/registry', () => {
+  const get = () => ({
     getConsoleConfig: () => ({
       typeId: 'webapp', tabIcon: 'W', tabClass: 'webapp-tab', dotClass: '', wrapperClass: '',
       consoleViewSelector: '.console-view', ipcNamespace: 'webapp', scrollback: 1000, disableStdin: false,
       getExistingLogs: () => [],
     }),
     getTerminalPanels: () => [{ getWrapperHtml: () => '<div class="console-view"></div>' }],
-  }),
-}));
+  });
+  return { get, forProject: (p) => get(p && p.type) };
+});
 
 const { Terminal: FakeTerminal } = require('@xterm/xterm');
 

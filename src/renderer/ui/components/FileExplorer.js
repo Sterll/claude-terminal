@@ -17,7 +17,7 @@ const { fileExists, copyDirRecursive, fsp } = require('../../utils/fs-async');
 const { openInEditor } = require('../../utils/editor');
 const projectFs = require('../../utils/projectFs');
 const remotePath = require('../../../shared/remote-path');
-const { canOpenInEditor } = require('../../../shared/remote-capabilities');
+const { canOpenInEditor, can } = require('../../../shared/remote-capabilities');
 
 // A remote (SSH) root's git badges refresh less often: every poll is a round
 // trip to its host.
@@ -1327,8 +1327,16 @@ class FileExplorer extends BaseComponent {
     // A remote root stays collapsed behind its host state until the host is
     // connected, so a dead host never stalls the Overview.
     const remoteHost = projectFs.isRemote(rootPath) ? this._remoteHostOf(rootPath) : null;
+    // While it waits for its host, its tooltip says why it stays collapsed
+    // (the `overviewAutoExpand` row).
+    const collapsedCap = remoteHost && this._remoteRootPlaceholder(rootPath)
+      ? can({ path: rootPath }, 'overviewAutoExpand')
+      : { ok: true };
+    const hostTitle = remoteHost
+      ? t('ssh.files.rootHost', { host: remoteHost.label }) + (collapsedCap.ok ? '' : `. ${t(collapsedCap.reasonKey)}`)
+      : '';
     const hostHtml = remoteHost
-      ? `<span class="fe-root-host fe-root-host--${escapeHtml(remoteHost.state)}" title="${escapeHtml(t('ssh.files.rootHost', { host: remoteHost.label }))}">${escapeHtml(remoteHost.label)}</span>`
+      ? `<span class="fe-root-host fe-root-host--${escapeHtml(remoteHost.state)}" title="${escapeHtml(hostTitle)}">${escapeHtml(remoteHost.label)}</span>`
       : '';
     const isExpanded = this._expandedFolders.has(rootPath) && this._expandedFolders.get(rootPath).loaded;
     const roll = this._sessionRollupFor(rootPath);

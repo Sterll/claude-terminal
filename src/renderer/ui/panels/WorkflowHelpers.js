@@ -693,6 +693,20 @@ function upgradeSelectsToDropdowns(container) {
         item.className = 'wf-dropdown-item' + (opt.value === selected ? ' active' : '');
         item.dataset.value = opt.value;
         item.innerHTML = `<span>${escapeHtml(opt.textContent)}</span>${opt.value === selected ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}`;
+        // A remote (SSH) project a local-only node or trigger cannot use: kept
+        // visible with its reason, never selectable. Only options marked this
+        // way, so every other select behaves exactly as before.
+        if (opt.dataset.remoteDisabled) {
+          item.classList.add('is-disabled');
+          item.setAttribute('aria-disabled', 'true');
+          if (opt.title) item.title = opt.title;
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (opt.title) require('../components/Toast').showToast({ type: 'info', message: opt.title });
+          });
+          menu.appendChild(item);
+          return;
+        }
         item.addEventListener('click', (e) => { e.stopPropagation(); sel.value = opt.value; sel.dispatchEvent(new Event('change', { bubbles: true })); closeMenu(); buildOptions(); });
         menu.appendChild(item);
       });

@@ -11,7 +11,7 @@
 
 const api = window.electron_api;
 const { eventBus, EVENT_TYPES } = require('./ClaudeEventBus');
-const { isRemoteProject } = require('../../shared/remote-capabilities');
+const { can } = require('../../shared/remote-capabilities');
 
 // Session state: normalizedCwd -> { active, startTime }
 const sessions = new Map();
@@ -49,7 +49,7 @@ function resolveProject(cwd) {
     const { projectsState } = require('../state/projects.state');
     const projects = projectsState.get().projects || [];
     for (const p of projects) {
-      if (isRemoteProject(p)) continue;
+      if (!can(p, 'hooks').ok) continue;
       const pPath = normalizePath(p.path);
       if (!pPath) continue;
       if (normalized !== pPath && !normalized.startsWith(pPath + '/')) continue;

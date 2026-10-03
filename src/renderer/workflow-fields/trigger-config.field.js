@@ -10,6 +10,7 @@
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
 const { copyText } = require('../utils/clipboard');
+const { can } = require('../../shared/remote-capabilities');
 
 /**
  * Minimal 5-field cron validator (min hour dom month dow).
@@ -128,10 +129,19 @@ function bindProps(root, node) {
  * with it: it says how many projects are actually watched, and picking one here
  * clears the list (see `data-clear-list`) so the choice actually takes effect.
  */
-function renderProjectSelect(key, selected, esc, withAny = true, props = null) {
+function renderProjectSelect(key, selected, esc, withAny = true, props = null, opts = {}) {
   const projects = getProjectsList();
+  // `localOnly`: file_change and git_event watch a local folder, so a remote
+  // (SSH) project is listed disabled with the reason (WorkflowScheduler skips
+  // it too). Every other trigger lists projects exactly as before.
   const options = projects
-    .map(p => `<option value="${esc(p.id)}"${selected === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
+    .map(p => {
+      const cap = opts.localOnly ? can(p, 'workflowTriggers') : { ok: true };
+      if (!cap.ok) {
+        return `<option value="${esc(p.id)}" disabled data-remote-disabled="true"${selected === p.id ? ' selected' : ''} title="${esc(t(cap.reasonKey))}">${esc(t('ssh.workflow.remoteOption', { name: p.name }))}</option>`;
+      }
+      return `<option value="${esc(p.id)}"${selected === p.id ? ' selected' : ''}>${esc(p.name)}</option>`;
+    })
     .join('');
   const anyOpt = withAny
     ? `<option value=""${!selected ? ' selected' : ''}>${t('workflow.trigger.anyProject')}</option>`
@@ -191,7 +201,7 @@ function renderFileChangeSection(props, esc) {
   return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.fileChangeProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.fileChangeProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props, { localOnly: true })}
 </div>
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.fileChangePathLabel')}</label>
@@ -312,7 +322,7 @@ function renderGitEventSection(props, esc) {
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.gitEventProjectLabel')}</label>
   <span class="wf-field-hint">${t('workflow.trigger.gitEventProjectHint')}</span>
-  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props)}
+  ${renderProjectSelect('projectId', props.projectId || '', esc, true, props, { localOnly: true })}
 </div>
 <div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.trigger.gitEventBranchLabel')}</label>

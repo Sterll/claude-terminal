@@ -422,6 +422,16 @@ npm install
 - Perfis de usuário e gerenciamento de sessões
 - Script de instalação automatizado com Docker, proxy reverso e configuração de SSL
 
+### Projetos remotos SSH
+- Abra um projeto que fica em outra máquina via SSH, no estilo do IntelliJ Gateway: o aplicativo continua sendo a interface, enquanto terminais, chat do Claude, git e arquivos rodam no host
+- Usa o cliente OpenSSH do sistema, então `~/.ssh/config`, chaves, `ssh-agent`, ProxyJump e o encaminhamento de agente funcionam exatamente como em um terminal. O aplicativo não guarda senhas nem chaves: uma senha é digitada no próprio prompt do OpenSSH e nunca é salva
+- **Abrir projeto remoto**: escolha um perfil de host salvo, navegue pelas pastas e então abra uma, crie uma, rode `git init` ou clone um repositório nela
+- Um selo de host em cada projeto remoto mostra o estado da conexão. Uma conexão perdida se restabelece sozinha, e as abas de terminal e de chat continuam de onde pararam (dentro do tmux, se você ativar)
+- O Claude Code roda no host (precisa estar instalado lá, e o aplicativo avisa quando não está), e o histórico de sessões é lido do host
+- O painel Git, o dashboard, o explorador de arquivos, a tela Arquivos, as abas de arquivos e os diffs funcionam no host. VS Code, Cursor e Windsurf abrem os arquivos remotos pela extensão Remote-SSH
+- Nada é instalado no host: nenhum agente, nenhum daemon, apenas uma sessão `sh` por conexão
+- Recursos que só fazem sentido localmente (dashboards por tipo de projeto, tarefas paralelas, nós de workflow que rodam nesta máquina, vínculo de conta, envio para a nuvem, Abrir no Explorer) aparecem desativados, com o motivo como dica
+
 ### Painel de banco de dados
 - Suporte a vários drivers: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB
 - **Navegador Redis**: explorador de chaves em árvore com inspeção de valores ciente do tipo

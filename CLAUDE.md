@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 253 test files)
+npm test                 # Run Jest tests (jsdom, 256 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -104,7 +104,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 13 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4038 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4049 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade)
 
 Project Types (Plugin System)
@@ -204,9 +204,9 @@ Remote UI (PWA for mobile)
 | `DatabaseService.js` | Multi-driver pooling (SQLite/MySQL/PostgreSQL/MongoDB/Redis), schema, idle eviction |
 | `WorkflowService.js` | Workflow automation orchestrator (central) |
 | `WorkflowRunner.js` | Execute a single workflow run (variables, conditions, data flow) |
-| `WorkflowScheduler.js` | Trigger management (cron, webhook, hook, on_workflow) |
+| `WorkflowScheduler.js` | Trigger management (cron, webhook, hook, on_workflow). A `file_change` / `git_event` target that is a remote (SSH) project is skipped with one warning and reported as an error in the trigger health, with the `workflowTriggers` reason |
 | `WorkflowStorage.js` | Persist workflow definitions + run history |
-| `ParallelTaskService.js` | Decompose a feature into independent sub-tasks, one git worktree + branch each, AI merge agent. Its `branch -D` calls go through `git.execGitCallback`, so no git call bypasses the remote fork |
+| `ParallelTaskService.js` | Decompose a feature into independent sub-tasks, one git worktree + branch each, AI merge agent. Its `branch -D` calls go through `git.execGitCallback`, so no git call bypasses the remote fork. `startRun` and `cleanupRun` refuse a remote (SSH) project for every caller with the `parallelTasks` reason (`{ success: false, error, code: 'REMOTE_UNSUPPORTED', reasonKey }`) |
 | `WorkspaceService.js` | Workspace knowledge base: docs, concept links, full-text search |
 | `KnowledgeService.js` | Global knowledge base shared by every project; syncs a marked block into `~/.claude/CLAUDE.md` |
 | `CloudRelayClient.js` | WSS client to self-hosted cloud relay |
@@ -429,7 +429,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4038 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4049 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -450,6 +450,11 @@ answers every hook with the BASE_TYPE no-op, so anything that can reach a hook m
 awaited the load first — the three caller shapes and why each is safe are documented in
 the header of `registry.js`. `index.js` spreads its own `meta.js` so the identity has one
 source of truth.
+
+Callers that hold a project ask `registry.forProject(project)`, not `get(project.type)`:
+for a local project it is exactly that, and a remote (SSH) project always gets the general
+type, so no type dashboard, run panel, sidebar button, menu item, per-type setting or delete
+hook runs for one (the `typeDashboards` row of `src/shared/remote-capabilities.js`).
 
 Each type typically provides `main/[Type]Service.js`, `main/[type].ipc.js`, `renderer/[Type]Dashboard.js`, `renderer/[Type]ProjectList.js`, `renderer/[Type]RendererService.js`, `renderer/[Type]State.js`, `renderer/[Type]TerminalPanel.js`, `renderer/[Type]Wizard.js`, `i18n/{en,fr,es}.json`.
 
@@ -473,6 +478,49 @@ Ids are registered as `ext-<id>` so an extension cannot shadow a built-in, and i
 - **`SyncEngine.js`** - Bidirectional desktop <-> cloud sync. Per-entity toggles: projects, settings, skills, agents, MCP configs, keybindings, memory, hooks, archives. File watcher with conflict diff modal.
 - **Cross-machine notifications** - Desktop notifications when a cloud session finishes.
 - **Session resume from cloud** - Pick up any session from another machine.
+
+### Remote SSH projects
+
+Design: `design/remote-ssh.md`. A project can live on another machine and be driven over the
+system OpenSSH client; the app stays the UI. The pieces, end to end:
+
+- **Transport** - `SshHostService` owns the host profiles (`remote-hosts.json`, no secrets,
+  never synced), up to three channel lanes per host speaking a framed protocol to a POSIX `sh`
+  driver sent over stdin (`sshChannel.js`, `sshDriver.js`), the handshake (login PATH, git,
+  claude) and the state machine with automatic reconnect. No agent or daemon is ever installed
+  on the host (section 9 of the design says why). ControlMaster only on POSIX clients, since
+  Windows OpenSSH has none.
+- **Identity** - a remote project's `path` is `ssh-remote://<profileId><posix path>`; main
+  resolves it through `projectTarget.resolveTarget()` and nothing the renderer sends ever names
+  a host, user or port.
+- **What runs on the host** - terminals and quick actions (`TerminalService` remote branch),
+  Claude chat (`sshClaudeSpawn.js` through the SDK's `spawnClaudeCodeProcess`), session
+  history (`claude.ipc.js`), git (`git.js`), files (`ssh-fs` and `projectFs.js`), the
+  explorer poller (`remoteDirPoller.js`) and VS Code family editors over Remote-SSH.
+- **What does not** - every row of `src/shared/remote-capabilities.js`, which is the single
+  policy table: `typeDashboards`, `parallelTasks`, `workflowNodes`, `workflowTriggers`,
+  `localMcpTools`, `hooks`, `openInExplorer`, `openInEditor` (except the VS Code
+  family), `crossRootTransfer`, `accountBinding`, `cloudUpload`, `sessionMove`,
+  `pathAttachment`, `localMentions`, `overviewAutoExpand`, `projectMcpConfig`,
+  `databaseDetect`, `mcpProjectTools`. Each row has an i18n `reasonKey` the renderer shows
+  as a tooltip on the greyed control (or a toast through `refuseForRemote()`) and an English
+  `message` main refuses with (`refusal()`, `refusalError()`, `assertLocalPaths()`, code
+  `REMOTE_UNSUPPORTED`). `can(project, feature)` answers `{ ok: true }` for every local
+  project without reading the table, which is what keeps local code paths unchanged. Design
+  section 8 lists the same rows with a Capability column, and
+  `tests/shared/remoteCapabilities.test.js` fails when the two drift apart.
+- **Security** - `BatchMode=yes` for every non-interactive ssh, `--` before the destination,
+  never `StrictHostKeyChecking=no`, agent forwarding only on opt-in, passwords only ever typed
+  into OpenSSH's own prompt. `rendererSecurity` never grants a remote project; `ssh-fs`
+  authorises every path in main (inside a registered project, writes canonicalised on the host,
+  a remote blocklist for `~/.ssh` and friends). Remote commands are built by
+  `remote-shell.js` (`q()` refuses control characters) and the remote chat gets an env
+  allowlist, never a local credential.
+- **Adding a feature** - if it reads local files, spawns a local process or watches a local
+  folder, it must either work over the channel or add a row to `remote-capabilities.js`
+  (with its reason in all six locales and a line in design section 8), grey its control with
+  the reason, and refuse in main. A URI never exists locally, so an unported path fails closed,
+  but "fails closed" is not the same as telling the user why.
 
 ## HTML Pages
 
@@ -545,7 +593,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `discord-theme.css` | 739 | Discord builder theme |
 | `kanban.css` | 692 | Kanban board |
 | `artifacts.css` | 554 | Artifact library |
-| `remote.css` | 768 | SSH remote projects: host badges, Open Remote Project, profile editor, remote terminal and chat tabs, the Git panel and dashboard notes while a host is away, remote roots in the file explorer |
+| `remote.css` | 811 | SSH remote projects: host badges, Open Remote Project, profile editor, remote terminal and chat tabs, the Git panel and dashboard notes while a host is away, remote roots in the file explorer, and the controls disabled for a remote project |
 | `files.css` | 450 | Files screen |
 | `errorlog.css` | 430 | Error log panel |
 | `cost.css` | 443 | Cost panel |
@@ -706,7 +754,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 253 unit test files (jsdom environment)
+npm test                    # Run all 256 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -715,7 +763,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 253 test files
+- **Framework:** Jest with jsdom, 256 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -724,14 +772,14 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
   - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
   - `i18n/` - i18n, coherence across the 6 locales, unused/missing key usage
   - `integration/` - state persistence
-  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only; Verify host runs the argv main built), the remote project guards on `terminal-create` and `chat-start`, the remote path guard of every git handler (an unknown profile or a path outside every registered project refused before any ssh process, worktrees never granted, a remote clone with no local token, untracked heads in one request), the remote TODO scan and `project-init-git` (a remote terminal or chat is resolved in main and never takes a launch context or an account from the renderer, a host without `claude` is said, a local call is unchanged), `terminal-respawn`, and the tmux cleanup on `terminal-kill`, remote session history (sessions, history, replay, changes, tool output and export equal to the local readers over an in-memory host and over a real sh, tail-first reads asking only for the tail, the listing cache, the `disconnected` marker, remote delete and the move refusal), the external-editor launch (the macOS bundle fallback, the failure that has to come back as `success: false` rather than as a console line, and the `--remote ssh-remote+<alias>` argv for a remote file), the `ssh-fs` remote file API (containment after normalisation, a write through a symlinked directory refused by a real sh, the blocklist, the private memory grant, one request per listing and per search, writes atomic and failing fast while reconnecting, the media cache, the CSP left unchanged), and the explorer's remote directory poller (chokidar's payload shape, polling only while active and connected, the resync after a reconnect, inotifywait)
+  - `ipc/` - accounts usage, claude, hooks, project, usage, workflow save, ssh (no handler takes a host from the renderer; browse lists directories only; Verify host runs the argv main built), the remote project guards on `terminal-create` and `chat-start`, the remote path guard of every git handler (an unknown profile or a path outside every registered project refused before any ssh process, worktrees never granted, a remote clone with no local token, untracked heads in one request), the remote TODO scan and `project-init-git` (a remote terminal or chat is resolved in main and never takes a launch context or an account from the renderer, a host without `claude` is said, a local call is unchanged), `terminal-respawn`, and the tmux cleanup on `terminal-kill`, remote session history (sessions, history, replay, changes, tool output and export equal to the local readers over an in-memory host and over a real sh, tail-first reads asking only for the tail, the listing cache, the `disconnected` marker, remote delete and the move refusal), the external-editor launch (the macOS bundle fallback, the failure that has to come back as `success: false` rather than as a console line, and the `--remote ssh-remote+<alias>` argv for a remote file), the `ssh-fs` remote file API (containment after normalisation, a write through a symlinked directory refused by a real sh, the blocklist, the private memory grant, one request per listing and per search, writes atomic and failing fast while reconnecting, the media cache, the CSP left unchanged), and the explorer's remote directory poller (chokidar's payload shape, polling only while active and connected, the resync after a reconnect, inotifywait), and the main-side refusals of the local-only features for a remote project (cloud upload, zip and git, and database detection refused with the capability message before any disk, git or network call; local paths unchanged)
   - `remote-ui/` - hierarchy
   - `security/` - security tests, including the renderer fs bridge denylist
-  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself), and `SshHostService` (backoff schedule, no retry after auth or host key failures, the status sequence, reads waiting and writes failing fast, the unreadable-store abort, profile validation, the PTY launch context, and a real handshake against `tests/helpers/fake-ssh.js`), and remote terminals in `TerminalService` (the ssh argv, a cwd round-tripped through a real sh, exit 255 as a disconnect, respawn, tmux, and the local spawn pinned byte for byte), the remote dashboard (`remote-cache/<projectId>/dashboard.json`, the project type from the remote stats listing, nothing asked of a host that is away, a new render once it connects), and remote chat sessions in `ChatService` (the local options object pinned field by field, the spawn hook only for a remote project, no Chrome server, no account overlay, no catalog ingestion, stderr piped, ssh failures and `connection_lost`)
-  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task, remote paths, remote capabilities, and the remote shell quoting (round-tripped through a real `/bin/sh -c`, and fish/tcsh when installed)
+  - `services/` - ChatService, AccountManager, ArtifactService, DatabaseService, DashboardService, DiffRenderer, HooksService, KnowledgeService, MarkdownRenderer, ModelCatalogService, RemoteServer, RemoteControlService, UsageService, VoiceService, WorkflowRunner, the workflow engine suite, the lazy `xtermLoader`, the lazy project-type registry, the `~/.claude.json` merge in `McpService.saveMcps`, the plugin-manifest guard in `PluginService.installPlugin`, the silent-install arguments in `UpdaterService.quitAndInstall`, the mermaid failure containment in `postProcess` (`suppressErrorRendering` plus the temp-element cleanup, neither of which shows until a diagram fails), the corruption guards shared by `MarketplaceService`, `WorkspaceService` and `KnowledgeService`, the PTY `'error'` listener `TerminalService.create` registers so node-pty cannot rethrow a socket error into the main process, the em dash ban in `BuiltinSystemPrompts` (present on every path, and obeyed by the prompt text itself), and `SshHostService` (backoff schedule, no retry after auth or host key failures, the status sequence, reads waiting and writes failing fast, the unreadable-store abort, profile validation, the PTY launch context, and a real handshake against `tests/helpers/fake-ssh.js`), and remote terminals in `TerminalService` (the ssh argv, a cwd round-tripped through a real sh, exit 255 as a disconnect, respawn, tmux, and the local spawn pinned byte for byte), the remote dashboard (`remote-cache/<projectId>/dashboard.json`, the project type from the remote stats listing, nothing asked of a host that is away, a new render once it connects), and remote chat sessions in `ChatService` (the local options object pinned field by field, the spawn hook only for a remote project, no Chrome server, no account overlay, no catalog ingestion, stderr piped, ssh failures and `connection_lost`), and the local-only workflow parts for remote projects (every node that runs here refuses a URI, a remote run context or a picked remote project id with the `workflowNodes` reason, the legacy Claude step never falls back to `~`, the scheduler never watches a remote project and says why in the trigger health, parallel runs are refused in main, `registry.forProject` gives a remote project the general type), and the dashboard type note of a remote project recorded with another type
+  - `shared/` - context usage, cron, model options, permission modes, redis command allowlist, simple-task, remote paths, remote capabilities (every row of design section 8 is in the table and the other way round, each with its reason in all six locales and an English message for main), and the remote shell quoting (round-tripped through a real `/bin/sh -c`, and fish/tcsh when installed)
   - `smoke/` - every module parses and loads
   - `state/` - State plus each state module, including the latched save block `timeTracking.state.js` applies to an unreadable `timetracking.json`, remote projects in `projects.state.js` (case-sensitive URI dedupe, no missing-path flag, no account binding) and `remoteHosts.state.js` (nothing connects at startup or on the restore path, the idle disconnect)
-  - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist), and Open Remote Project (a saved profile carries no secret field, the browser lists directories only, clone names the host by profile id, the created project is a URI-shaped `general` project) with the host badge states, remote terminal tabs (overlay, respawn rules, the resume watchdog keyed on the host being connected, ownership by project id, scraping events with hooks on), remote quick actions (`$HOME` left literal, the host path, typed once the host answers), remote files (the explorer, the Files viewer, file tabs, the Memory editor and context packs read and write through `ssh.fs` and never the sync bridge, one request per directory and per search, local/remote moves refused, Open in editor and Reveal in Explorer gated), the Git panel's "reconnecting to <host>" banner for a host that is away, the git sweep filling remote projects in once their host connects, the Control Tower branch read from the host and never from `.git/HEAD`, and remote chat tabs (the start carries no account, the host bar, the connection-lost banner and the resume with the CLI session id, local path attachments refused)
+  - `ui/` - chat account switch, chat limit error, the switch offer's per-account usage and the accounts it greys out (`accountUsage.blockingLimit`), replayed tool output, task widget, tasks drawer, ClaudeRemotePanel, navigation mode, kanban live refresh, toast, the drag-reorder invariant that keeps a tab drag from forcing a layout per pointer move, the Files viewer's rendered/source/diff modes and its reload button, and the flattened far side of the transcript store (what may be held as markup, that a rebuilt entry keeps its dataset and its delegated handlers, and that a listener bound to the element does not survive, which is the whole reason the rule is an allowlist), and Open Remote Project (a saved profile carries no secret field, the browser lists directories only, clone names the host by profile id, the created project is a URI-shaped `general` project) with the host badge states, remote terminal tabs (overlay, respawn rules, the resume watchdog keyed on the host being connected, ownership by project id, scraping events with hooks on), remote quick actions (`$HOME` left literal, the host path, typed once the host answers), remote files (the explorer, the Files viewer, file tabs, the Memory editor and context packs read and write through `ssh.fs` and never the sync bridge, one request per directory and per search, local/remote moves refused, Open in editor and Reveal in Explorer gated), the Git panel's "reconnecting to <host>" banner for a host that is away, the git sweep filling remote projects in once their host connects, the Control Tower branch read from the host and never from `.git/HEAD`, and remote chat tabs (the start carries no account, the host bar, the connection-lost banner and the resume with the CLI session id, local path attachments refused), and the controls disabled for a remote project with their reason as tooltip (type menu items and settings, Open in Explorer, non VS Code editors, the account picker, New run and the run picker, the workflow cwd, project and trigger pickers, the Automations sheet, the workflow editor's custom dropdown, the Cloud upload picker) while the same controls render unchanged for a local project, plus no local fs or git from the MCP panel, the Control Tower or database detection
   - `utils/` - attachments, color, commit messages, drop paths, file icons, file lock, format, frontmatter, git (including the argv shape of every command built from a path or a tag name, the local argv of every exported command pinned against a recorded snapshot, and remote git: the quoted script, the failure mapping, the 2 s read cache, cancellation at quit, worktrees as URIs, and stats, TODO grep and untracked heads run through a real sh), http cache, session search, shell, syntax highlight, tool registry, the `projectFs` facade, and the SSH transport: argv builder, frame parser, lanes, `remoteFs` (with its forward line walk) and `projectTarget`, and the remote chat spawn hook (what reaches the remote command line, run through a real sh with a stand-in `claude`), run against a real local sh through `tests/helpers/fake-ssh.js` (Git for Windows' `sh.exe` on Windows, skipped when there is none)
 
 ### Lint (`eslint.config.js`)
@@ -897,7 +945,8 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **i18n:** add keys to all six locales (`en`, `fr`, `es`, `id`, `zh-CN`, `pt-BR`) - `tests/i18n/i18n-coherence.test.js` fails otherwise; use `t('dot.path')`. Main-process error messages stay in English.
 - **State updates:** `state.set()` / `state.setProp()`, subscribe with `state.subscribe()`
 - **File I/O:** atomic writes for user data (temp + rename), `.bak` backup
-- **Project types:** extend `base-type.js`, register in `registry.js`, provide service + IPC + dashboard + i18n
+- **Project types:** extend `base-type.js`, register in `registry.js`, provide service + IPC + dashboard + i18n. Look a project's type up with `registry.forProject(project)`, which keeps type hooks away from remote projects
+- **Remote projects:** a feature that reads local files, spawns a local process or watches a local folder either works over the SSH channel or gets a row in `src/shared/remote-capabilities.js` (reason in all six locales, a line in `design/remote-ssh.md` section 8), a greyed control with that reason, and a refusal in main. Local behaviour must not move: `can()` answers `{ ok: true }` for a local project
 - **Markdown:** prefer the rich custom blocks (tree, timeline, compare, metrics, api, tabs, discord-embed, workspace-doc, git-commit, workspace-links...) over plain bullet lists.
 - **Security:** sanitize user-supplied markdown with `dompurify`; never inject untrusted HTML into chat or dashboard panels.
 - **Lint:** `npm run lint` before pushing. The boundary rules encode the main/renderer split described above - if one fires, the fix is a new IPC handler, not an `eslint-disable`.

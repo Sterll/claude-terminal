@@ -422,6 +422,16 @@ npm install
 - User profiles and session management
 - Automated install script with Docker, reverse proxy, and SSL setup
 
+### Remote SSH Projects
+- Open a project that lives on another machine over SSH, IntelliJ Gateway style: the app stays the UI, while terminals, Claude chat, git and files run on the host
+- Uses the system OpenSSH client, so `~/.ssh/config`, keys, `ssh-agent`, ProxyJump and agent forwarding work exactly as in a terminal. The app stores no password and no key: a password is typed into OpenSSH's own prompt, never saved
+- **Open Remote Project**: pick a saved host profile, browse its folders, then open one, create one, `git init` it or clone a repository into it
+- A host badge on every remote project shows its connection state. A dropped connection reconnects on its own, and terminal and chat tabs pick up where they were (inside tmux if you enable it)
+- Claude Code runs on the host (it has to be installed there, and the app tells you when it is not), and session history is read from the host
+- The Git panel, dashboard, file explorer, Files screen, file tabs and diffs work on the host. VS Code, Cursor and Windsurf open remote files through their Remote-SSH extension
+- Nothing is installed on the host: no agent, no daemon, just one `sh` session per connection
+- Features that only make sense locally (project-type dashboards, parallel tasks, workflow nodes that run on this machine, account binding, cloud upload, Open in Explorer) are shown disabled, with the reason as a tooltip
+
 ### Database Panel
 - Multi-driver support: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB
 - **Redis browser**: tree-view key explorer with type-aware value inspection

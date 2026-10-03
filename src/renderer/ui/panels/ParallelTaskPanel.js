@@ -10,6 +10,8 @@ const { escapeHtml } = require('../../utils');
 const { t, onLanguageChange } = require('../../i18n');
 const { getSetting, setSetting } = require('../../state/settings.state');
 const ModelCatalog = require('../../services/ModelCatalogClient');
+const { can } = require('../../../shared/remote-capabilities');
+const { isRemotePath } = require('../../../shared/remote-path');
 const {
   parallelTaskState,
   getRuns,
@@ -94,6 +96,7 @@ async function load() {
     _initialized = true;
   }
 
+  _applyNewRunAvailability();
   _loadHistory();
 }
 
@@ -136,6 +139,7 @@ function _render() {
   `;
 
   _wireEvents();
+  _applyNewRunAvailability();
 }
 
 function _wireEvents() {
@@ -322,6 +326,11 @@ function _buildNewRunModal() {
 }
 
 function _openNewRunModal() {
+  // With the project bar on screen the run targets the active project, so a
+  // remote one is refused here with its reason (the button already says so).
+  // In sidebar mode the modal's own picker offers local projects only.
+  if (!_isSidebarMode() && _refuseRemote(_activeProject())) return;
+
   // Full close (not a bare .remove()) so a previously open modal releases its
   // document-level listeners before we attach a new set.
   _closeNewRunModal();
@@ -431,6 +440,12 @@ function _initCustomSelects(container) {
     dropdown.addEventListener('click', (e) => {
       const option = e.target.closest('.pt-select-option');
       if (!option) return;
+      // A remote project in the project picker: say why instead of picking it.
+      if (option.classList.contains('is-disabled')) {
+        e.stopPropagation();
+        if (option.title) _showToast(option.title, 'info');
+        return;
+      }
       sel.dataset.value = option.dataset.value;
       sel.querySelector('.pt-select-value').textContent = option.textContent;
       dropdown.querySelectorAll('.pt-select-option').forEach(o => o.classList.remove('is-selected'));
@@ -462,6 +477,8 @@ async function _handleStart(modalEl) {
     _showToast(t('parallel.errors.noProject'), 'error');
     return;
   }
+  // Last guard before any git call: a remote project's path is a URI.
+  if (isRemotePath(projectPath) && _refuseRemote({ path: projectPath })) return;
 
   const autoTasks = modalEl?.querySelector('#pm-auto-chip')?.classList.contains('is-active') || false;
   const maxTasks = autoTasks ? null : parseInt(modalEl?.querySelector('#pm-agents-slider')?.value || '3', 10);
@@ -493,7 +510,7 @@ async function _handleStart(modalEl) {
   }
 
   if (!result.success) {
-    _showToast(result.error || t('parallel.errors.startFailed'), 'error');
+    _showToast((result.reasonKey && t(result.reasonKey)) || result.error || t('parallel.errors.startFailed'), 'error');
     return;
   }
 
@@ -544,6 +561,7 @@ function _updateBoard() {
         </div>
       `;
     }
+    _applyNewRunAvailability();
     return;
   }
 
@@ -1394,8 +1412,11 @@ function _populateProjectSelector(container) {
   const active = _activeProject();
   const projects = (ctx.projectsState?.get()?.projects || []).filter(p => p.path);
   const sidebar = document.body.classList.contains('nav-sidebar');
+  // A remote (SSH) project cannot be the target of a run: never preselected,
+  // and listed disabled with the reason in the picker below.
+  const activeAllowed = !active || can(active, 'parallelTasks').ok;
 
-  el.dataset.value = active?.path || '';
+  el.dataset.value = activeAllowed ? (active?.path || '') : '';
 
   if (!sidebar || projects.length === 0) {
     el.className = 'pm-project-readonly';
@@ -1409,11 +1430,17 @@ function _populateProjectSelector(container) {
   el.className = 'pt-select pt-select--full';
   el.innerHTML = `
     <div class="pt-select-trigger">
-      <span class="pt-select-value">${escapeHtml(active ? (active.name || active.path) : t('parallel.modal.selectProject'))}</span>
+      <span class="pt-select-value">${escapeHtml(active && activeAllowed ? (active.name || active.path) : t('parallel.modal.selectProject'))}</span>
       <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M7 10l5 5 5-5z"/></svg>
     </div>
     <div class="pt-select-dropdown">
-      ${projects.map(p => `<div class="pt-select-option${p.path === el.dataset.value ? ' is-selected' : ''}" data-value="${escapeHtml(p.path)}">${escapeHtml(p.name || p.path)}</div>`).join('')}
+      ${projects.map(p => {
+        const cap = can(p, 'parallelTasks');
+        if (!cap.ok) {
+          return `<div class="pt-select-option is-disabled" aria-disabled="true" data-value="" title="${escapeHtml(t(cap.reasonKey))}">${escapeHtml(p.name || p.path)}</div>`;
+        }
+        return `<div class="pt-select-option${p.path === el.dataset.value ? ' is-selected' : ''}" data-value="${escapeHtml(p.path)}">${escapeHtml(p.name || p.path)}</div>`;
+      }).join('')}
     </div>`;
 
   // No handlers here: _initCustomSelects() runs right after this and wires every
@@ -1490,6 +1517,47 @@ function _buildNewPRUrl(remoteUrl, forge, base, head) {
   }
 }
 
+// ─── Remote (SSH) projects ────────────────────────────────────────────────────
+
+function _isSidebarMode() {
+  return document.body.classList.contains('nav-sidebar');
+}
+
+/**
+ * Refuse a remote project with its reason as a toast (the `parallelTasks`
+ * row of src/shared/remote-capabilities.js). False, and nothing shown, for a
+ * local project.
+ */
+function _refuseRemote(project) {
+  if (!project) return false;
+  return require('../components/RemoteHostBadge').refuseForRemote(project, 'parallelTasks');
+}
+
+/**
+ * Grey the "new run" buttons, with the reason as tooltip, while the project
+ * bar holds a remote project. Only what this added is ever removed, so a local
+ * project's buttons are exactly what _render() and _updateBoard() built.
+ */
+function _applyNewRunAvailability() {
+  const active = _activeProject();
+  const cap = active && !_isSidebarMode() ? can(active, 'parallelTasks') : { ok: true };
+  for (const id of ['pt-new-run-btn', 'pt-empty-new-run']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    if (!cap.ok) {
+      btn.classList.add('is-disabled');
+      btn.setAttribute('aria-disabled', 'true');
+      btn.title = t(cap.reasonKey);
+      btn.dataset.remoteDisabled = 'true';
+    } else if (btn.dataset.remoteDisabled) {
+      btn.classList.remove('is-disabled');
+      btn.removeAttribute('aria-disabled');
+      btn.removeAttribute('title');
+      delete btn.dataset.remoteDisabled;
+    }
+  }
+}
+
 // ─── Exports ──────────────────────────────────────────────────────────────────
 
 /**
@@ -1498,6 +1566,7 @@ function _buildNewPRUrl(remoteUrl, forge, base, head) {
  */
 function onProjectChanged() {
   if (!_initialized) return;
+  _applyNewRunAvailability();
   _loadHistory();
 }
 

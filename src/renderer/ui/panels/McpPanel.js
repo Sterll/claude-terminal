@@ -9,6 +9,7 @@ const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { projectsState } = require('../../state');
 const { fileExists, fsp } = require('../../utils/fs-async');
+const { can } = require('../../../shared/remote-capabilities');
 
 // ========== CATEGORY DETECTION ==========
 
@@ -178,6 +179,8 @@ class McpPanel extends BasePanel {
 
   async _loadLocalMcps() {
     this._state.mcps = [];
+    // Remote (SSH) projects whose project-scoped servers are not read here.
+    this._state.remoteSkipped = [];
 
     try {
       if (await fileExists(this._claudeConfigFile)) {
@@ -221,6 +224,13 @@ class McpPanel extends BasePanel {
 
     const projects = projectsState.get().projects;
     for (const project of projects) {
+      // A remote (SSH) project's .claude/settings.local.json is on its host:
+      // never joined into a local path or read from the local disk. Listed in
+      // a note instead (the `projectMcpConfig` row).
+      if (!can(project, 'projectMcpConfig').ok) {
+        this._state.remoteSkipped.push(project);
+        continue;
+      }
       try {
         const projectMcpFile = this.api.path.join(project.path, '.claude', 'settings.local.json');
         if (await fileExists(projectMcpFile)) {
@@ -257,6 +267,7 @@ class McpPanel extends BasePanel {
 
   _renderMcps() {
     const list = document.getElementById('mcp-list');
+    const remoteNote = this._remoteSkippedNoteHtml();
     if (this._state.mcps.length === 0) {
       list.innerHTML = `<div class="empty-list">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 16l-4-4V8.82C14.16 8.4 15 7.3 15 6c0-1.66-1.34-3-3-3S9 4.34 9 6c0 1.3.84 2.4 2 2.82V12l-4 4H3v5h5v-3.05l4-4.2 4 4.2V21h5v-5h-4z"/></svg>
@@ -266,7 +277,7 @@ class McpPanel extends BasePanel {
           <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
           ${t('mcpRegistry.registry')}
         </button>
-      </div>`;
+      </div>${remoteNote}`;
       const browseBtn = document.getElementById('mcp-empty-browse-registry');
       if (browseBtn) {
         browseBtn.onclick = () => {
@@ -302,8 +313,21 @@ class McpPanel extends BasePanel {
       });
     }
 
-    list.innerHTML = html;
+    list.innerHTML = html + remoteNote;
     this._bindMcpCardHandlers();
+  }
+
+  /**
+   * Which remote (SSH) projects were skipped, and why, so the list does not
+   * look complete when it is not. '' when there are none, which keeps the
+   * markup of a machine with local projects only unchanged.
+   */
+  _remoteSkippedNoteHtml() {
+    const skipped = this._state.remoteSkipped || [];
+    if (!skipped.length) return '';
+    const reason = t(can(skipped[0], 'projectMcpConfig').reasonKey);
+    const names = skipped.map(p => p.name || p.id).join(', ');
+    return `<div class="mcp-remote-note" role="note" title="${escapeHtml(reason)}"><span class="mcp-remote-note-projects">${escapeHtml(names)}</span><span>${escapeHtml(reason)}</span></div>`;
   }
 
   _renderMcpCard(mcp) {

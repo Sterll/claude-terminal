@@ -508,7 +508,7 @@ class ProjectList extends BaseComponent {
 
   _buildMenuItemsHtml(project) {
     const projectIndex = getProjectIndex(project.id);
-    const typeHandler = registry.get(project.type);
+    const typeHandler = registry.forProject(project);
     const fivemStatus = this._fivemServers.get(projectIndex)?.status || 'stopped';
     const gitOps = this._gitOperations.get(project.id) || { pulling: false, pushing: false };
     const isGitRepo = this._gitRepoStatus.get(project.id)?.isGitRepo || false;
@@ -672,7 +672,7 @@ class ProjectList extends BaseComponent {
   _renderProjectHtml(project, depth) {
     const projectIndex = getProjectIndex(project.id);
     const terminalStats = this._callbacks.getTerminalStatsForProject(projectIndex);
-    const typeHandler = registry.get(project.type);
+    const typeHandler = registry.forProject(project);
     const fivemStatus = this._fivemServers.get(projectIndex)?.status || 'stopped';
     const gitOps = this._gitOperations.get(project.id) || { pulling: false, pushing: false };
     const isGitRepo = this._gitRepoStatus.get(project.id)?.isGitRepo || false;
@@ -1045,7 +1045,7 @@ class ProjectList extends BaseComponent {
 
   _showProjectSettings(project) {
     const self = this;
-    const typeHandler = registry.get(project.type);
+    const typeHandler = registry.forProject(project);
     const fields = typeHandler.getProjectSettings(project);
     if (!fields || fields.length === 0) return;
 

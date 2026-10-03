@@ -92,6 +92,9 @@ module.exports = {
 
     const projectPath = findProjectPath(resolveVars(config.projectId || '', vars), vars);
     if (!projectPath) throw new Error('Project path could not be resolved');
+    // Parallel runs create local worktrees. ParallelTaskService refuses a
+    // remote project too; this says so before anything is started.
+    require('./_projects').assertLocalTargets(projectPath);
 
     const mainBranch = resolveVars(config.mainBranch || 'main', vars) || 'main';
     const maxTasks   = Math.max(1, Math.min(10, parseInt(config.maxTasks, 10) || 4));

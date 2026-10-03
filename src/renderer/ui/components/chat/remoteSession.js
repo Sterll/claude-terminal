@@ -22,7 +22,7 @@
  * so a local tab is byte-identical to what it was.
  */
 
-const { isRemoteProject } = require('../../../../shared/remote-capabilities');
+const { isRemoteProject, can } = require('../../../../shared/remote-capabilities');
 
 /** Host states that will not become `connected` without the user. */
 const STOPPED_STATES = new Set(['authFailed', 'hostKeyUnknown', 'hostKeyChanged', 'unsupported', 'unconfigured']);
@@ -114,7 +114,9 @@ function createRemoteChat(deps) {
   const reconnectBtn = bar.querySelector('.chat-remote-reconnect');
 
   noteEl.textContent = t('ssh.chat.localToolsNote');
-  noteEl.title = t('ssh.chat.localToolsTooltip');
+  // The `localMcpTools` row: this app's MCP server and Claude in Chrome are
+  // local programs the CLI on the host cannot start.
+  noteEl.title = t(can(project, 'localMcpTools').reasonKey || 'ssh.chat.localToolsTooltip');
 
   hostSlot.addEventListener('click', (e) => {
     if (!e.target.closest('.remote-host-badge')) return;

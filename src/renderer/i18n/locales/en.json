@@ -4569,7 +4569,17 @@
       "cloudUpload": "Cloud upload zips a local folder, so remote projects cannot be uploaded.",
       "sessionMove": "Sessions of a remote project live on its host and cannot be moved to another project.",
       "pathAttachment": "A local file path means nothing to a remote chat. Files small enough are sent inline instead.",
-      "crossRootTransfer": "Moving or copying files between a local project and a remote one (or between two hosts) is not supported."
+      "crossRootTransfer": "Moving or copying files between a local project and a remote one (or between two hosts) is not supported.",
+      "typeDashboards": "Project-type dashboards and run panels start local processes and read local files, so they are not available for a remote project. Run your dev servers from a remote terminal or a quick action.",
+      "parallelTasks": "Parallel tasks create local git worktrees and run local agents, so they are not available for a remote project yet.",
+      "workflowNodes": "Workflow nodes run on this machine, so remote projects are not supported by workflow nodes yet. Quick action nodes still work.",
+      "workflowTriggers": "File change and git event triggers watch a local folder, so they cannot watch a remote project yet.",
+      "hooks": "Claude Code on the host never reaches this app's hook server. Remote terminal tabs are followed through their output instead.",
+      "localMentions": "@errors and @selection read this machine and are not offered in a remote chat.",
+      "overviewAutoExpand": "A remote root stays collapsed until its host is connected, so a host that is down never stalls the tree.",
+      "projectMcpConfig": "Project-scoped MCP servers of a remote project live in its settings on the host and are not listed here.",
+      "databaseDetect": "Database detection reads the project's local files, so it is not available for a remote project. Add the connection by hand.",
+      "mcpProjectTools": "The claude-terminal MCP server reads local disk, so it cannot read the files of a remote project."
     },
     "menu": {
       "section": "Remote host: {host}",
@@ -4691,6 +4701,9 @@
       "connect": "Connect",
       "rootHost": "On {host}",
       "editorNeedsAlias": "{editor} needs an ssh_config alias for this host, because it uses a port, a jump host or an identity file. Add a Host entry to ~/.ssh/config and use it in the host profile."
+    },
+    "workflow": {
+      "remoteOption": "{name} (remote, not supported here)"
     }
   }
 }

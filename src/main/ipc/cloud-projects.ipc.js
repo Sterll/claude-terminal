@@ -9,6 +9,8 @@ const os = require('os');
 const fs = require('fs');
 const { zipProject } = require('../utils/zipProject');
 const { execGit } = require('../utils/git');
+const { isRemotePath } = require('../../shared/remote-path');
+const { assertLocalPaths } = require('../../shared/remote-capabilities');
 const { getTokenForGit } = require('../services/GitHubAuthService');
 const { _getCloudConfig, _fetchCloud, FETCH_DOWNLOAD_TIMEOUT_MS } = require('./cloud-shared');
 
@@ -25,6 +27,10 @@ function registerCloudProjectsHandlers() {
     if (_uploadLocks.has(projectId)) {
       throw new Error(`Upload already in progress for "${projectName}"`);
     }
+
+    // A remote (SSH) project has no local folder to zip. Refused before the
+    // existsSync below, which would only say "not found".
+    assertLocalPaths('cloudUpload', projectPath);
 
     // Validate project path exists before attempting upload
     if (!fs.existsSync(projectPath)) {
@@ -143,6 +149,8 @@ function registerCloudProjectsHandlers() {
   // ── Check if project has a GitHub remote ──
 
   ipcMain.handle('cloud:check-git-remote', async (_event, { projectPath }) => {
+    // Upload of a remote project is refused whichever way it would go.
+    if (isRemotePath(projectPath)) return { hasGitHub: false };
     const remoteUrl = await execGit(projectPath, 'remote get-url origin');
     if (!remoteUrl) return { hasGitHub: false };
     const isGitHub = remoteUrl.includes('github.com');
@@ -155,6 +163,9 @@ function registerCloudProjectsHandlers() {
     if (_uploadLocks.has(projectId)) {
       throw new Error(`Upload already in progress for "${projectName}"`);
     }
+
+    // Refused for a remote (SSH) project too, see design/remote-ssh.md section 8.
+    assertLocalPaths('cloudUpload', projectPath);
 
     // Validate project path exists before attempting upload
     if (!fs.existsSync(projectPath)) {

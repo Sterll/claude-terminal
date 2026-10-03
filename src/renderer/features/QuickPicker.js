@@ -357,7 +357,7 @@ function buildSections(query, mode, currentProject) {
     const items = projectsState.get().projects.map(p => {
       const { match, score, labelHtml } = scoreItem(q, p.name, p.path);
       if (!match) return null;
-      const typeHandler = registry.get(p.type);
+      const typeHandler = registry.forProject(p);
       const rawIcon = typeHandler?.icon || defaultIcon;
       const icon = (typeof rawIcon === 'string' && rawIcon.trim().startsWith('<svg') && !/<script|<foreignObject|on\w+\s*=/i.test(rawIcon))
         ? rawIcon : defaultIcon;

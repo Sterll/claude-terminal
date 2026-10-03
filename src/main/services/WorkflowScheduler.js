@@ -21,6 +21,11 @@ const fs   = require('fs');
 // validator, so validation here can never diverge from what the UI shows.
 const { parseCron } = require('../../shared/cron');
 
+// A remote (SSH) project's path is an ssh-remote:// URI with no local folder
+// behind it, so the chokidar-based triggers cannot watch it.
+const { isRemotePath } = require('../../shared/remote-path');
+const { refusal } = require('../../shared/remote-capabilities');
+
 // ─── Hook condition evaluation ────────────────────────────────────────────────
 
 /**
@@ -124,6 +129,8 @@ class WorkflowScheduler {
     /** Loaded workflow definitions — refreshed on every reload() call */
     this._workflows    = [];
     this._watcherErrors = new Map();
+    /** Watcher keys already warned about as remote, so a reload does not repeat the warning */
+    this._remoteSkipWarned = new Set();
     this.onStatusChanged = null;
     /** Max on_workflow chain depth before we cut the chain (recursion guard) */
     this._maxChainDepth = 10;
@@ -174,6 +181,7 @@ class WorkflowScheduler {
           const entry = (trigger.type === 'file_change' ? this._fileWatchers : this._gitWatchers).get(key);
           const target = projectId ? this.resolveProjectPath?.(projectId) : trigger.watchPath;
           let error = this._watcherErrors.get(key);
+          if (!error && typeof target === 'string' && isRemotePath(target)) error = refusal('workflowTriggers').message;
           if (!error) {
             try {
               if (!target || !fs.statSync(target).isDirectory()) throw new Error('Project directory is unavailable');
@@ -584,7 +592,7 @@ class WorkflowScheduler {
       const trigger = wf.trigger || {};
       if (trigger.type !== 'file_change') continue;
 
-      for (const target of this._watchTargets(trigger)) {
+      for (const target of this._watchTargets(trigger, wf.id)) {
         desired.set(watcherKey(wf.id, target.projectId), {
           watchPath: target.watchPath,
           projectId: target.projectId,
@@ -720,6 +728,7 @@ class WorkflowScheduler {
           ? this.resolveProjectPath(projectId)
           : null;
         if (!repoPath) continue;
+        if (this._skipRemoteTarget(watcherKey(wf.id, projectId), repoPath)) continue;
 
         desired.set(watcherKey(wf.id, projectId), {
           repoPath,
@@ -899,6 +908,25 @@ class WorkflowScheduler {
   }
 
   /**
+   * Whether a file_change / git_event target is a remote (SSH) project, which
+   * those triggers cannot watch: chokidar needs a local folder. Skipped with a
+   * single warning per (workflow, project), and getTriggerStatuses() reports
+   * the trigger as an error with the same reason, so it never just stays
+   * silent.
+   * @param {string} key     watcher key, for the warning
+   * @param {string} target  the resolved watch path
+   * @returns {boolean} true when the target must be skipped
+   */
+  _skipRemoteTarget(key, target) {
+    if (!isRemotePath(target)) return false;
+    if (!this._remoteSkipWarned.has(key)) {
+      this._remoteSkipWarned.add(key);
+      console.warn(`[WorkflowScheduler] ${refusal('workflowTriggers').message}; skipping ${key}`);
+    }
+    return true;
+  }
+
+  /**
    * The folders a file_change trigger should watch, one entry per watcher.
    *
    * An explicit `watchPath` (advanced editor only) overrides the project list
@@ -907,19 +935,26 @@ class WorkflowScheduler {
    * gets its own entry; unresolvable ones are dropped rather than collapsing the
    * whole trigger.
    *
+   * A remote (SSH) project, or a remote `watchPath`, is skipped: see
+   * _skipRemoteTarget().
+   *
    * @param {Object} trigger
+   * @param {string} [wfId]  owning workflow, for the remote skip warning
    * @returns {Array<{ projectId: string, watchPath: string }>}
    */
-  _watchTargets(trigger) {
+  _watchTargets(trigger, wfId = '') {
     if (trigger.watchPath && trigger.watchPath.trim()) {
-      return [{ projectId: '', watchPath: trigger.watchPath.trim() }];
+      const watchPath = trigger.watchPath.trim();
+      if (this._skipRemoteTarget(watcherKey(wfId, ''), watchPath)) return [];
+      return [{ projectId: '', watchPath }];
     }
     if (typeof this.resolveProjectPath !== 'function') return [];
 
     const targets = [];
     for (const projectId of triggerProjectIds(trigger)) {
       const watchPath = this.resolveProjectPath(projectId);
-      if (watchPath) targets.push({ projectId, watchPath });
+      if (!watchPath || this._skipRemoteTarget(watcherKey(wfId, projectId), watchPath)) continue;
+      targets.push({ projectId, watchPath });
     }
     return targets;
   }

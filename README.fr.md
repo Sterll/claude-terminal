@@ -418,6 +418,16 @@ npm install
 - Profils utilisateurs et gestion des sessions
 - Script d'installation automatisé avec Docker, reverse proxy et SSL
 
+### Projets distants SSH
+- Ouvrez un projet qui vit sur une autre machine via SSH, à la manière d'IntelliJ Gateway : l'application reste l'interface, tandis que terminaux, chat Claude, git et fichiers s'exécutent sur l'hôte
+- Utilise le client OpenSSH du système : `~/.ssh/config`, les clés, `ssh-agent`, ProxyJump et le transfert d'agent fonctionnent exactement comme dans un terminal. L'application ne stocke ni mot de passe ni clé : un mot de passe se saisit dans l'invite d'OpenSSH, jamais enregistré
+- **Ouvrir un projet distant** : choisissez un profil d'hôte enregistré, parcourez ses dossiers, puis ouvrez-en un, créez-en un, lancez `git init` ou clonez-y un dépôt
+- Un badge d'hôte sur chaque projet distant indique l'état de la connexion. Une connexion perdue se rétablit seule, et les onglets de terminal et de chat reprennent là où ils en étaient (dans tmux si vous l'activez)
+- Claude Code s'exécute sur l'hôte (il doit y être installé, et l'application vous prévient sinon), et l'historique des sessions est lu sur l'hôte
+- Le panneau Git, le tableau de bord, l'explorateur de fichiers, l'écran Fichiers, les onglets de fichiers et les diffs fonctionnent sur l'hôte. VS Code, Cursor et Windsurf ouvrent les fichiers distants via leur extension Remote-SSH
+- Rien n'est installé sur l'hôte : ni agent ni démon, juste une session `sh` par connexion
+- Les fonctionnalités qui n'ont de sens qu'en local (tableaux de bord par type de projet, tâches parallèles, nœuds de workflow qui s'exécutent sur cette machine, liaison de compte, envoi vers le cloud, Ouvrir dans l'explorateur) apparaissent désactivées, avec la raison en info-bulle
+
 ### Panneau base de données
 - Support multi-drivers : SQLite, MySQL, MariaDB, PostgreSQL, MongoDB
 - **Explorateur Redis** : explorateur de clés en arborescence, avec inspection des valeurs selon leur type

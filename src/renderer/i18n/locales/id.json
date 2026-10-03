@@ -4569,7 +4569,17 @@
       "cloudUpload": "Unggah cloud mengompres folder lokal, jadi proyek jarak jauh tidak dapat diunggah.",
       "sessionMove": "Sesi proyek jarak jauh berada di host-nya dan tidak dapat dipindahkan ke proyek lain.",
       "pathAttachment": "Path file lokal tidak berarti apa pun bagi chat jarak jauh. File yang cukup kecil dikirim langsung.",
-      "crossRootTransfer": "Memindahkan atau menyalin file antara proyek lokal dan proyek jarak jauh (atau antara dua host) tidak didukung."
+      "crossRootTransfer": "Memindahkan atau menyalin file antara proyek lokal dan proyek jarak jauh (atau antara dua host) tidak didukung.",
+      "typeDashboards": "Dasbor dan panel jalankan per tipe proyek memulai proses lokal dan membaca file lokal, jadi tidak tersedia untuk proyek jarak jauh. Jalankan server Anda dari terminal jarak jauh atau aksi cepat.",
+      "parallelTasks": "Tugas paralel membuat worktree git lokal dan menjalankan agen lokal, jadi belum tersedia untuk proyek jarak jauh.",
+      "workflowNodes": "Node workflow berjalan di mesin ini, jadi proyek jarak jauh belum didukung oleh node workflow. Node aksi cepat tetap berfungsi.",
+      "workflowTriggers": "Pemicu perubahan file dan peristiwa git memantau folder lokal, jadi belum dapat memantau proyek jarak jauh.",
+      "hooks": "Claude Code di host tidak pernah menjangkau server hook aplikasi ini. Tab terminal jarak jauh diikuti melalui keluarannya.",
+      "localMentions": "@errors dan @selection membaca mesin ini dan tidak ditawarkan di chat jarak jauh.",
+      "overviewAutoExpand": "Root jarak jauh tetap tertutup sampai host-nya terhubung, agar host yang mati tidak pernah menghambat pohon.",
+      "projectMcpConfig": "Server MCP khusus proyek jarak jauh ada di pengaturannya di host dan tidak ditampilkan di sini.",
+      "databaseDetect": "Deteksi basis data membaca file lokal proyek, jadi tidak tersedia untuk proyek jarak jauh. Tambahkan koneksi secara manual.",
+      "mcpProjectTools": "Server MCP claude-terminal membaca disk lokal, jadi tidak dapat membaca file proyek jarak jauh."
     },
     "menu": {
       "section": "Host jarak jauh: {host}",
@@ -4691,6 +4701,9 @@
       "connect": "Hubungkan",
       "rootHost": "Di {host}",
       "editorNeedsAlias": "{editor} memerlukan alias ssh_config untuk host ini, karena host ini memakai port, jump host, atau file identitas. Tambahkan entri Host di ~/.ssh/config dan gunakan di profil host."
+    },
+    "workflow": {
+      "remoteOption": "{name} (jarak jauh, tidak didukung di sini)"
     }
   }
 }

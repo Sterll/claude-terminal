@@ -85,6 +85,10 @@ async function runAgentStep(config, vars, signal, chatService, onMessage) {
   const effort   = rawEffort && VALID_EFFORTS.includes(rawEffort) ? rawEffort : null;
   const maxTurns = config.maxTurns || 30;
 
+  // A remote (SSH) project's URI never exists locally: refuse it here rather
+  // than let the fallback below run the step in the home directory.
+  require('../../shared/remote-capabilities').assertLocalPaths('workflowNodes', cwd);
+
   // Validate cwd exists on disk — fallback to home dir to avoid ENOENT
   if (!cwd || !fs.existsSync(cwd)) {
     console.warn(`[WorkflowRunner] Claude step cwd invalid or missing: "${cwd}", falling back to ${home}`);
@@ -1111,6 +1115,8 @@ class WorkflowRunner {
       const filter = resolveVars(step.items ?? step.filter ?? '*', vars);
       const ctx = vars.get('ctx') || {};
       const baseDir = ctx.project || process.cwd();
+      // A remote project's files are on its host, not under a local glob.
+      require('../../shared/remote-capabilities').assertLocalPaths('workflowNodes', baseDir);
       try {
         const glob = require('glob');
         return glob.sync(filter, { cwd: baseDir, nodir: true });

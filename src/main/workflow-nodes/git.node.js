@@ -69,6 +69,11 @@ module.exports = {
     let cwd = String(resolveVars(config.cwd || config.projectId || '', vars) ?? '').trim();
     if (!cwd) cwd = varCtx.project || '';
 
+    // Git routes a URI to its host for the app's own panels, but this node
+    // runs unattended on this machine: refuse a remote project explicitly
+    // rather than answer "a valid project working directory is required".
+    require('./_projects').assertLocalTargets(cwd);
+
     if (!cwd || !fs.existsSync(cwd)) {
       throw new Error('Git node: a valid project working directory is required (no cwd/projectId resolved)');
     }

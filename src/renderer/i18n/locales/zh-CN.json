@@ -4569,7 +4569,17 @@
       "cloudUpload": "云端上传会压缩本地文件夹，因此无法上传远程项目。",
       "sessionMove": "远程项目的会话保存在其主机上，无法移动到其他项目。",
       "pathAttachment": "本地文件路径对远程聊天没有意义。足够小的文件会直接内联发送。",
-      "crossRootTransfer": "不支持在本地项目与远程项目之间（或两台主机之间）移动或复制文件。"
+      "crossRootTransfer": "不支持在本地项目与远程项目之间（或两台主机之间）移动或复制文件。",
+      "typeDashboards": "项目类型仪表板和运行面板会启动本地进程并读取本地文件，因此远程项目不可用。请在远程终端或快捷操作中运行开发服务器。",
+      "parallelTasks": "并行任务会创建本地 git worktree 并运行本地代理，因此远程项目暂不可用。",
+      "workflowNodes": "工作流节点在本机运行，因此暂不支持远程项目。快捷操作节点仍可使用。",
+      "workflowTriggers": "文件变更和 git 事件触发器监视本地文件夹，因此暂时无法监视远程项目。",
+      "hooks": "主机上的 Claude Code 不会连接到本应用的 hook 服务器。远程终端标签页通过其输出进行跟踪。",
+      "localMentions": "@errors 和 @selection 读取的是本机内容，因此不会在远程聊天中提供。",
+      "overviewAutoExpand": "远程根目录在其主机连接之前保持折叠，以免无法访问的主机拖慢整个树。",
+      "projectMcpConfig": "远程项目的项目级 MCP 服务器保存在主机上的设置中，不会在此列出。",
+      "databaseDetect": "数据库检测会读取项目的本地文件，因此远程项目不可用。请手动添加连接。",
+      "mcpProjectTools": "claude-terminal MCP 服务器读取本地磁盘，因此无法读取远程项目的文件。"
     },
     "menu": {
       "section": "远程主机：{host}",
@@ -4691,6 +4701,9 @@
       "connect": "连接",
       "rootHost": "位于 {host}",
       "editorNeedsAlias": "{editor} 需要此主机的 ssh_config 别名，因为它使用了端口、跳板主机或身份文件。请在 ~/.ssh/config 中添加 Host 条目，并在主机配置中使用它。"
+    },
+    "workflow": {
+      "remoteOption": "{name}（远程，此处不支持）"
     }
   }
 }

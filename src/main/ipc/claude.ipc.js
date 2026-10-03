@@ -1621,7 +1621,7 @@ async function moveSession(sessionId, fromProjectPath, toProjectPath) {
   // Moving re-files a transcript between two local directories. A remote
   // session lives on its host, and a local one cannot be moved onto a host.
   if (isRemotePath(fromProjectPath) || isRemotePath(toProjectPath)) {
-    return { success: false, code: 'remote', error: 'Sessions of remote projects cannot be moved: their transcripts live on the remote host' };
+    return { success: false, code: 'remote', error: require('../../shared/remote-capabilities').refusal('sessionMove').message };
   }
 
   const toDir = getProjectSessionsDir(toProjectPath);

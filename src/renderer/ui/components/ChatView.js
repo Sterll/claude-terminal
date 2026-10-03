@@ -2424,11 +2424,13 @@ class ChatView extends BaseComponent {
     const query = atMatch[1].toLowerCase();
     const LOCAL_ONLY_MENTIONS = ['file', 'git', 'errors', 'selection', 'todos'];
     // The app's own errors and the editor selection are local, whatever the
-    // project; a remote chat cannot use them.
+    // project; a remote chat cannot use them (the `localMentions` row).
     const REMOTE_EXCLUDED_MENTIONS = ['errors', 'selection'];
+    const localMentionsOk = !remoteChat.isRemote
+      && require('../../../shared/remote-capabilities').can(project, 'localMentions').ok;
     const availableMentions = project.isCloud
       ? MENTION_TYPES.filter(m => !LOCAL_ONLY_MENTIONS.includes(m.type))
-      : remoteChat.isRemote ? MENTION_TYPES.filter(m => !REMOTE_EXCLUDED_MENTIONS.includes(m.type)) : MENTION_TYPES;
+      : !localMentionsOk ? MENTION_TYPES.filter(m => !REMOTE_EXCLUDED_MENTIONS.includes(m.type)) : MENTION_TYPES;
     const filtered = availableMentions.filter(m => m.type.includes(query));
     if (filtered.length === 0) {
       hideMentionDropdown();

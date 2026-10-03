@@ -766,3 +766,46 @@
 .md-viewer-img-alt {
   color: var(--text-muted);
 }
+
+/* ---- Local-only features, disabled for a remote project (slice 7) ---- */
+
+/* Controls greyed by a remote-capabilities row: still focusable, so their
+   tooltip (the reason) shows, and a click explains itself with a toast. */
+.pt-new-run-btn.is-disabled,
+.pt-empty-runs-cta.is-disabled,
+.pt-select-option.is-disabled,
+.cp-pick-item.is-disabled,
+.auto-pchip.is-disabled,
+.wf-dropdown-item.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pt-select-option.is-disabled:hover,
+.cp-pick-item.is-disabled:hover,
+.wf-dropdown-item.is-disabled:hover {
+  background: transparent;
+}
+
+/* Remote projects whose project-scoped MCP servers are not listed. */
+.mcp-remote-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+}
+
+.mcp-remote-note-projects {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+/* A workflow picker with a remote project selected: why its run is refused. */
+.wf-field-hint--remote {
+  color: var(--warning);
+}

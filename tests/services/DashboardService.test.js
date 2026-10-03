@@ -64,12 +64,13 @@ jest.mock('../../src/renderer/utils/format', () => ({
 }));
 
 // Mock project-types registry
-jest.mock('../../src/project-types/registry', () => ({
-  get: jest.fn(() => ({
+jest.mock('../../src/project-types/registry', () => {
+  const get = jest.fn(() => ({
     getDashboardBadge: jest.fn(() => ({ text: 'Standalone', cssClass: 'standalone' })),
     getDashboardStats: jest.fn(() => ''),
-  })),
-}));
+  }));
+  return { get, forProject: (p) => get(p && p.type) };
+});
 
 // Mock KanbanPanel
 jest.mock('../../src/renderer/ui/panels/KanbanPanel', () => ({

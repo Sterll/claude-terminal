@@ -97,8 +97,10 @@ module.exports = {
   props: { projectId: '', action: '' },
 
   fields: [
+    // allowRemote: a quick action runs in a terminal tab, which runs on the
+    // host for a remote (SSH) project, so the picker offers those too.
     { type: 'cwd-picker', key: 'projectId', label: 'wfn.quickaction.project.label',
-      hint: 'wfn.quickaction.project.hint' },
+      hint: 'wfn.quickaction.project.hint', allowRemote: true },
     { type: 'text', key: 'action', label: 'wfn.quickaction.action.label',
       hint: 'wfn.quickaction.action.hint',
       placeholder: 'Build' },

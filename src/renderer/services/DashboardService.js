@@ -17,7 +17,7 @@ const registry = require('../../project-types/registry');
 const KanbanPanel = require('../ui/panels/KanbanPanel');
 const Timeline = require('./ProjectTimeline');
 const Brief = require('./dashboard/briefing');
-const { isRemoteProject } = require('../../shared/remote-capabilities');
+const { isRemoteProject, can } = require('../../shared/remote-capabilities');
 const remotePathLib = require('../../shared/remote-path');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
@@ -2046,6 +2046,19 @@ function buildRemoteOfflineNoteHtml(project, offline) {
   return `<div class="dashboard-remote-note" role="status"><span class="ssh-state-dot state-${escapeHtml(state)}" aria-hidden="true"></span><span>${escapeHtml(t('ssh.git.dashboardOffline', { host: label }))}</span></div>`;
 }
 
+/**
+ * A remote project whose record names another type than general (synced from
+ * another machine, or edited by hand): its type dashboard is hidden
+ * (registry.forProject), and this says why rather than leaving the type's
+ * section silently missing. '' for every local project and every general one.
+ */
+function buildRemoteTypeNoteHtml(project) {
+  if (!isRemoteProject(project)) return '';
+  if (!project.type || project.type === 'general' || project.type === 'standalone') return '';
+  const reason = t(can(project, 'typeDashboards').reasonKey || 'ssh.disabled.typeDashboards');
+  return `<div class="dashboard-remote-note dashboard-remote-type-note" role="note" title="${escapeHtml(reason)}"><span>${escapeHtml(reason)}</span></div>`;
+}
+
 function renderDashboardHtml(container, project, data, options, isRefreshing = false, isCurrent = () => true) {
   const {
     terminalCount = 0,
@@ -2087,7 +2100,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   }
 
   const { gitInfo = {}, stats, workflowRuns, pullRequests } = data;
-  const typeHandler = registry.get(project.type);
+  const typeHandler = registry.forProject(project);
   const dashboardBadge = typeHandler.getDashboardBadge(project);
   const gitOps = getGitOperation(project.id);
   const hasMergeConflict = gitOps.mergeInProgress && gitOps.conflicts.length > 0;
@@ -2097,7 +2110,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   // Build HTML
   container.innerHTML = `
     ${buildViewTabsHtml(project.id)}
-    ${data.remoteOffline ? buildRemoteOfflineNoteHtml(project, data.remoteOffline) : ''}
+    ${data.remoteOffline ? buildRemoteOfflineNoteHtml(project, data.remoteOffline) : ''}${buildRemoteTypeNoteHtml(project)}
     ${isRefreshing ? `<div class="dashboard-refresh-indicator"><span class="refresh-spinner"></span> ${t('dashboard.refreshing')}</div>` : ''}
     ${hasMergeConflict ? `
     <div class="dashboard-merge-alert">

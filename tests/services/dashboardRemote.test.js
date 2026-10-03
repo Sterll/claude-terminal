@@ -33,9 +33,10 @@ jest.mock('../../src/renderer/ui/components/Modal', () => ({
 jest.mock('../../src/renderer/utils', () => ({ escapeHtml: (s) => String(s ?? '') }));
 jest.mock('../../src/renderer/utils/color', () => ({ sanitizeColor: (c) => c }));
 jest.mock('../../src/renderer/utils/format', () => ({ formatDuration: () => '0m', redactUrlCredentials: url => url }));
-jest.mock('../../src/project-types/registry', () => ({
-  get: jest.fn(() => ({ getDashboardBadge: () => ({ text: '', cssClass: '' }), getDashboardStats: () => '' })),
-}));
+jest.mock('../../src/project-types/registry', () => {
+  const get = jest.fn(() => ({ getDashboardBadge: () => ({ text: '', cssClass: '' }), getDashboardStats: () => '' }));
+  return { get, forProject: jest.fn((p) => get(p && p.type)) };
+});
 jest.mock('../../src/renderer/ui/panels/KanbanPanel', () => ({ render: jest.fn() }));
 jest.mock('../../src/renderer/events', () => ({
   getActiveProvider: () => 'scraping',
@@ -151,6 +152,31 @@ describe('dashboard of a remote project', () => {
     }
   });
 
+  test('a remote project recorded with another type: the type section comes from forProject, with a note saying why', async () => {
+    const registry = require('../../src/project-types/registry');
+    const typed = { ...REMOTE, id: 'r2', type: 'fivem' };
+    applyHostStatus({ profileId: 'abcd1234', state: 'reconnecting' });
+    DashboardService.invalidateCache('r2');
+    const container = document.createElement('div');
+    await DashboardService.renderDashboard(container, typed, {});
+    expect(registry.forProject).toHaveBeenCalledWith(typed);
+    const note = container.querySelector('.dashboard-remote-type-note');
+    expect(note).not.toBeNull();
+    expect(note.title).toBe(require('../../src/renderer/i18n').t('ssh.disabled.typeDashboards'));
+    expect(fsp.readdir).not.toHaveBeenCalled();
+    expect(window.electron_api.git.infoFull).not.toHaveBeenCalled();
+    DashboardService.cancelRender(container);
+  });
+
+  test('a general remote project has no type note', async () => {
+    applyHostStatus({ profileId: 'abcd1234', state: 'reconnecting' });
+    DashboardService.invalidateCache('r1');
+    const container = document.createElement('div');
+    await DashboardService.renderDashboard(container, REMOTE, {});
+    expect(container.querySelector('.dashboard-remote-type-note')).toBeNull();
+    DashboardService.cancelRender(container);
+  });
+
   test('a local project loads exactly as before', async () => {
     DashboardService.invalidateCache('l1');
     const container = document.createElement('div');
@@ -159,6 +185,7 @@ describe('dashboard of a remote project', () => {
     await flush();
     expect(window.electron_api.git.infoFull).toHaveBeenCalledWith(LOCAL.path);
     expect(container.querySelector('.dashboard-remote-note')).toBeNull();
+    expect(container.querySelector('.dashboard-remote-type-note')).toBeNull();
     expect(fsp.readdir).toHaveBeenCalledWith(LOCAL.path);
     DashboardService.cancelRender(container);
   });

@@ -414,6 +414,26 @@ function get(typeId) {
 }
 
 /**
+ * The type descriptor that drives a project's UI.
+ *
+ * For a local project this is exactly `get(project.type)`. A remote (SSH)
+ * project always gets the general type, whatever its record says: every
+ * other type's dashboard, run panel, sidebar buttons, menu items and delete
+ * hook spawn local processes or read local files (the `typeDashboards` row of
+ * src/shared/remote-capabilities.js), so the BASE no-op hooks are the honest
+ * answer. Remote projects are created as `general` anyway; this also covers a
+ * record that was synced or edited by hand.
+ *
+ * @param {Object} project
+ * @returns {Object}
+ */
+function forProject(project) {
+  const { can } = require('../shared/remote-capabilities');
+  if (project && !can(project, 'typeDashboards').ok) return get('standalone');
+  return get(project && project.type);
+}
+
+/**
  * Get all registered types
  * @returns {Object[]}
  */
@@ -575,6 +595,7 @@ module.exports = {
   getExternalIds,
   isExternal,
   get,
+  forProject,
   getAll,
   getByCategory,
   getCategories,

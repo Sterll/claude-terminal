@@ -288,6 +288,11 @@ async function handle(name, args) {
 
       const projectPath = getProjectPath();
       if (!projectPath) return fail('No project path available (CT_PROJECT_PATH not set). Open a project in Claude Terminal first.');
+      // A remote (SSH) project: the run would create local worktrees for files
+      // that live on another host. The app refuses it too (ParallelTaskService).
+      if (String(projectPath).startsWith('ssh-remote://')) {
+        return fail('Parallel tasks are not supported for remote projects yet');
+      }
 
       const maxTasks = Math.max(2, Math.min(10, args.max_tasks || 4));
       const autoTasks = args.auto_tasks || false;

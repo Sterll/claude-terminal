@@ -4569,7 +4569,17 @@
       "cloudUpload": "O envio para a nuvem compacta uma pasta local, então projetos remotos não podem ser enviados.",
       "sessionMove": "As sessões de um projeto remoto ficam no host dele e não podem ser movidas para outro projeto.",
       "pathAttachment": "Um caminho de arquivo local não significa nada para um chat remoto. Arquivos pequenos o bastante são enviados diretamente.",
-      "crossRootTransfer": "Mover ou copiar arquivos entre um projeto local e um remoto (ou entre dois hosts) não é compatível."
+      "crossRootTransfer": "Mover ou copiar arquivos entre um projeto local e um remoto (ou entre dois hosts) não é compatível.",
+      "typeDashboards": "Os painéis por tipo de projeto iniciam processos locais e leem arquivos locais, então não estão disponíveis para um projeto remoto. Rode seus servidores a partir de um terminal remoto ou de uma ação rápida.",
+      "parallelTasks": "Tarefas paralelas criam worktrees git locais e executam agentes locais, então ainda não estão disponíveis para um projeto remoto.",
+      "workflowNodes": "Os nós de workflow rodam nesta máquina, então projetos remotos ainda não são suportados. Os nós de ação rápida continuam funcionando.",
+      "workflowTriggers": "Os gatilhos de alteração de arquivo e de evento git monitoram uma pasta local, então ainda não podem monitorar um projeto remoto.",
+      "hooks": "O Claude Code no host nunca alcança o servidor de hooks do aplicativo. As abas de terminal remotas são acompanhadas pela saída.",
+      "localMentions": "@errors e @selection leem esta máquina e não são oferecidos em um chat remoto.",
+      "overviewAutoExpand": "Uma raiz remota fica recolhida até que seu host esteja conectado, para que um host fora do ar nunca trave a árvore.",
+      "projectMcpConfig": "Os servidores MCP próprios de um projeto remoto ficam nas configurações dele no host e não são listados aqui.",
+      "databaseDetect": "A detecção de bancos de dados lê os arquivos locais do projeto, então não está disponível para um projeto remoto. Adicione a conexão manualmente.",
+      "mcpProjectTools": "O servidor MCP claude-terminal lê o disco local, então não consegue ler os arquivos de um projeto remoto."
     },
     "menu": {
       "section": "Host remoto: {host}",
@@ -4691,6 +4701,9 @@
       "connect": "Conectar",
       "rootHost": "Em {host}",
       "editorNeedsAlias": "O {editor} precisa de um alias do ssh_config para este host, porque ele usa uma porta, um host de salto ou um arquivo de identidade. Adicione uma entrada Host em ~/.ssh/config e use-a no perfil do host."
+    },
+    "workflow": {
+      "remoteOption": "{name} (remoto, não suportado aqui)"
     }
   }
 }

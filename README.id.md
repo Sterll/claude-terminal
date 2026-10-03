@@ -418,6 +418,16 @@ npm install
 - Profil pengguna dan manajemen sesi
 - Skrip instalasi otomatis dengan Docker, reverse proxy, dan SSL
 
+### Proyek jarak jauh SSH
+- Buka proyek yang berada di mesin lain melalui SSH, ala IntelliJ Gateway: aplikasi tetap menjadi antarmuka, sementara terminal, chat Claude, git, dan file berjalan di host
+- Menggunakan klien OpenSSH sistem, sehingga `~/.ssh/config`, kunci, `ssh-agent`, ProxyJump, dan penerusan agen bekerja persis seperti di terminal. Aplikasi tidak menyimpan kata sandi maupun kunci: kata sandi diketik di prompt OpenSSH sendiri dan tidak pernah disimpan
+- **Buka proyek jarak jauh**: pilih profil host yang tersimpan, telusuri foldernya, lalu buka satu, buat satu, jalankan `git init`, atau kloning repositori ke dalamnya
+- Lencana host di setiap proyek jarak jauh menunjukkan status koneksinya. Koneksi yang terputus tersambung kembali sendiri, dan tab terminal serta chat melanjutkan dari posisi terakhir (di dalam tmux jika Anda mengaktifkannya)
+- Claude Code berjalan di host (harus terpasang di sana, dan aplikasi memberi tahu jika belum), dan riwayat sesi dibaca dari host
+- Panel Git, dasbor, penjelajah file, layar File, tab file, dan diff bekerja di host. VS Code, Cursor, dan Windsurf membuka file jarak jauh melalui ekstensi Remote-SSH mereka
+- Tidak ada yang dipasang di host: tanpa agen, tanpa daemon, hanya satu sesi `sh` per koneksi
+- Fitur yang hanya masuk akal secara lokal (dasbor per tipe proyek, tugas paralel, node workflow yang berjalan di mesin ini, pengikatan akun, unggah ke cloud, Buka di Explorer) ditampilkan nonaktif, dengan alasannya sebagai tooltip
+
 ### Panel basis data
 - Dukungan multi-driver: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB
 - **Penjelajah Redis**: penjelajah kunci berbentuk pohon, dengan pemeriksaan nilai sesuai tipenya

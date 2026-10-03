@@ -85,4 +85,38 @@ function projectLabel(project) {
   return project?.name || path.basename(project?.path || '') || project?.id || '';
 }
 
-module.exports = { projectsFile, loadProjects, findProjectRecord, projectLabel };
+/**
+ * Refuse a remote (SSH) project for a node that runs on this machine.
+ *
+ * Nodes that execute or read locally (shell, git, file, claude, terminal,
+ * session_recap, parallel_spawn) cannot target a project whose files live on
+ * another host: a URI never exists locally, so without this they would fail
+ * with a misleading "path not found" or, worse, fall back to the home
+ * directory. Each argument is checked on its own and may be:
+ *   - an ssh-remote:// URI (a resolved cwd, `$ctx.project`, a custom path);
+ *   - a project id or exact name, as the project pickers store it, which is
+ *     refused when it names a remote project in projects.json.
+ * Anything else (a local path, an empty value, an unknown reference) passes
+ * untouched, so local resolution and its error messages do not move.
+ *
+ * @param {...*} refs
+ * @throws {Error} refusalError('workflowNodes'), code REMOTE_UNSUPPORTED
+ */
+function assertLocalTargets(...refs) {
+  const { assertLocalPaths, isRemoteProject, refusalError } = require('../../shared/remote-capabilities');
+  const names = [];
+  for (const ref of refs) {
+    if (typeof ref !== 'string' || !ref.trim()) continue;
+    assertLocalPaths('workflowNodes', ref.trim());
+    names.push(ref.trim());
+  }
+  if (!names.length) return;
+  const projects = loadProjects();
+  for (const ref of names) {
+    const needle = ref.toLowerCase();
+    const record = projects.find(p => p.id === ref || (p.name || '').toLowerCase() === needle);
+    if (record && isRemoteProject(record)) throw refusalError('workflowNodes');
+  }
+}
+
+module.exports = { projectsFile, loadProjects, findProjectRecord, projectLabel, assertLocalTargets };

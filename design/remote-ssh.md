@@ -1009,31 +1009,54 @@ string.
 
 ## 8. Disabled for remote projects, and why
 
-Each entry is a row of `src/shared/remote-capabilities.js`, so the UI greys the
-control and shows the reason as a tooltip, main-side IPC refuses with the same
-reason, and nothing fails silently.
+Each entry is one or more rows of `src/shared/remote-capabilities.js`, named in
+the Capability column, so the UI greys the control and shows the reason as a
+tooltip, main-side code refuses with the same reason (the row's English
+`message`, through `refusal()` / `refusalError()`, error code
+`REMOTE_UNSUPPORTED`), and nothing fails silently.
+`tests/shared/remoteCapabilities.test.js` reads this table: every key in the
+Capability column must be a row of the module, every row of the module must
+appear here, and every row must have its reason translated in all six locales.
 
-| Feature | Why | What the user sees |
-|---------|-----|--------------------|
-| Project-type dashboards and run panels (FiveM, webapp, api, python, minecraft, discord) | Their services spawn local processes and read local files | Remote projects are created as `general`; type panels hidden; run dev servers from a remote terminal or quick action |
-| Parallel tasks and the `parallel_spawn` node | Creates local worktrees and local agents | Disabled with tooltip |
-| Workflow nodes bound to a remote project (`shell`, `git`, `file`, `claude`, `terminal`, `session_recap`) and `file_change` / `git_event` triggers. Not `quickaction`: it hands its command to a terminal tab, which runs on the host (5.1) | Execute and watch locally; `claude.node` would silently fall back to `~` | Hidden in the cwd/project pickers; nodes throw "remote projects are not supported by workflow nodes yet" |
-| Local MCP tools and Claude in Chrome in remote chats | Registered in the local `~/.claude.json` / point at local binaries | Note in the chat header; future path is in-process SDK MCP servers |
-| Hooks event server for remote terminal tabs | The remote CLI never runs the local hook handler; tunnelling would mean editing the remote `~/.claude/settings.json` | Remote terminal tabs use the scraping provider, which runs for them alone alongside the hooks (5.1) |
-| Account binding | The remote host has its own `claude /login` | Account picker disabled with tooltip |
-| Cloud zip upload | Zips a local folder | Disabled; the git-based upload works |
-| Open in Explorer; Open in editor (except VS Code family over Remote-SSH) | Local OS integrations | Disabled with tooltip |
-| Session move, orphan worktree discovery, workflow session cleanup | Local transcript moves | Disabled: the `sessionMove` row refuses with a toast, main refuses too, and remote projects are not offered as move targets |
-| Path attachments in chat | A local path means nothing to the remote CLI | Inline within limits, otherwise refused with a toast (`pathAttachment` row), local paths dropped from the explorer included |
-| `@errors`, `@selection` mentions | Local-only sources | Filtered for remote chats (cloud chats keep their own, longer `LOCAL_ONLY_MENTIONS` list) |
-| Copy/drag between local and remote trees | Needs a transfer feature | Refused with a toast |
-| Overview multi-root mixing local and remote | A dead host would stall the tree | Remote roots shown collapsed with a connect affordance |
-| Project-scoped MCP config panel, remote SQLite | Read local files | Skipped, with a note |
-| MCP `project_info`, `project_todos`, `project_create` on remote | The MCP server reads local disk | Answer "remote project on <host>, not readable from the MCP server"; create refuses |
+| Feature | Capability | Why | What the user sees |
+|---------|------------|-----|--------------------|
+| Project-type dashboards and run panels (FiveM, webapp, api, python, minecraft, discord) | `typeDashboards` | Their services spawn local processes and read local files | Remote projects are created as `general`, and `registry.forProject()` answers the general type (BASE no-op hooks) for any remote project whatever its record says, so type dashboards, run panels, sidebar buttons, menu items, per-type settings and delete hooks never run for one. A record naming another type gets a dashboard note with the reason. Run dev servers from a remote terminal or a quick action |
+| Parallel tasks and the `parallel_spawn` node | `parallelTasks` | Creates local worktrees and local agents | New run buttons disabled with tooltip while the project bar holds a remote project; in sidebar mode the run's project picker lists remote projects disabled. `ParallelTaskService.startRun` and `cleanupRun` refuse a URI for every caller (panel, node, MCP trigger), and the MCP `parallel_start_run` tool refuses one too |
+| Workflow nodes bound to a remote project (`shell`, `git`, `file`, `claude`, `terminal`, `session_recap`, `parallel_spawn`, and the legacy Claude step and `files` loop source of `WorkflowRunner`). Not `quickaction` or `kanban_create_card`: the first hands its command to a terminal tab, which runs on the host (5.1), the second writes local Kanban storage | `workflowNodes` | Execute and read locally; `claude.node` and the legacy Claude step would silently fall back to `~` | Listed disabled with the reason in the cwd and project pickers and in the Automations sheet's "where it runs" select (a field with `allowRemote` keeps them; the workflow editor's custom dropdown shows such an option but never selects it), with a warning hint under a node saved earlier with a remote project; the nodes throw "Remote projects are not supported by workflow nodes yet" for a URI, a run context on a remote project, or a picked remote project id |
+| `file_change` / `git_event` triggers | `workflowTriggers` | chokidar watches a local folder | Listed disabled with the reason in those two triggers' project pickers and in the Automations sheet's watched-project chips; `WorkflowScheduler` skips a remote target with one warning per (workflow, project) and reports the trigger as an error with the same reason in its health status |
+| Local MCP tools and Claude in Chrome in remote chats | `localMcpTools` | Registered in the local `~/.claude.json` / point at local binaries | Note in the chat header, the row's reason as its tooltip; future path is in-process SDK MCP servers |
+| Hooks event server for remote terminal tabs | `hooks` | The remote CLI never runs the local hook handler; tunnelling would mean editing the remote `~/.claude/settings.json` | `HooksProvider` never attributes a hook event to a remote project; remote terminal tabs use the scraping provider, which runs for them alone alongside the hooks (5.1) |
+| Account binding | `accountBinding` | The remote host has its own `claude /login` | Account picker disabled with tooltip in the project menu and on the usage chip; `showProjectAccountMenu` and `applyProjectAccount` refuse with a toast |
+| Cloud upload | `cloudUpload` | Zips a local folder | Disabled with tooltip in the Cloud panel's picker and refused on click; never offered by the auto-upload prompt; main refuses a URI in both `cloud:upload-project` and `cloud:upload-project-git`. The git variant is refused too, deviation below |
+| Open in Explorer; Open in editor (except VS Code family over Remote-SSH) | `openInExplorer`, `openInEditor` | Local OS integrations | Disabled with tooltip |
+| Session move, orphan worktree discovery, workflow session cleanup | `sessionMove` | Local transcript moves | Disabled: the `sessionMove` row refuses with a toast, main refuses too (with the row's message), and remote projects are not offered as move targets |
+| Path attachments in chat | `pathAttachment` | A local path means nothing to the remote CLI | Inline within limits, otherwise refused with a toast, local paths dropped from the explorer included |
+| `@errors`, `@selection` mentions | `localMentions` | Local-only sources | Filtered for remote chats (cloud chats keep their own, longer `LOCAL_ONLY_MENTIONS` list) |
+| Copy/drag between local and remote trees | `crossRootTransfer` | Needs a transfer feature | Refused with a toast |
+| Overview multi-root mixing local and remote | `overviewAutoExpand` | A dead host would stall the tree | Remote roots shown collapsed with a connect affordance; the host chip's tooltip gives the reason while it waits |
+| Project-scoped MCP config panel, remote SQLite | `projectMcpConfig`, `databaseDetect` | Read local files | The MCP panel never joins or reads a remote project's `.claude/settings.local.json` and lists the skipped projects in a note with the reason; database auto-detection refuses a remote project with a toast, and main's `database-detect` refuses a URI. Network database drivers are unaffected |
+| MCP `project_info`, `project_todos`, `project_create` on remote | `mcpProjectTools` | The MCP server reads local disk | Answer "remote project on <host>, not readable from the MCP server"; create refuses |
 
 Unaffected: time tracking (keyed by project id), Kanban storage, Workspace,
 Artifacts, Knowledge, network database drivers, tab naming, prompt enhancement,
 recap generation, the model catalog for local sessions.
+
+**Deviation (slice 7): cloud upload is refused whole, git variant included.**
+Earlier drafts kept the git-based upload for remote projects, since it only
+needs the origin URL. It is refused too, for three reasons: the auto-upload
+prompt runs at startup, before any host connects, so it could not tell a
+GitHub repository from a folder without opening a connection; the clone is of
+`origin`, not of the working tree on the host, so a remote project would
+silently upload a different state than the one the user works on; and one rule
+per project is easier to explain in a tooltip than "it depends on the remote".
+
+**Main-side messages.** Each row also carries its reason in English
+(`message`), used by `refusal()` / `refusalError()`. The slice 7 guards
+(workflow nodes and the legacy runner steps, the scheduler, parallel tasks,
+cloud upload, database detection, session move) all use it; refusals that are
+not a feature of this table (an `ssh-fs` path outside every project, an editor
+launch without an alias, scaffolding into a remote destination) keep their own
+English text.
 
 ---
 

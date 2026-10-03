@@ -104,6 +104,12 @@ module.exports = {
         : 'Terminal node: no project selected, and the run context has none');
     }
 
+    // A remote project's terminals run on its host and its output is not
+    // captured locally; quickaction is the node that drives a remote tab.
+    if (require('../../shared/remote-capabilities').isRemoteProject(project)) {
+      throw require('../../shared/remote-capabilities').refusalError('workflowNodes');
+    }
+
     // Every slot is always present so a downstream link never reads undefined
     // just because the other action was selected.
     const base = { output: '', lines: 0, command: '', projectId: project.id || '', delivered: false };

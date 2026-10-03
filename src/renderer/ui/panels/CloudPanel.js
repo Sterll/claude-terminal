@@ -5,6 +5,7 @@
  */
 
 const { t } = require('../../i18n');
+const { can } = require('../../../shared/remote-capabilities');
 
 let _ctx = null;
 let _sessionsInterval = null;
@@ -502,6 +503,12 @@ function setupHandlers(context) {
       const { showModal } = require('../components/Modal');
       const listHtml = projects.map(p => {
         const name = _escapeHtml(p.name || p.path?.split(/[\\/]/).pop() || '?');
+        // A remote (SSH) project has no local folder to upload: listed
+        // disabled with the reason, and refused on click below.
+        const cap = can(p, 'cloudUpload');
+        if (!cap.ok) {
+          return `<div class="cp-pick-item is-disabled" aria-disabled="true" data-id="${_escapeHtml(p.id)}" data-reason-key="${_escapeHtml(cap.reasonKey)}" title="${_escapeHtml(t(cap.reasonKey))}">${name}</div>`;
+        }
         return `<div class="cp-pick-item" data-id="${_escapeHtml(p.id)}" data-name="${name}" data-path="${_escapeHtml(p.path)}">${name}</div>`;
       }).join('');
 
@@ -513,6 +520,11 @@ function setupHandlers(context) {
 
       modal.el.querySelectorAll('.cp-pick-item').forEach(item => {
         item.addEventListener('click', async () => {
+          if (item.dataset.reasonKey) {
+            const Toast = require('../components/Toast');
+            Toast.show(t(item.dataset.reasonKey), 'info');
+            return;
+          }
           modal.close();
           const projectId = item.dataset.id;
           const projectName = item.dataset.name;

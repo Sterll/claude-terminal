@@ -65,6 +65,9 @@ module.exports = {
     // the path lives in ctx.project) with a safe fallback to Electron cwd.
     const varCtx = vars instanceof Map ? (vars.get('ctx') || {}) : (vars?.ctx || {});
     const cwd = (resolveVars(config.cwd || '', vars) || varCtx.project || '') || undefined;
+    // A remote (SSH) project would otherwise run the command here, in
+    // Electron's own directory, since its URI is not a local folder.
+    require('./_projects').assertLocalTargets(resolveVars(config.projectId || '', vars), cwd);
 
     const MAX_BUFFER = 4 * 1024 * 1024;
 

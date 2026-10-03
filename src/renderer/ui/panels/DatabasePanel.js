@@ -2704,6 +2704,10 @@ async function runAutoDetect() {
     return;
   }
 
+  // Detection reads the project's .env files and SQLite databases, which for
+  // a remote (SSH) project are on its host: say so instead of scanning.
+  if (require('../components/RemoteHostBadge').refuseForRemote(project, 'databaseDetect')) return;
+
   ctx.showToast({ type: 'info', title: t('database.detecting') });
   const detected = await ctx.api.database.detect({ projectPath: project.path });
 

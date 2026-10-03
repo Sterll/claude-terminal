@@ -5,6 +5,17 @@
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
+const { can } = require('../../shared/remote-capabilities');
+
+/**
+ * Whether a project can be picked for this node. Nodes that run on this
+ * machine (shell, git, terminal, session_recap, parallel_spawn) cannot target
+ * a remote (SSH) project, so it is listed disabled with the reason; a node
+ * whose field sets `allowRemote` (quickaction, kanban card) takes any project.
+ */
+function pickable(field, project) {
+  return field && field.allowRemote ? { ok: true } : can(project, 'workflowNodes');
+}
 
 module.exports = {
   type: 'cwd-picker',
@@ -20,8 +31,23 @@ module.exports = {
     const selectedId = isCustom ? '__custom__' : (props.projectId || '');
 
     const optionsList = projects
-      .map(p => `<option value="${escapeAttr(p.id)}"${selectedId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`)
+      .map(p => {
+        const cap = pickable(field, p);
+        if (!cap.ok) {
+          return `<option value="${escapeAttr(p.id)}" disabled data-remote-disabled="true"${selectedId === p.id ? ' selected' : ''} title="${escapeAttr(t(cap.reasonKey))}">${escapeHtml(t('ssh.workflow.remoteOption', { name: p.name }))}</option>`;
+        }
+        return `<option value="${escapeAttr(p.id)}"${selectedId === p.id ? ' selected' : ''}>${escapeHtml(p.name)}</option>`;
+      })
       .join('');
+
+    // A node saved before this check with a remote project still selected:
+    // say why its run will be refused.
+    const selectedProject = projects.find(p => p.id === selectedId);
+    const selectedCap = selectedProject ? pickable(field, selectedProject) : { ok: true };
+    const remoteHint = selectedCap.ok
+      ? ''
+      : `
+  <span class="wf-field-hint wf-field-hint--remote">${escapeHtml(t(selectedCap.reasonKey))}</span>`;
 
     const customInput = (selectedId === '__custom__') ? `
 <div class="wf-step-edit-field">
@@ -40,7 +66,7 @@ module.exports = {
     <option value=""${!selectedId ? ' selected' : ''}>${t('workflow.cwd.currentProject')}</option>
     ${optionsList}
     <option value="__custom__"${selectedId === '__custom__' ? ' selected' : ''}>${t('workflow.cwd.customPath')}</option>
-  </select>
+  </select>${remoteHint}
 </div>
 ${customInput}
 </div>`;

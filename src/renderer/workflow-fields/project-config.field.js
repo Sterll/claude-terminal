@@ -7,6 +7,7 @@
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
+const { can } = require('../../shared/remote-capabilities');
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -20,8 +21,16 @@ function renderProjectSection(action, props) {
   }
   const projects =
     (typeof window !== 'undefined' && window._projectsState?.get?.()?.projects) || [];
+  // A remote (SSH) project cannot be the context of nodes that run on this
+  // machine: listed disabled, with the reason as tooltip.
   const optionsList = projects
-    .map(p => `<option value="${esc(p.id)}"${props.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`)
+    .map(p => {
+      const cap = can(p, 'workflowNodes');
+      if (!cap.ok) {
+        return `<option value="${esc(p.id)}" disabled data-remote-disabled="true"${props.projectId === p.id ? ' selected' : ''} title="${esc(t(cap.reasonKey))}">${esc(t('ssh.workflow.remoteOption', { name: p.name }))}</option>`;
+      }
+      return `<option value="${esc(p.id)}"${props.projectId === p.id ? ' selected' : ''}>${esc(p.name)}</option>`;
+    })
     .join('');
   return `<div class="wf-step-edit-field">
   <label class="wf-step-edit-label">${t('workflow.project.projectLabel')}</label>

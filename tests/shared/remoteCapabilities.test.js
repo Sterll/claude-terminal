@@ -1,4 +1,33 @@
-const { can, canOpenInEditor, editorFamily, REMOTE_EDITORS, isRemoteProject, sameProject, CAPABILITIES } = require('../../src/shared/remote-capabilities');
+const fs = require('fs');
+const path = require('path');
+const {
+  can, canOpenInEditor, editorFamily, REMOTE_EDITORS, isRemoteProject, sameProject, CAPABILITIES,
+  REMOTE_UNSUPPORTED, refusal, refusalError, assertLocalPaths,
+} = require('../../src/shared/remote-capabilities');
+
+const LOCALES = ['en', 'fr', 'es', 'id', 'zh-CN', 'pt-BR'];
+const DASHES = /[\u2013\u2014]/;
+const lookup = (obj, key) => key.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+
+/**
+ * The rows of design/remote-ssh.md section 8: each row's feature text and the
+ * capability keys its Capability column names.
+ */
+function designSection8Rows() {
+  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'design', 'remote-ssh.md'), 'utf8').replace(/\r\n/g, '\n');
+  const start = doc.indexOf('## 8. Disabled for remote projects');
+  const end = doc.indexOf('\n## 9.', start);
+  expect(start).toBeGreaterThan(-1);
+  return doc.slice(start, end).split('\n')
+    .filter(line => line.startsWith('| ') && !line.startsWith('| Feature'))
+    .map((line) => {
+      const cells = line.split(' | ');
+      return {
+        feature: cells[0].replace(/^\| /, ''),
+        keys: [...cells[1].matchAll(/`([A-Za-z]+)`/g)].map(m => m[1]),
+      };
+    });
+}
 
 describe('remote-capabilities', () => {
   const local = { id: 'p1', path: 'C:\\code\\app' };
@@ -23,20 +52,78 @@ describe('remote-capabilities', () => {
 
   test('the shipped table is frozen', () => {
     expect(Object.isFrozen(CAPABILITIES)).toBe(true);
+    for (const row of Object.values(CAPABILITIES)) expect(Object.isFrozen(row)).toBe(true);
   });
 
   test('every shipped row has a reason translated in all six locales', () => {
-    const lookup = (obj, key) => key.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
     const rows = Object.entries(CAPABILITIES);
     expect(rows.length).toBeGreaterThan(0);
-    for (const locale of ['en', 'fr', 'es', 'id', 'zh-CN', 'pt-BR']) {
+    for (const locale of LOCALES) {
       const strings = require(`../../src/renderer/i18n/locales/${locale}.json`);
       for (const [feature, row] of rows) {
         expect(row.remote).toBe(false);
         const text = lookup(strings, row.reasonKey);
         if (typeof text !== 'string' || !text) throw new Error(`${locale}: ${feature} -> ${row.reasonKey} is missing`);
+        if (DASHES.test(text)) throw new Error(`${locale}: ${feature} -> ${row.reasonKey} has an en or em dash`);
+      }
+      expect(lookup(strings, 'ssh.workflow.remoteOption')).toContain('{name}');
+    }
+  });
+
+  test('every row of design section 8 names capability rows, and every row is in that table', () => {
+    const rows = designSection8Rows();
+    expect(rows.length).toBeGreaterThanOrEqual(16);
+    const named = new Set();
+    for (const row of rows) {
+      if (!row.keys.length) throw new Error(`design section 8 row without a capability: ${row.feature}`);
+      for (const key of row.keys) {
+        if (!CAPABILITIES[key]) throw new Error(`design section 8 names an unknown capability: ${key}`);
+        named.add(key);
       }
     }
+    for (const key of Object.keys(CAPABILITIES)) {
+      if (!named.has(key)) throw new Error(`capability ${key} is missing from design section 8`);
+    }
+  });
+
+  test('every row carries an English message for the main process', () => {
+    for (const [feature, row] of Object.entries(CAPABILITIES)) {
+      expect(typeof row.message).toBe('string');
+      expect(row.message.length).toBeGreaterThan(10);
+      if (DASHES.test(row.message)) throw new Error(`${feature}: en or em dash in its message`);
+    }
+  });
+
+  test('refusal() and refusalError() carry the code, the feature and the reason key', () => {
+    expect(refusal('workflowNodes')).toEqual({
+      code: REMOTE_UNSUPPORTED,
+      feature: 'workflowNodes',
+      reasonKey: 'ssh.disabled.workflowNodes',
+      message: 'Remote projects are not supported by workflow nodes yet',
+    });
+    const err = refusalError('parallelTasks');
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe(CAPABILITIES.parallelTasks.message);
+    expect(err.code).toBe('REMOTE_UNSUPPORTED');
+    expect(err.feature).toBe('parallelTasks');
+    expect(err.reasonKey).toBe('ssh.disabled.parallelTasks');
+    expect(() => refusal('noSuchFeature')).toThrow(/Unknown remote capability/);
+  });
+
+  test('assertLocalPaths() refuses a URI and lets anything else through', () => {
+    expect(() => assertLocalPaths('workflowNodes', 'C:\\code\\app', '/home/u/app', '', null, undefined, 42)).not.toThrow();
+    expect(() => assertLocalPaths('workflowNodes', '/home/u/app', 'ssh-remote://abcd1234/srv/app'))
+      .toThrow('Remote projects are not supported by workflow nodes yet');
+  });
+
+  test('the local-only features of section 8 refuse a remote project and leave a local one alone', () => {
+    for (const feature of ['typeDashboards', 'parallelTasks', 'workflowNodes', 'workflowTriggers', 'localMcpTools', 'hooks',
+      'localMentions', 'overviewAutoExpand', 'projectMcpConfig', 'databaseDetect', 'mcpProjectTools']) {
+      expect(can(remote, feature).ok).toBe(false);
+      expect(can(local, feature)).toEqual({ ok: true });
+    }
+    // The chat header note and the row share one reason.
+    expect(can(remote, 'localMcpTools').reasonKey).toBe('ssh.chat.localToolsTooltip');
   });
 
   test('the project-level actions refuse a remote project and leave a local one alone', () => {
@@ -44,6 +131,11 @@ describe('remote-capabilities', () => {
       expect(can(remote, feature).ok).toBe(false);
       expect(can(local, feature)).toEqual({ ok: true });
     }
+  });
+
+  test('the session move refusal keeps the message main already returned', () => {
+    expect(CAPABILITIES.sessionMove.message)
+      .toBe('Sessions of remote projects cannot be moved: their transcripts live on the remote host');
   });
 
   test('moving files between a local and a remote tree is refused for a remote project', () => {

@@ -18,7 +18,17 @@ const {
   getAccountForProject,
   projectFollowsDefault
 } = require('../../state/accounts.state');
-const { setProjectAccount, getProjectAccount } = require('../../state/projects.state');
+const { setProjectAccount, getProjectAccount, getProject } = require('../../state/projects.state');
+
+/**
+ * A remote (SSH) project runs as its host's own `claude /login`, so it has no
+ * account to bind (the `accountBinding` capability). Shows the reason as a
+ * toast and answers true when refused; false, and nothing shown, for a local
+ * project.
+ */
+function refuseRemoteBinding(projectId) {
+  return require('./RemoteHostBadge').refuseForRemote(getProject(projectId), 'accountBinding');
+}
 
 /**
  * Account colours, sharing the Kanban label hues so the app keeps one palette.
@@ -143,6 +153,7 @@ function liveSessionCount(projectId) {
  * @returns {Promise<boolean>} whether the binding was changed
  */
 async function applyProjectAccount(projectId, accountId) {
+  if (refuseRemoteBinding(projectId)) return false;
   const { chats, terminals } = liveSessions(projectId);
   if (chats.length || terminals) {
     const parts = [];
@@ -185,6 +196,7 @@ async function applyProjectAccount(projectId, accountId) {
 function showProjectAccountMenu({ projectId, x, y, onPicked }) {
   const accounts = getAccounts();
   if (!accounts.length) return;
+  if (refuseRemoteBinding(projectId)) return;
 
   const bound = getProjectAccount(projectId);
   const fallback = getDefaultAccount();

@@ -418,6 +418,16 @@ npm install
 - Perfiles de usuario y gestión de sesiones
 - Script de instalación automatizado con Docker, proxy inverso y SSL
 
+### Proyectos remotos SSH
+- Abre un proyecto que vive en otra máquina por SSH, al estilo de IntelliJ Gateway: la aplicación sigue siendo la interfaz, mientras terminales, chat de Claude, git y archivos se ejecutan en el host
+- Usa el cliente OpenSSH del sistema, así que `~/.ssh/config`, las claves, `ssh-agent`, ProxyJump y el reenvío de agente funcionan igual que en una terminal. La aplicación no guarda contraseñas ni claves: una contraseña se escribe en el propio aviso de OpenSSH y nunca se guarda
+- **Abrir proyecto remoto**: elige un perfil de host guardado, explora sus carpetas y luego abre una, crea una, ejecuta `git init` o clona un repositorio en ella
+- Una insignia de host en cada proyecto remoto muestra el estado de la conexión. Una conexión perdida se restablece sola, y las pestañas de terminal y de chat siguen donde estaban (dentro de tmux si lo activas)
+- Claude Code se ejecuta en el host (debe estar instalado allí, y la aplicación te avisa si no lo está), y el historial de sesiones se lee del host
+- El panel Git, el panel de control, el explorador de archivos, la pantalla Archivos, las pestañas de archivos y los diffs funcionan en el host. VS Code, Cursor y Windsurf abren los archivos remotos con su extensión Remote-SSH
+- No se instala nada en el host: ni agente ni demonio, solo una sesión `sh` por conexión
+- Las funciones que solo tienen sentido en local (paneles por tipo de proyecto, tareas paralelas, nodos de workflow que se ejecutan en esta máquina, vinculación de cuenta, subida a la nube, Abrir en el explorador) aparecen desactivadas, con el motivo como descripción emergente
+
 ### Panel de base de datos
 - Soporte multi-driver: SQLite, MySQL, MariaDB, PostgreSQL, MongoDB
 - **Explorador de Redis**: explorador de claves en árbol, con inspección de valores según su tipo

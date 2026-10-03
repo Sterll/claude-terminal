@@ -124,7 +124,7 @@ const RemotePanel = require('./src/renderer/ui/panels/RemotePanel');
 // SSH remote projects (design/remote-ssh.md). Not the PWA "remote" above.
 const RemoteProjectModal = require('./src/renderer/ui/components/RemoteProjectModal');
 const { refuseForRemote } = require('./src/renderer/ui/components/RemoteHostBadge');
-const { isRemoteProject, sameProject } = require('./src/shared/remote-capabilities');
+const { isRemoteProject, sameProject, can: remoteCan } = require('./src/shared/remote-capabilities');
 const remotePathLib = require('./src/shared/remote-path');
 const { remoteHostsState, onRemoteProjectOpened, getProjectHost } = require('./src/renderer/state/remoteHosts.state');
 
@@ -1937,7 +1937,7 @@ async function deleteProjectUI(projectId) {
   if (!confirmed) return;
 
   // Stop any type-specific running processes (e.g., FiveM server)
-  const deleteTypeHandler = registry.get(project.type);
+  const deleteTypeHandler = registry.forProject(project);
   if (deleteTypeHandler.onProjectDelete) {
     deleteTypeHandler.onProjectDelete(project, projectIndex);
   }
@@ -7147,6 +7147,13 @@ function renderUsageAccountLabel() {
     el.title = isDefault
       ? t('accounts.usageDefaultTitle', { name: account.name })
       : t('accounts.usageBoundTitle', { name: account.name });
+    // A remote (SSH) project runs as its host's own claude login: the chip
+    // still names the account, but offers no picker, and says why.
+    const bindingCap = project ? remoteCan(project, 'accountBinding') : { ok: true };
+    if (!bindingCap.ok) {
+      el.disabled = true;
+      el.title = t(bindingCap.reasonKey);
+    }
     const color = sanitizeColor(account.color);
     el.style.setProperty('--account-color', color || 'var(--text-secondary)');
   } catch (_) {
