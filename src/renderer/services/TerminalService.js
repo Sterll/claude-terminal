@@ -59,9 +59,6 @@ async function createTerminal(project, { runClaude = true, resumeSessionId = nul
   const skipPermissions = getSetting('skipPermissions');
   const projectIndex = require('../state').getProjectIndex(project.id);
 
-  // Telemetry: track terminal creation
-  api.telemetry?.sendFeature({ feature: 'terminal:create', metadata: {} });
-
   // Create terminal on main process
   const id = await api.terminal.create({
     cwd: project.path,
