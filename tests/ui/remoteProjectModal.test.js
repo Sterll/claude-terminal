@@ -290,3 +290,54 @@ describe('Verify host PTY lifecycle', () => {
     expect(api.terminal.onData).not.toHaveBeenCalled();
   });
 });
+
+describe('switching views keeps the dialog open', () => {
+  // Every view switch replaces the dialog body from inside the click handler,
+  // so the clicked button is detached before the click reaches the overlay.
+  // The backdrop handler read that as a click outside the dialog and closed
+  // it: Edit, Add host, Next, Back and Verify host all dropped the user out
+  // of the dialog in the real app.
+  const isOpen = () => $('#remote-project-modal').classList.contains('active');
+
+  test('Edit, Back and Next move between views without closing', async () => {
+    Modal.openRemoteProjectModal({});
+    await flush();
+    expect($('.ssh-picker')).not.toBeNull();
+    $('.ssh-host-item [data-action="edit"]').click();
+    expect(isOpen()).toBe(true);
+    expect($('.ssh-editor')).not.toBeNull();
+    $('[data-action="cancel"]').click();
+    expect(isOpen()).toBe(true);
+    expect($('.ssh-picker')).not.toBeNull();
+    $('[data-action="next"]').click();
+    expect(isOpen()).toBe(true);
+    await flush();
+    expect($('.ssh-browser')).not.toBeNull();
+    $('[data-action="back"]').click();
+    expect(isOpen()).toBe(true);
+    $('[data-action="add"]').click();
+    expect(isOpen()).toBe(true);
+    expect($('.ssh-editor')).not.toBeNull();
+  });
+
+  test('Verify host from a failed test opens the verification in the same dialog', async () => {
+    api.ssh.testProfile.mockImplementation(async () => ({ success: true, result: { ok: false, state: 'hostKeyUnknown', detail: { stderr: 'Host key verification failed.' } } }));
+    Modal.openRemoteProjectModal({});
+    await flush();
+    $('.ssh-host-item [data-action="edit"]').click();
+    $('.ssh-editor').dispatchEvent(new Event('submit', { cancelable: true }));
+    await flush();
+    $('.ssh-test-result [data-action="verify"]').click();
+    expect(isOpen()).toBe(true);
+    expect($('.ssh-verify')).not.toBeNull();
+    await flush();
+    expect(api.ssh.verifyHost).toHaveBeenCalledWith(PROFILE.id);
+  });
+
+  test('a click on the backdrop itself still closes the dialog', async () => {
+    Modal.openRemoteProjectModal({});
+    await flush();
+    $('#remote-project-modal').click();
+    expect(isOpen()).toBe(false);
+  });
+});
