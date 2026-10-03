@@ -362,11 +362,13 @@
   white-space: nowrap;
 }
 
+/* Inset like the .settings-row cards around it: the settings card itself has
+   no padding, so 4px 0 left the intro text against the card border. */
 .ssh-settings {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 4px 0;
+  padding: 12px 18px;
 }
 
 /* ── Remote directory browser ── */
