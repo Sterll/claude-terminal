@@ -13,7 +13,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.3.5-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.3.6-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
@@ -178,6 +178,7 @@ npm install
 - **Todo widget**: persistent task list above the input, auto-dismisses on completion
 - **Attachments**: paste, drag-drop, or pick PNG/JPEG/GIF/WebP images (up to 20MB), plus text files and PDFs
 - **Slash commands**: auto-completing commands (/compact, /clear, /help, custom skills)
+- **Terminal handoff**: commands that act on the machine or the account rather than the conversation (/design-login, /login, /logout, /permissions, /plugin...) open a Claude terminal tab to run them, since the chat drives the CLI headless
 - **Inline @mentions**: rich contenteditable input field lets you type @mentions inline without leaving the message composition area
 - **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar
@@ -300,6 +301,8 @@ npm install
 
 ### Dashboard
 - Open the selected project directly from the topbar; actions and cached data appear immediately while Git, code statistics and GitHub data load progressively
+- **Weekly briefing**: both the project page and the overview open on this week's cost, time and commits, your last Claude sessions with a Resume button, and what's waiting (uncommitted files, commits to push or pull, failing CI, open PRs, TODO count), plus a 14-day chart of cost against commits
+- **Cost tab**: API-equivalent Claude spend by account, project, model and day, for this week, last week, 7/30 days, this month or all time; a weekly-limit card splits a shared account's usage between this machine's share and everyone else's
 - Three sub-views: **Overview**, **Kanban** and **Timeline**
 - Overview: current branch, commits ahead/behind, recent commits, contributors
 - Code statistics: lines of code by language, file count, commit count
@@ -343,6 +346,7 @@ npm install
 
 ### Skills & Agents
 - Browse and manage Claude Code skills and agents
+- **Compact cards with a filter**: each card shows the name, the opening line of the description and, for agents, up to four tools as chips; a filter above the list matches name, description and tool names
 - View SKILL.md and agent configuration files
 - **Syntax-highlighted editor**: edit skill and agent files with line numbers and full highlight.js code highlighting
 - Load skills from `~/.claude/skills`, plugins, and bundled resources

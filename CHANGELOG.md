@@ -2,6 +2,31 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.6] - 2026-10-03
+
+### Added
+- **Remote SSH Projects**: open a project that lives on another machine over SSH, IntelliJ Gateway style. Add a host with the system's own OpenSSH (ProxyJump, identity file, optional agent forwarding, host key verification handled by OpenSSH itself), then browse its folders and open, create or clone a project there. Terminals, quick actions, Claude Code chat, git, file browsing/editing and diffs all run on the host, with a connection badge that reconnects on its own and keeps tabs alive across the drop (inside tmux if you enable it). Features that only make sense locally are shown disabled, with the reason as a tooltip (#224)
+- **Dashboard**: the project page and the overview now open on a weekly briefing: this week's cost, time and commits, your last Claude sessions with a Resume button, and what's waiting (uncommitted files, commits to push or pull, failing CI, open PRs, TODO count), plus a 14-day chart of cost against commits
+- **Cost tab**: see API-equivalent Claude spend by account, project, model and day, for this week, last week, 7/30 days, this month or all time; a weekly-limit card splits a shared account's usage between this machine's share and everyone else's
+- **Chat**: commands that act on the machine or the account rather than the conversation (/design-login, /login, /logout, /permissions, /plugin...) now open in a Claude terminal tab instead of failing silently in the chat
+- **Skills & Agents**: compact cards with a filter that matches name, description and tool names, instead of one long scroll
+
+### Fixed
+- Git panel: committing, pulling or pushing no longer throws an error afterward
+- Git: files with spaces or accented characters in their name can be staged again
+- Projects: a project created or edited by an MCP tool is picked up again instead of being silently ignored, and a projects file that fails to parse can no longer wipe the projects you already have
+- A modal no longer closes itself the moment its own button makes it re-render
+- Chat: the input placeholder goes back to normal after a turn ends, instead of staying on the last hint
+- Global shortcuts now answer on Wayland, and Ctrl+Shift+T opens a terminal
+- Time tracking: the week total no longer resets when the week crosses a month boundary
+- Cost: a shared account's weekly usage percentage is now split fairly between the machines using it
+- Clicking a release notification now opens the full What's New panel instead of a dead link
+- Skills and agents with a multi-line description now display correctly
+- The accent color is now followed consistently across the interface, instead of reverting to the default orange in places
+- Hooks left pointing at a removed Claude Terminal install are now cleaned up automatically
+- Accounts: the Claude Design access grant now stays with the account it was issued to
+- Parallel tasks: a project with no run yet shows a proper empty state
+
 ## [1.3.5] - 2026-09-30
 
 ### Added
