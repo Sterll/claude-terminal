@@ -107,6 +107,16 @@ async function readCurrentCredentials() {
 }
 
 /**
+ * The store keys that belong to one Claude login, and so travel with it.
+ *
+ * This is the set the CLI's own `/logout` deletes, which is the CLI saying
+ * which keys are the account's. `designOauth` is the one that made the
+ * difference: `/design-login` grants Claude Design access to one account, and
+ * leaving it in the store across a swap handed that grant to the next account.
+ */
+const ACCOUNT_KEYS = ['claudeAiOauth', 'organizationUuid', 'trustedDeviceToken', 'enterpriseGateway', 'designOauth'];
+
+/**
  * Reduce live credentials to the part that identifies a Claude account.
  *
  * The store holds more than the Claude login: `mcpOAuth` carries the OAuth
@@ -117,20 +127,30 @@ async function readCurrentCredentials() {
  * than a snapshot that cannot restore the login.
  */
 function accountCredentials(creds) {
-  return creds?.claudeAiOauth ? { claudeAiOauth: creds.claudeAiOauth } : creds;
+  if (!creds?.claudeAiOauth) return creds;
+  const stored = {};
+  for (const key of ACCOUNT_KEYS) {
+    if (creds[key] !== undefined) stored[key] = creds[key];
+  }
+  return stored;
 }
 
 /**
- * Overlay a snapshot's Claude login onto the live store, keeping every other
+ * Overlay a snapshot's account keys onto the live store, keeping every other
  * key the CLI put there. Swapping the store wholesale would roll `mcpOAuth`
  * back to whenever the account was captured, silently signing the user out of
  * their MCP servers.
+ *
+ * The outgoing account's keys are dropped first, so one the incoming snapshot
+ * does not carry is absent rather than inherited.
  */
 async function mergeWithLiveStore(creds) {
   if (!creds?.claudeAiOauth) return creds;
   const live = await readCurrentCredentials();
   if (!live || typeof live !== 'object') return creds;
-  return { ...live, claudeAiOauth: creds.claudeAiOauth };
+  const merged = { ...live };
+  for (const key of ACCOUNT_KEYS) delete merged[key];
+  return { ...merged, ...accountCredentials(creds) };
 }
 
 /**
