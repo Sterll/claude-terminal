@@ -10,6 +10,9 @@ const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { projectsState } = require('../../state');
 const { fileExists, fsp } = require('../../utils/fs-async');
+const projectFs = require('../../utils/projectFs');
+const remotePath = require('../../../shared/remote-path');
+const { isRemoteProject } = require('../../../shared/remote-capabilities');
 
 // ── Path encoding (mirrors claude.ipc.js) ──
 
@@ -278,6 +281,74 @@ class MemoryEditor extends BasePanel {
     return this.api.path.join(this._getProjectEncodedDir(projectPath), 'memory');
   }
 
+  // ── Remote (SSH) projects ──
+  // A remote project's CLAUDE.md is <remote path>/CLAUDE.md on its host, and
+  // the CLI's private instructions and auto memory live in the host's own
+  // ~/.claude/projects/<encoded>/ (main resolves that directory from the
+  // handshake). All of it is read and written over the async ssh.fs IPC;
+  // local projects keep the fs-async calls they always made.
+
+  /** The file operations for a path: ssh.fs for a URI, fs-async otherwise. */
+  _fsOf(p) {
+    if (projectFs.isRemote(p)) {
+      const r = projectFs.remoteFsPromises;
+      return { exists: projectFs.exists, readFile: r.readFile, readdir: r.readdir, stat: r.stat, mkdir: r.mkdir, writeFile: r.writeFile };
+    }
+    return {
+      exists: (a) => fileExists(a),
+      readFile: (...a) => fsp.readFile(...a),
+      readdir: (...a) => fsp.readdir(...a),
+      stat: (...a) => fsp.stat(...a),
+      mkdir: (...a) => fsp.mkdir(...a),
+      writeFile: (...a) => fsp.writeFile(...a),
+    };
+  }
+
+  _joinFor(dir, name) {
+    return projectFs.isRemote(dir) ? remotePath.join(dir, name) : this.api.path.join(dir, name);
+  }
+
+  _dirnameFor(p) {
+    return projectFs.isRemote(p) ? remotePath.dirname(p) : this.api.path.dirname(p);
+  }
+
+  /** True when the remote project's host is connected; a local project always is. */
+  _hostReady(project) {
+    if (!isRemoteProject(project)) return true;
+    const host = require('../../state/remoteHosts.state').getProjectHost(project);
+    return !!host && host.state === 'connected';
+  }
+
+  /** Where the CLI keeps a remote project's private files, cached per project. */
+  async _remotePrivatePaths(project) {
+    if (!this._remotePrivate) this._remotePrivate = new Map();
+    const cached = this._remotePrivate.get(project.id);
+    if (cached && cached.path === project.path) return cached.paths;
+    const paths = await projectFs.privatePaths(project.path);
+    this._remotePrivate.set(project.id, { path: project.path, paths });
+    return paths;
+  }
+
+  _projectClaudeMd(project) {
+    return this._joinFor(project.path, 'CLAUDE.md');
+  }
+
+  async _projectPrivateClaudeMdFor(project) {
+    if (isRemoteProject(project)) return (await this._remotePrivatePaths(project)).claudeMd;
+    return this._getProjectPrivateClaudeMd(project.path);
+  }
+
+  async _projectMemoryDirFor(project) {
+    if (isRemoteProject(project)) return (await this._remotePrivatePaths(project)).memoryDir;
+    return this._getProjectMemoryDir(project.path);
+  }
+
+  /** How a path is shown in the header: `~` for the local home, the host path for a URI. */
+  _displayPath(filePath) {
+    if (projectFs.isRemote(filePath)) return remotePath.toPosix(filePath);
+    return filePath.replace(this.api.os.homedir(), '~');
+  }
+
   // ── Public entry points ──
 
   async loadMemory() {
@@ -364,19 +435,36 @@ class MemoryEditor extends BasePanel {
 
     const htmlParts = [];
     for (const p of filteredProjects) {
-      const claudeMdPath = this.api.path.join(p.path, 'CLAUDE.md');
-      const hasClaudeMd = await fileExists(claudeMdPath);
-
-      const privateClaudeMdPath = this._getProjectPrivateClaudeMd(p.path);
-      const hasPrivateClaudeMd = await fileExists(privateClaudeMdPath);
-
-      const memoryDir = this._getProjectMemoryDir(p.path);
+      let hasClaudeMd = false;
+      let hasPrivateClaudeMd = false;
       let memoryFiles = [];
-      try {
-        if (await fileExists(memoryDir)) {
-          memoryFiles = (await fsp.readdir(memoryDir)).filter(f => f.endsWith('.md'));
+      if (isRemoteProject(p)) {
+        // Probed on the host only while it is connected: listing the sidebar
+        // must never open a connection or wait on one.
+        if (this._hostReady(p)) {
+          try {
+            hasClaudeMd = await projectFs.exists(this._projectClaudeMd(p));
+            hasPrivateClaudeMd = await projectFs.exists(await this._projectPrivateClaudeMdFor(p));
+            const memoryDir = await this._projectMemoryDirFor(p);
+            if (await projectFs.exists(memoryDir)) {
+              memoryFiles = (await projectFs.remoteFsPromises.readdir(memoryDir)).filter(f => f.endsWith('.md'));
+            }
+          } catch { /* host went away mid-probe */ }
         }
-      } catch { /* ignore */ }
+      } else {
+        const claudeMdPath = this.api.path.join(p.path, 'CLAUDE.md');
+        hasClaudeMd = await fileExists(claudeMdPath);
+
+        const privateClaudeMdPath = this._getProjectPrivateClaudeMd(p.path);
+        hasPrivateClaudeMd = await fileExists(privateClaudeMdPath);
+
+        const memoryDir = this._getProjectMemoryDir(p.path);
+        try {
+          if (await fileExists(memoryDir)) {
+            memoryFiles = (await fsp.readdir(memoryDir)).filter(f => f.endsWith('.md'));
+          }
+        } catch { /* ignore */ }
+      }
       const hasMemory = memoryFiles.length > 0;
 
       const isExpanded = this._state.expandedProjects.has(p.index);
@@ -507,37 +595,40 @@ class MemoryEditor extends BasePanel {
       } else if (source === 'project' && projectIndex !== null) {
         const project = projectsState.get().projects[projectIndex];
         if (project) {
-          filePath = this.api.path.join(project.path, 'CLAUDE.md');
+          filePath = this._projectClaudeMd(project);
           title = `${project.name} \u2014 CLAUDE.md`;
-          fileFound = await fileExists(filePath);
-          if (fileFound) content = await fsp.readFile(filePath, 'utf8');
+          const io = this._fsOf(filePath);
+          fileFound = await io.exists(filePath);
+          if (fileFound) content = await io.readFile(filePath, 'utf8');
         }
 
       } else if (source === 'project-private' && projectIndex !== null) {
         const project = projectsState.get().projects[projectIndex];
         if (project) {
-          filePath = this._getProjectPrivateClaudeMd(project.path);
+          filePath = await this._projectPrivateClaudeMdFor(project);
           title = `${project.name} \u2014 ${t('memory.privateInstructions')}`;
-          fileFound = await fileExists(filePath);
-          if (fileFound) content = await fsp.readFile(filePath, 'utf8');
+          const io = this._fsOf(filePath);
+          fileFound = await io.exists(filePath);
+          if (fileFound) content = await io.readFile(filePath, 'utf8');
         }
 
       } else if (source === 'project-memory' && projectIndex !== null) {
         const project = projectsState.get().projects[projectIndex];
         if (project) {
-          filePath = this._getProjectMemoryDir(project.path);
+          filePath = await this._projectMemoryDirFor(project);
           title = `${project.name} \u2014 ${t('memory.autoMemory')}`;
-          fileFound = await fileExists(filePath);
+          fileFound = await this._fsOf(filePath).exists(filePath);
           // Content handled specially in renderMemoryContent
         }
 
       } else if (source === 'project-memory-file' && projectIndex !== null) {
         const project = projectsState.get().projects[projectIndex];
         if (project && this._state.currentMemoryFile) {
-          filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
+          filePath = this._joinFor(await this._projectMemoryDirFor(project), this._state.currentMemoryFile);
           title = `${project.name} \u2014 ${this._state.currentMemoryFile}`;
-          fileFound = await fileExists(filePath);
-          if (fileFound) content = await fsp.readFile(filePath, 'utf8');
+          const io = this._fsOf(filePath);
+          fileFound = await io.exists(filePath);
+          if (fileFound) content = await io.readFile(filePath, 'utf8');
         }
       }
     } catch (e) {
@@ -548,7 +639,7 @@ class MemoryEditor extends BasePanel {
     this._state.fileExists = fileFound;
 
     titleEl.textContent = title;
-    pathEl.textContent = filePath.replace(this.api.os.homedir(), '~');
+    pathEl.textContent = this._displayPath(filePath);
 
     // Show/hide buttons based on context
     const isMarkdownSource = ['global', 'rules', 'project', 'project-private', 'project-memory-file'].includes(source);
@@ -714,10 +805,11 @@ class MemoryEditor extends BasePanel {
     const project = projectsState.get().projects[this._state.currentProject];
     if (!project) return;
 
-    const memoryDir = this._getProjectMemoryDir(project.path);
+    const memoryDir = await this._projectMemoryDirFor(project);
+    const io = this._fsOf(memoryDir);
     let files = [];
     try {
-      files = (await fsp.readdir(memoryDir)).filter(f => f.endsWith('.md'));
+      files = (await io.readdir(memoryDir)).filter(f => f.endsWith('.md'));
     } catch { /* ignore */ }
 
     if (files.length === 0) {
@@ -735,10 +827,10 @@ class MemoryEditor extends BasePanel {
     // Get file stats
     const fileInfos = [];
     for (const f of files) {
-      const fp = this.api.path.join(memoryDir, f);
+      const fp = this._joinFor(memoryDir, f);
       try {
-        const stat = await fsp.stat(fp);
-        const content = await fsp.readFile(fp, 'utf8');
+        const stat = await io.stat(fp);
+        const content = await io.readFile(fp, 'utf8');
         const lines = content.split('\n').length;
         const firstLine = content.split('\n').find(l => l.trim() && !l.startsWith('#')) || '';
         fileInfos.push({ name: f, lines, size: stat.size, modified: stat.mtime, preview: firstLine.trim().slice(0, 80) });
@@ -1170,21 +1262,27 @@ class MemoryEditor extends BasePanel {
       }
     } else if (source === 'project' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
-      if (project) filePath = this.api.path.join(project.path, 'CLAUDE.md');
+      if (project) filePath = this._projectClaudeMd(project);
     } else if (source === 'project-private' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project) {
-        filePath = this._getProjectPrivateClaudeMd(project.path);
-        const dir = this.api.path.dirname(filePath);
-        if (!await fileExists(dir)) {
-          await fsp.mkdir(dir, { recursive: true });
+        try {
+          filePath = await this._projectPrivateClaudeMdFor(project);
+          const dir = this._dirnameFor(filePath);
+          const io = this._fsOf(dir);
+          if (!await io.exists(dir)) {
+            await io.mkdir(dir, { recursive: true });
+          }
+        } catch (e) {
+          if (this._showToast) this._showToast({ type: 'error', title: t('memory.errorCreating', { message: e.message }) });
+          return;
         }
       }
     }
 
     if (filePath) {
       try {
-        await fsp.writeFile(filePath, content, 'utf8');
+        await this._fsOf(filePath).writeFile(filePath, content, 'utf8');
         await this.loadMemoryContent(this._state.currentSource, this._state.currentProject);
       } catch (e) {
         if (this._showToast) this._showToast({ type: 'error', title: t('memory.errorCreating', { message: e.message }) });
@@ -1253,15 +1351,20 @@ class MemoryEditor extends BasePanel {
         filePath = this._getClaudeSettingsJson();
       } else if (source === 'project' && this._state.currentProject !== null) {
         const project = projectsState.get().projects[this._state.currentProject];
+        // There is no local folder to show for a remote project: say so.
+        if (project && require('../components/RemoteHostBadge').refuseForRemote(project, 'openInExplorer')) return;
         if (project) filePath = this.api.path.join(project.path, 'CLAUDE.md');
       } else if (source === 'project-private' && this._state.currentProject !== null) {
         const project = projectsState.get().projects[this._state.currentProject];
+        if (project && require('../components/RemoteHostBadge').refuseForRemote(project, 'openInExplorer')) return;
         if (project) filePath = this._getProjectPrivateClaudeMd(project.path);
       } else if (source === 'project-memory' && this._state.currentProject !== null) {
         const project = projectsState.get().projects[this._state.currentProject];
+        if (project && require('../components/RemoteHostBadge').refuseForRemote(project, 'openInExplorer')) return;
         if (project) filePath = this._getProjectMemoryDir(project.path);
       } else if (source === 'project-memory-file' && this._state.currentProject !== null) {
         const project = projectsState.get().projects[this._state.currentProject];
+        if (project && require('../components/RemoteHostBadge').refuseForRemote(project, 'openInExplorer')) return;
         if (project && this._state.currentMemoryFile) {
           filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
         }
@@ -1386,26 +1489,37 @@ class MemoryEditor extends BasePanel {
       filePath = this._getRulesMd();
     } else if (source === 'project' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
-      if (project) filePath = this.api.path.join(project.path, 'CLAUDE.md');
+      if (project) filePath = this._projectClaudeMd(project);
     } else if (source === 'project-private' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project) {
-        filePath = this._getProjectPrivateClaudeMd(project.path);
-        const dir = this.api.path.dirname(filePath);
-        if (!await fileExists(dir)) {
-          await fsp.mkdir(dir, { recursive: true });
+        try {
+          filePath = await this._projectPrivateClaudeMdFor(project);
+          const dir = this._dirnameFor(filePath);
+          const io = this._fsOf(dir);
+          if (!await io.exists(dir)) {
+            await io.mkdir(dir, { recursive: true });
+          }
+        } catch (e) {
+          if (this._showToast) this._showToast({ type: 'error', title: t('memory.errorSaving', { message: e.message }) });
+          return;
         }
       }
     } else if (source === 'project-memory-file' && this._state.currentProject !== null) {
       const project = projectsState.get().projects[this._state.currentProject];
       if (project && this._state.currentMemoryFile) {
-        filePath = this.api.path.join(this._getProjectMemoryDir(project.path), this._state.currentMemoryFile);
+        try {
+          filePath = this._joinFor(await this._projectMemoryDirFor(project), this._state.currentMemoryFile);
+        } catch (e) {
+          if (this._showToast) this._showToast({ type: 'error', title: t('memory.errorSaving', { message: e.message }) });
+          return;
+        }
       }
     }
 
     if (filePath) {
       try {
-        await fsp.writeFile(filePath, newContent, 'utf8');
+        await this._fsOf(filePath).writeFile(filePath, newContent, 'utf8');
         this._state.content = newContent;
       } catch (e) {
         if (this._showToast) this._showToast({ type: 'error', title: t('memory.errorSaving', { message: e.message }) });

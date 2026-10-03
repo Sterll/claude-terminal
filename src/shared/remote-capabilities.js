@@ -24,10 +24,15 @@ const { isRemotePath } = require('./remote-path');
 
 /** @type {Record<string, { remote: boolean, reasonKey: string }>} */
 const CAPABILITIES = Object.freeze({
-  // Local OS integrations: there is no local folder to show or to hand to an
-  // editor. VS Code over Remote-SSH comes with the Files slice.
+  // Local OS integrations: there is no local folder to show. An editor is
+  // refused too, except the VS Code family, which opens the host itself over
+  // its Remote-SSH extension: callers that know the editor ask
+  // canOpenInEditor(), which lets those through (REMOTE_EDITORS).
   openInExplorer: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.openInExplorer' }),
   openInEditor: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.openInEditor' }),
+  // Moving or copying between a local tree and a remote one would be a file
+  // transfer feature, which this iteration does not have.
+  crossRootTransfer: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.crossRootTransfer' }),
   // The remote host has its own `claude /login`; a local account overlay means
   // nothing there.
   accountBinding: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.accountBinding' }),
@@ -41,6 +46,19 @@ const CAPABILITIES = Object.freeze({
   // within the inline limits travel as content instead.
   pathAttachment: Object.freeze({ remote: false, reasonKey: 'ssh.disabled.pathAttachment' }),
 });
+
+/**
+ * Editors that open a remote file themselves: `<editor> --remote
+ * ssh-remote+<alias> <path>` through the Remote-SSH extension, which reads
+ * the same ~/.ssh/config the app does.
+ */
+const REMOTE_EDITORS = Object.freeze(['code', 'cursor', 'windsurf']);
+
+/** The command name of an editor setting: `C:\Tools\Code.cmd` and `code` both give `code`. */
+function editorFamily(editor) {
+  const base = String(editor || '').trim().split(/[\\/]/).pop() || '';
+  return base.replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+}
 
 /** True when `project` is a remote project (has a `remote` block or a remote URI path). */
 function isRemoteProject(project) {
@@ -59,6 +77,19 @@ function can(project, feature, table = CAPABILITIES) {
   const row = table[feature];
   if (!row || row.remote !== false) return { ok: true };
   return { ok: false, reasonKey: row.reasonKey };
+}
+
+/**
+ * Whether `editor` can open files of `project`. Always for a local project;
+ * for a remote one only the VS Code family, over Remote-SSH.
+ * @param {object} project
+ * @param {string} editor  the editor setting or command
+ * @returns {{ ok: true } | { ok: false, reasonKey: string }}
+ */
+function canOpenInEditor(project, editor) {
+  if (!isRemoteProject(project)) return { ok: true };
+  if (REMOTE_EDITORS.includes(editorFamily(editor))) return { ok: true };
+  return { ok: false, reasonKey: CAPABILITIES.openInEditor.reasonKey };
 }
 
 /**
@@ -81,4 +112,4 @@ function sameProject(a, b) {
   return a.path === b.path;
 }
 
-module.exports = { CAPABILITIES, isRemoteProject, can, sameProject };
+module.exports = { CAPABILITIES, REMOTE_EDITORS, editorFamily, isRemoteProject, can, canOpenInEditor, sameProject };

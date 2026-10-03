@@ -38,6 +38,11 @@ function createMdRenderer(basePath) {
         return `<a class="md-viewer-link" data-md-link="${safeHref}" title="${t('mdViewer.ctrlClickToOpen')}">${text || safeHref}</a>`;
       },
       image({ href, title, text }) {
+        // A remote (SSH) file's relative image is on its host, not on this
+        // machine: show the alt text rather than look for a local file.
+        if (!(href || '').startsWith('http') && require('../../../../shared/remote-path').isRemotePath(basePath)) {
+          return `<em class="md-viewer-img-alt">${escapeHtml(text || href || '')}</em>`;
+        }
         const src = (href || '').startsWith('http') ? href
           : `file:///${path.resolve(basePath, href || '').replace(/\\/g, '/')}`;
         return `<img src="${src}" alt="${escapeHtml(text || '')}" title="${escapeHtml(title || '')}" class="md-viewer-img" />`;

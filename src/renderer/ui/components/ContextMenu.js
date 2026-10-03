@@ -30,7 +30,7 @@ class ContextMenu extends BaseComponent {
       const danger = item.danger ? 'danger' : '';
 
       return `
-        <button class="context-menu-item ${disabled} ${danger}" data-index="${index}" ${disabled ? 'disabled' : ''}>
+        <button class="context-menu-item ${disabled} ${danger}" data-index="${index}" ${disabled ? 'disabled' : ''}${item.title ? ` title="${escapeHtml(item.title)}"` : ''}>
           ${item.icon ? `<span class="context-menu-icon">${item.icon}</span>` : ''}
           <span class="context-menu-label">${escapeHtml(item.label)}</span>
           ${item.shortcut ? `<span class="context-menu-shortcut">${escapeHtml(item.shortcut)}</span>` : ''}

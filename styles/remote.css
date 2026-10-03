@@ -711,3 +711,58 @@
   color: var(--text-secondary);
   font-size: var(--font-sm);
 }
+
+/* ── Remote files (explorer, Files screen, file tabs) ── */
+
+/* A remote root whose host is not connected: shown, not loaded. */
+.fe-remote-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.fe-remote-connect {
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.fe-remote-connect:hover,
+.fe-remote-connect:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* The host of an Overview root, coloured by its connection state. */
+.fe-root-host {
+  --ssh-state: var(--text-muted);
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--ssh-state);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-2xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+  flex-shrink: 0;
+}
+
+.fe-root-host--connected { --ssh-state: var(--success); }
+.fe-root-host--connecting,
+.fe-root-host--reconnecting { --ssh-state: var(--warning); }
+.fe-root-host--authFailed,
+.fe-root-host--hostKeyChanged,
+.fe-root-host--unsupported { --ssh-state: var(--danger); }
+.fe-root-host--hostKeyUnknown { --ssh-state: var(--info); }
+
+/* A relative image in a remote markdown file: its alt text, not a local lookup. */
+.md-viewer-img-alt {
+  color: var(--text-muted);
+}

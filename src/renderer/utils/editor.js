@@ -28,6 +28,18 @@ async function openInEditor(targetPath, opts = {}) {
   const { getSetting } = require('../state/settings.state');
   const editor = opts.editor || getSetting('editor') || 'code';
 
+  // A remote (SSH) path: only the VS Code family can open it, over its
+  // Remote-SSH extension. Any other editor is told why rather than spawned.
+  const remotePath = require('../../shared/remote-path');
+  if (remotePath.isRemotePath(targetPath)) {
+    const { canOpenInEditor } = require('../../shared/remote-capabilities');
+    const cap = canOpenInEditor({ path: targetPath }, editor);
+    if (!cap.ok) {
+      if (!opts.silent) require('../ui/components/Toast').showToast({ type: 'info', message: t(cap.reasonKey) });
+      return { success: false, error: cap.reasonKey };
+    }
+  }
+
   let res;
   try {
     res = await window.electron_api.dialog.openInEditor({ editor, path: targetPath });
@@ -39,7 +51,8 @@ async function openInEditor(targetPath, opts = {}) {
   // says nothing about the outcome and must not be read as a failure.
   if (res && res.success === false && !opts.silent) {
     const Toast = require('../ui/components/Toast');
-    Toast.showError(t('files.editorLaunchFailed', { editor }));
+    if (res.code === 'REMOTE_EDITOR_NEEDS_ALIAS') Toast.showError(t('ssh.files.editorNeedsAlias', { editor }));
+    else Toast.showError(t('files.editorLaunchFailed', { editor }));
   }
   return res || { success: true };
 }

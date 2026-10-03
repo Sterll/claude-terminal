@@ -160,6 +160,27 @@ describeSh('remoteFs over a real channel', () => {
     expect(matches.find((m) => m.file === "it's.md")).toMatchObject({ line: 2 });
   });
 
+  test('listDirs lists several directories in one request and reports a missing one', async () => {
+    const calls = [];
+    const counting = createRemoteFs({ exec: (script, opts) => { calls.push(script); return lane.request(script, opts); } });
+    const listing = await counting.listDirs([root, `${root}/sub dir`, `${root}/nope`]);
+    expect(calls).toHaveLength(1);
+    const top = listing.get(root);
+    expect(top.missing).toBe(false);
+    expect(top.entries).toEqual(expect.arrayContaining([{ name: 'a b.txt', isDirectory: false }, { name: 'sub dir', isDirectory: true }, { name: '.hidden', isDirectory: false }]));
+    expect(listing.get(`${root}/sub dir`).entries).toEqual(expect.arrayContaining([{ name: 'deep.txt', isDirectory: false }]));
+    expect(listing.get(`${root}/nope`)).toEqual({ missing: true, entries: [] });
+  });
+
+  test('canonicalize resolves existing ancestors with cd -P and keeps the rest of the path', async () => {
+    const canonicalRoot = await rfs.realpathDir(root);
+    const { home, entries } = await rfs.canonicalize([root, `${root}/sub dir/deep.txt`, `${root}/not/yet/here.txt`]);
+    expect(home).toMatch(/^\//);
+    expect(entries[0]).toEqual({ canonical: canonicalRoot, link: null });
+    expect(entries[1]).toEqual({ canonical: `${canonicalRoot}/sub dir/deep.txt`, link: null });
+    expect(entries[2]).toEqual({ canonical: `${canonicalRoot}/not/yet/here.txt`, link: null });
+  });
+
   test('relative paths and control characters are refused locally', async () => {
     await expect(rfs.stat('relative/x')).rejects.toMatchObject({ code: 'EINVAL' });
     await expect(rfs.stat(`${root}/a\nb`)).rejects.toThrow(/control character/);

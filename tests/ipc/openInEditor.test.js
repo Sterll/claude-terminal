@@ -42,6 +42,16 @@ jest.mock('electron', () => ({
 }));
 jest.mock('../../src/main/utils/rendererSecurity', () => ({ grant: jest.fn(), install: jest.fn() }));
 jest.mock('../../src/main/services/UpdaterService', () => ({}));
+// Remote projects resolve their URI to a stored host profile; the profile is
+// what the test varies.
+const mockRemote = { profile: null };
+jest.mock('../../src/main/utils/projectTarget', () => ({
+  resolveTarget: async (uri) => {
+    const { parse } = require('../../src/shared/remote-path');
+    const { profileId, path: remotePath } = parse(uri);
+    return { kind: 'remote', profileId, profile: mockRemote.profile, remotePath };
+  },
+}));
 
 const dialogIpc = require('../../src/main/ipc/dialog.ipc');
 
@@ -185,5 +195,68 @@ describe('every platform', () => {
       expect.objectContaining({ success: false })
     );
     expect(mockSpawnState.calls).toHaveLength(0);
+  });
+});
+
+/**
+ * A remote (SSH) project's file opens in the VS Code family over its
+ * Remote-SSH extension: `<editor> --remote ssh-remote+<alias> <path on the
+ * host>`. The destination comes from the stored profile, never from the
+ * renderer, and any other editor is refused rather than handed a URI.
+ */
+describe('remote projects', () => {
+  const URI = 'ssh-remote://abcd1234/home/y/api/src/a.js';
+  // The URI is resolved before the editor is spawned, so the child appears a few ticks later.
+  const spawned = async () => {
+    for (let i = 0; i < 20 && mockSpawnState.calls.length === 0; i++) await Promise.resolve();
+  };
+
+  beforeEach(() => {
+    setPlatform('linux');
+    mockRemote.profile = { id: 'abcd1234', sshConfigAlias: 'devbox' };
+  });
+
+  test('VS Code is launched with --remote ssh-remote+<alias> and the path on the host', async () => {
+    const promise = openInEditor({ editor: 'code', path: URI });
+    await spawned();
+    mockSpawnState.child.emit('spawn');
+    await expect(promise).resolves.toEqual({ success: true, editor: 'code', remote: true });
+    expect(mockSpawnState.calls[0][0]).toBe('code');
+    expect(mockSpawnState.calls[0][1]).toEqual(['--remote', 'ssh-remote+devbox', '/home/y/api/src/a.js']);
+  });
+
+  test('without an alias the authority is user@host', async () => {
+    mockRemote.profile = { id: 'abcd1234', host: 'build.example.com', user: 'y', port: 22 };
+    const promise = openInEditor({ editor: 'cursor', path: URI });
+    await spawned();
+    mockSpawnState.child.emit('spawn');
+    await promise;
+    expect(mockSpawnState.calls[0][1]).toEqual(['--remote', 'ssh-remote+y@build.example.com', '/home/y/api/src/a.js']);
+  });
+
+  test('a host that needs a port, a jump host or a key is refused without an alias', async () => {
+    for (const extra of [{ port: 2222 }, { proxyJump: 'bastion' }, { identityFile: '/k/id' }]) {
+      mockRemote.profile = { id: 'abcd1234', host: 'build.example.com', user: 'y', ...extra };
+      await expect(openInEditor({ editor: 'code', path: URI })).resolves.toMatchObject({ success: false, code: 'REMOTE_EDITOR_NEEDS_ALIAS' });
+    }
+    expect(mockSpawnState.calls).toHaveLength(0);
+  });
+
+  test('any other editor is refused and nothing is spawned', async () => {
+    for (const editor of ['webstorm', 'idea', 'subl', 'C:/Tools/notepad++.exe']) {
+      await expect(openInEditor({ editor, path: URI })).resolves.toMatchObject({ success: false, code: 'REMOTE_EDITOR_UNSUPPORTED' });
+    }
+    expect(mockSpawnState.calls).toHaveLength(0);
+  });
+
+  test('on macOS without the CLI shim the bundle gets the arguments after --args', async () => {
+    setPlatform('darwin');
+    const promise = openInEditor({ editor: 'code', path: URI });
+    await spawned();
+    mockSpawnState.child.emit('spawn');
+    mockSpawnState.child.emit('close', 0);
+    await promise;
+    expect(mockSpawnState.calls[0][0]).toBe('/usr/bin/open');
+    expect(mockSpawnState.calls[0][1]).toEqual(['-a', 'Visual Studio Code', '--args', '--remote', 'ssh-remote+devbox', '/home/y/api/src/a.js']);
   });
 });

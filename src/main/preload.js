@@ -256,6 +256,8 @@ contextBridge.exposeInMainWorld('electron_api', {
     stopWatch: () => ipcRenderer.send('explorer:stopWatch'),
     watchDir: (dirPath) => ipcRenderer.send('explorer:watchDir', dirPath),
     unwatchDir: (dirPath) => ipcRenderer.send('explorer:unwatchDir', dirPath),
+    // Remote directories are polled only while the explorer is on screen.
+    setVisible: (visible) => ipcRenderer.send('explorer:setVisible', visible === true),
     onChanges: createListener('explorer:changes'),
     onWatchLimitWarning: createListener('explorer:watchLimitWarning')
   },
@@ -388,6 +390,10 @@ contextBridge.exposeInMainWorld('electron_api', {
     mkdir: (profileId, path) => ipcRenderer.invoke('ssh-mkdir', { profileId, path }),
     init: (profileId, path) => ipcRenderer.invoke('ssh-init', { profileId, path }),
     clone: (params) => ipcRenderer.invoke('ssh-clone', params),
+    // Remote project files, async only: `{ op, path, ... }` with paths as
+    // ssh-remote:// URIs, authorised in main (src/renderer/utils/projectFs.js
+    // is the renderer side).
+    fs: (request) => ipcRenderer.invoke('ssh-fs', request),
     onStatusChanged: createListener('ssh-status-changed'),
   },
 

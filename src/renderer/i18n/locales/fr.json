@@ -4379,7 +4379,7 @@
     "viewRendered": "Rendu",
     "viewSource": "Source",
     "reloadFromDisk": "Recharger depuis le disque",
-    "editorLaunchFailed": "Impossible de lancer \u00ab\u202f{editor}\u202f\u00bb. V\u00e9rifiez l\u2019\u00e9diteur configur\u00e9 dans les R\u00e9glages.",
+    "editorLaunchFailed": "Impossible de lancer « {editor} ». Vérifiez l’éditeur configuré dans les Réglages.",
     "viewDiff": "Diff",
     "toggleSplit": "Unifié / côte à côte",
     "openInTab": "Ouvrir dans un onglet",
@@ -4564,11 +4564,12 @@
     },
     "disabled": {
       "openInExplorer": "Un projet distant n'a pas de dossier local à afficher.",
-      "openInEditor": "Ouvrir un projet distant dans un éditeur externe n'est pas encore pris en charge.",
+      "openInEditor": "Seuls VS Code, Cursor et Windsurf peuvent ouvrir un projet distant, via leur extension Remote-SSH. Choisissez l’un d’eux comme éditeur.",
       "accountBinding": "Un projet distant utilise la connexion Claude de l'hôte distant.",
       "cloudUpload": "L'envoi cloud compresse un dossier local : les projets distants ne peuvent pas être envoyés.",
       "sessionMove": "Les sessions d’un projet distant se trouvent sur son hôte et ne peuvent pas être déplacées vers un autre projet.",
-      "pathAttachment": "Un chemin de fichier local n’a pas de sens pour un chat distant. Les fichiers assez petits sont envoyés directement."
+      "pathAttachment": "Un chemin de fichier local n’a pas de sens pour un chat distant. Les fichiers assez petits sont envoyés directement.",
+      "crossRootTransfer": "Déplacer ou copier des fichiers entre un projet local et un projet distant (ou entre deux hôtes) n’est pas pris en charge."
     },
     "menu": {
       "section": "Hôte distant : {host}",
@@ -4684,6 +4685,12 @@
       "dashboardOffline": "{host} n'est pas connecté : derniers chiffres connus. Ils se mettent à jour dès le retour de l'hôte.",
       "worktreePathOnHost": "Chemin absolu sur {host}",
       "worktreePathInvalid": "Saisissez un chemin absolu sur l'hôte distant, commençant par /."
+    },
+    "files": {
+      "notConnected": "{host} n’est pas connecté. Ses fichiers se chargent dès qu’il l’est.",
+      "connect": "Se connecter",
+      "rootHost": "Sur {host}",
+      "editorNeedsAlias": "{editor} a besoin d’un alias ssh_config pour cet hôte, car il utilise un port, un hôte de rebond ou un fichier d’identité. Ajoutez une entrée Host dans ~/.ssh/config et utilisez-la dans le profil de l’hôte."
     }
   }
 }

@@ -23,6 +23,8 @@ const DiffRenderer = require('../../services/DiffRenderer');
 const MarkdownRenderer = require('../../services/MarkdownRenderer');
 const { getSetting, setSetting } = require('../../state');
 const { openInEditor } = require('../../utils/editor');
+const projectFs = require('../../utils/projectFs');
+const remotePath = require('../../../shared/remote-path');
 
 // Reading a whole file into the DOM has a ceiling; past this we show the head
 // and point at the editor.
@@ -80,8 +82,10 @@ function _modeLabel(mode, filePath) {
 }
 
 function _headerHtml(filePath, change, mode, diffMode, meta) {
-  const base = filePath.split(/[\\/]/).pop();
-  const dir = filePath.slice(0, filePath.length - base.length);
+  // A remote file is shown by its path on the host, not by its URI.
+  const shownPath = projectFs.isRemote(filePath) ? remotePath.toPosix(filePath) : filePath;
+  const base = shownPath.split(/[\\/]/).pop();
+  const dir = shownPath.slice(0, shownPath.length - base.length);
   const icon = getFileIcon(base, false, false);
 
   const stats = change
@@ -102,7 +106,7 @@ function _headerHtml(filePath, change, mode, diffMode, meta) {
   return `
     <div class="fv-header">
       <span class="fv-icon">${icon}</span>
-      <span class="fv-path" title="${escapeHtml(filePath)}">
+      <span class="fv-path" title="${escapeHtml(shownPath)}">
         <span class="fv-base">${escapeHtml(base)}</span><span class="fv-dir">${escapeHtml(dir)}</span>
       </span>
       ${stats}
@@ -149,10 +153,22 @@ async function _bodyHtml(filePath, change, mode, diffMode) {
   const ext = extOf(filePath);
   const fileUrl = 'file:///' + filePath.replace(/\\/g, '/').replace(/^\//, '');
 
+  const remote = projectFs.isRemote(filePath);
+
   // Source mode is only ever reachable for markdown, so these two never apply
   // to it; guarding anyway keeps the branch honest if the mode ever widens.
   if (mode !== 'source') {
     if (IMAGE_EXTS.has(ext)) {
+      if (remote) {
+        // Downloaded once into the local remote-cache, then shown like a local
+        // image: the CSP stays as it is.
+        try {
+          const local = await projectFs.mediaPath(filePath);
+          return `<div class="fv-media"><img src="${escapeHtml(projectFs.fileUrl(local))}" alt="${escapeHtml(remotePath.toPosix(filePath))}" draggable="false" /></div>`;
+        } catch (e) {
+          return `<div class="fv-empty fv-error">${escapeHtml(e.message)}</div>`;
+        }
+      }
       return `<div class="fv-media"><img src="${escapeHtml(fileUrl)}" alt="${escapeHtml(filePath)}" draggable="false" /></div>`;
     }
     if (HANDOFF_EXTS.has(ext)) {
@@ -164,14 +180,16 @@ async function _bodyHtml(filePath, change, mode, diffMode) {
   }
 
   const { fs } = window.electron_nodeModules;
+  // The async ssh.fs facade for a remote file; the very same calls otherwise.
+  const fsApi = remote ? projectFs.remoteFsPromises : fs.promises;
   let content;
   try {
-    const stat = await fs.promises.stat(filePath);
+    const stat = await fsApi.stat(filePath);
     if (stat.size > MAX_CONTENT_BYTES) {
       return `<div class="fv-empty"><p>${escapeHtml(t('files.tooLarge', { size: fmtSize(stat.size) }))}</p>
         <button class="fv-handoff" data-action="open-editor">${escapeHtml(t('files.openInEditor'))}</button></div>`;
     }
-    content = await fs.promises.readFile(filePath, 'utf8');
+    content = await fsApi.readFile(filePath, 'utf8');
   } catch (e) {
     return `<div class="fv-empty fv-error">${escapeHtml(e.message)}</div>`;
   }

@@ -54,6 +54,7 @@ const {
 } = require('../themes/terminal-themes');
 const registry = require('../../../project-types/registry');
 const { createChatView } = require('./ChatView');
+const projectFs = require('../../utils/projectFs');
 const { showContextMenu } = require('./ContextMenu');
 const { showConfirm } = require('./Modal');
 const ContextPromptService = require('../../services/ContextPromptService');
@@ -3511,7 +3512,11 @@ class TerminalManager extends BaseComponent {
     }
 
     const id = `file-${Date.now()}`;
-    const fileName = this._path.basename(filePath);
+    // A remote (SSH) file is a URI: POSIX path rules, the async ssh.fs facade,
+    // and media through the local remote-cache copy. Never the sync bridge.
+    const isRemoteFile = projectFs.isRemote(filePath);
+    const pathApi = isRemoteFile ? projectFs.remotePathApi : this._path;
+    const fileName = pathApi.basename(filePath);
     const ext = fileName.lastIndexOf('.') !== -1 ? fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase() : '';
     const projectIndex = project ? getProjectIndex(project.id) : null;
 
@@ -3530,14 +3535,29 @@ class TerminalManager extends BaseComponent {
 
     let content = '';
     let fileSize = 0;
-    try {
-      const stat = await this._fsp.stat(filePath);
-      fileSize = stat.size;
-      if (!isMedia) {
-        content = await this._fsp.readFile(filePath, 'utf-8');
+    let mediaLocalPath = null;
+    if (isRemoteFile) {
+      try {
+        const stat = await projectFs.remoteFsPromises.stat(filePath);
+        fileSize = stat.size;
+        if (isMedia) {
+          mediaLocalPath = await projectFs.mediaPath(filePath);
+        } else {
+          content = await projectFs.remoteFsPromises.readFile(filePath, 'utf-8');
+        }
+      } catch (e) {
+        content = `Error reading file: ${e.message}`;
       }
-    } catch (e) {
-      content = `Error reading file: ${e.message}`;
+    } else {
+      try {
+        const stat = await this._fsp.stat(filePath);
+        fileSize = stat.size;
+        if (!isMedia) {
+          content = await this._fsp.readFile(filePath, 'utf-8');
+        }
+      } catch (e) {
+        content = `Error reading file: ${e.message}`;
+      }
     }
 
     let sizeStr;
@@ -3572,9 +3592,15 @@ class TerminalManager extends BaseComponent {
     wrapper.dataset.id = id;
 
     let viewerBody;
-    const fileUrl = `file:///${filePath.replace(/\\/g, '/').replace(/^\//, '')}`;
+    const fileUrl = `file:///${(mediaLocalPath || filePath).replace(/\\/g, '/').replace(/^\//, '')}`;
 
-    if (isImage) {
+    if (isRemoteFile && isMedia && !mediaLocalPath) {
+      // The preview download failed (too large, host away): say why.
+      viewerBody = `
+    <div class="file-viewer-content">
+      <pre class="file-viewer-code"><code>${escapeHtml(content)}</code></pre>
+    </div>`;
+    } else if (isImage) {
       viewerBody = `
     <div class="file-viewer-media">
       <img src="${fileUrl}" alt="${escapeHtml(fileName)}" draggable="false" />
@@ -3603,7 +3629,7 @@ class TerminalManager extends BaseComponent {
       termData.is3D = true;
       termData.modelExt = ext;
     } else if (isMarkdown) {
-      const basePath = this._path.dirname(filePath);
+      const basePath = pathApi.dirname(filePath);
       const mdRenderer = createMdRenderer(basePath);
       const renderedHtml = mdRenderer.parse(content);
       const tocHtml = buildMdToc(content);
@@ -3659,7 +3685,7 @@ class TerminalManager extends BaseComponent {
       <span class="file-viewer-icon">${fileIcon}</span>
       <span class="file-viewer-name">${escapeHtml(fileName)}</span>
       <span class="file-viewer-meta">${sizeStr}</span>
-      <span class="file-viewer-path" title="${escapeHtml(filePath)}">${escapeHtml(filePath)}</span>
+      <span class="file-viewer-path" title="${escapeHtml(filePath)}">${escapeHtml(isRemoteFile ? require('../../../shared/remote-path').toPosix(filePath) : filePath)}</span>
     </div>
     ${viewerBody}
   `;
@@ -3768,7 +3794,10 @@ class TerminalManager extends BaseComponent {
         clearTimeout(reloadTimer);
         reloadTimer = setTimeout(async () => {
           try {
-            const newContent = await self._fsp.readFile(filePath, 'utf-8');
+            // A remote file's change comes from main's stat poll; read it back over ssh.
+            const newContent = isRemoteFile
+              ? await projectFs.remoteFsPromises.readFile(filePath, 'utf-8')
+              : await self._fsp.readFile(filePath, 'utf-8');
             const bodyEl = document.getElementById(`md-body-${id}`);
             if (!bodyEl) return;
             const scroll = bodyEl.scrollTop;

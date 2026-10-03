@@ -15,6 +15,14 @@ const { t } = require('../../i18n');
 const { copyText } = require('../../utils/clipboard');
 const { fileExists, copyDirRecursive, fsp } = require('../../utils/fs-async');
 const { openInEditor } = require('../../utils/editor');
+const projectFs = require('../../utils/projectFs');
+const remotePath = require('../../../shared/remote-path');
+const { canOpenInEditor } = require('../../../shared/remote-capabilities');
+
+// A remote (SSH) root's git badges refresh less often: every poll is a round
+// trip to its host.
+const REMOTE_GIT_POLL_MS = 30000;
+const LOCAL_GIT_POLL_MS = 10000;
 
 // Default ignore patterns
 const DEFAULT_IGNORE_PATTERNS = [
@@ -66,6 +74,9 @@ function promptForName(title, message) {
 }
 
 function isPathSafe(targetPath, rootPath, pathModule) {
+  // A local path against a remote root (or the reverse) is never inside it,
+  // and remote-path throws rather than guess on a mixed pair.
+  if (!projectFs.sameSide(targetPath, rootPath)) return false;
   const resolved = pathModule.resolve(targetPath);
   const root = pathModule.resolve(rootPath);
   return resolved.startsWith(root + pathModule.sep) || resolved === root;
@@ -76,12 +87,16 @@ function sanitizeFileName(name) {
 }
 
 function isDescendant(parentPath, childPath, pathModule) {
+  if (!projectFs.sameSide(parentPath, childPath)) return false;
   const resolvedParent = pathModule.resolve(parentPath);
   const resolvedChild = pathModule.resolve(childPath);
   return resolvedChild.startsWith(resolvedParent + pathModule.sep);
 }
 
 function getGitBadgeHtml(absolutePath, isDirectory, gitStatusMap, rootPath, pathModule) {
+  // In the Overview, a node of another side than the active root has no
+  // status in its map (and no relative path to it).
+  if (rootPath && !projectFs.sameSide(rootPath, absolutePath)) return '';
   const gitStatus = isDirectory
     ? getFolderGitStatus(absolutePath, gitStatusMap, rootPath, pathModule)
     : getGitStatusForPath(absolutePath, gitStatusMap, rootPath, pathModule);
@@ -164,6 +179,12 @@ class FileExplorer extends BaseComponent {
 
     this._currentSortMode = 'name';
 
+    // What the main process was last told about the explorer being on screen
+    // with a remote root: it is what lets main poll remote directories.
+    this._remoteVisibleSent = false;
+    this._gitPollRemote = false;
+    this._remoteHostsUnsub = null;
+
     const self = this;
     this._performSearch = debounce(async () => {
       const query = self._searchQuery.trim().toLowerCase();
@@ -189,6 +210,16 @@ class FileExplorer extends BaseComponent {
 
       self._isContentSearching = true;
       self.render();
+
+      // A remote tree is searched on its host in one request, never file by file.
+      if (projectFs.isRemote(self._rootPath)) {
+        const remoteResults = await self._remoteContentSearch(self._rootPath, query);
+        if (self._contentSearchQuery.trim() !== query) return;
+        self._contentSearchResults = remoteResults;
+        self._isContentSearching = false;
+        self.render();
+        return;
+      }
 
       const results = [];
       const allFiles = await self._collectAllFiles(self._rootPath, 3000);
@@ -238,6 +269,197 @@ class FileExplorer extends BaseComponent {
     Object.assign(this._callbacks, cbs);
   }
 
+  // ========== PER-ROOT BACKENDS ==========
+  // The nodes of a remote (SSH) root are ssh-remote:// URIs: they go through
+  // POSIX path rules and the async ssh.fs facade. A local path keeps
+  // this._path and the very fs-async functions it always used.
+
+  _pathFor(p) {
+    return projectFs.isRemote(p) ? projectFs.remotePathApi : this._path;
+  }
+
+  _ops(p) {
+    if (projectFs.isRemote(p)) {
+      const r = projectFs.remoteFsPromises;
+      return {
+        exists: projectFs.exists, stat: r.stat, rm: r.rm, unlink: r.unlink, rename: r.rename,
+        writeFile: r.writeFile, mkdir: r.mkdir, copyFile: r.copyFile, copyDir: projectFs.copyRecursive,
+      };
+    }
+    return {
+      exists: (a) => fileExists(a),
+      stat: (...a) => fsp.stat(...a),
+      rm: (...a) => fsp.rm(...a),
+      unlink: (...a) => fsp.unlink(...a),
+      rename: (...a) => fsp.rename(...a),
+      writeFile: (...a) => fsp.writeFile(...a),
+      mkdir: (...a) => fsp.mkdir(...a),
+      copyFile: (...a) => fsp.copyFile(...a),
+      copyDir: (...a) => copyDirRecursive(...a),
+    };
+  }
+
+  /**
+   * A move or a copy between a local root and a remote one (or two hosts)
+   * would be a file transfer, which this iteration does not have: refused
+   * with a toast rather than skipped silently.
+   */
+  _refuseCrossSide(sourcePaths, targetDir) {
+    if (!targetDir || sourcePaths.every(p => projectFs.sameSide(p, targetDir))) return false;
+    Toast.showToast({ type: 'info', message: t('ssh.disabled.crossRootTransfer') });
+    return true;
+  }
+
+  _hasRemoteRoot() {
+    return projectFs.isRemote(this._rootPath) || this._extraRoots.some(p => projectFs.isRemote(p));
+  }
+
+  /** Tell main whether a remote tree is on screen; sent only when that changes. */
+  _syncRemoteVisibility() {
+    const want = this._isVisible && this._hasRemoteRoot();
+    if (want === this._remoteVisibleSent) return;
+    this._remoteVisibleSent = want;
+    if (this._api.explorer && typeof this._api.explorer.setVisible === 'function') this._api.explorer.setVisible(want);
+  }
+
+  /** The host of a remote root, from the connection state the badges use. */
+  _remoteHostOf(rootPath) {
+    const parsed = remotePath.tryParse(rootPath);
+    if (!parsed) return null;
+    const hosts = require('../../state/remoteHosts.state');
+    const status = hosts.getHostStatus(parsed.profileId);
+    const profile = hosts.getHostProfile(parsed.profileId);
+    return {
+      profileId: parsed.profileId,
+      state: status.state,
+      label: (profile && hosts.hostLabelOf(profile)) || t('ssh.unknownHost'),
+    };
+  }
+
+  /** Repaint when a remote root's host changes state: the connect placeholder gives way to the tree. */
+  _watchRemoteHosts() {
+    if (this._remoteHostsUnsub || !this._hasRemoteRoot()) return;
+    const { remoteHostsState } = require('../../state/remoteHosts.state');
+    let last = '';
+    this._remoteHostsUnsub = remoteHostsState.subscribe(() => {
+      if (!this._hasRemoteRoot() || !this._isVisible) return;
+      const sig = this._allRoots().filter(p => projectFs.isRemote(p)).map(p => {
+        const host = this._remoteHostOf(p);
+        return host ? host.state : '';
+      }).join('|');
+      if (sig === last) return;
+      last = sig;
+      this.render();
+    });
+  }
+
+  /**
+   * A remote root whose host is not connected and whose tree was never read
+   * is shown as a connect affordance, not loaded: selection alone (the
+   * startup restore included) must not open a connection.
+   */
+  _remoteRootPlaceholder(rootPath) {
+    if (!projectFs.isRemote(rootPath)) return null;
+    const entry = this._expandedFolders.get(rootPath);
+    if (entry && (entry.loaded || entry.loading)) return null;
+    const host = this._remoteHostOf(rootPath);
+    if (!host || host.state === 'connected') return null;
+    return host;
+  }
+
+  _remotePlaceholderHtml(host) {
+    return `<div class="fe-empty fe-remote-placeholder" data-profile-id="${escapeHtml(host.profileId)}">
+      <span>${escapeHtml(t('ssh.files.notConnected', { host: host.label }))}</span>
+      <button class="fe-remote-connect" data-profile-id="${escapeHtml(host.profileId)}">${escapeHtml(t('ssh.files.connect'))}</button>
+    </div>`;
+  }
+
+  /** One remote content search: `git grep` (else `grep -r`) on the host, grouped per file. */
+  async _remoteContentSearch(rootUri, query) {
+    let res;
+    try {
+      res = await projectFs.grep(rootUri, query, { ignoreCase: true });
+    } catch {
+      return [];
+    }
+    const ignorePatterns = getIgnorePatterns();
+    const byFile = new Map();
+    for (const m of res.matches) {
+      if (m.file.split('/').some(seg => ignorePatterns.has(seg))) continue;
+      let entry = byFile.get(m.file);
+      if (!entry) {
+        if (byFile.size >= 100) continue;
+        let full;
+        try { full = remotePath.join(rootUri, m.file); } catch { continue; }
+        entry = { name: remotePath.basename(full), path: full, matches: [] };
+        byFile.set(m.file, entry);
+      }
+      if (entry.matches.length < 3) entry.matches.push({ line: m.line, text: m.text.trim().substring(0, 200) });
+    }
+    return [...byFile.values()];
+  }
+
+  /** Every file of a remote tree in one request (`git ls-files`, else `find`), filtered like the local walk. */
+  async _collectRemoteFiles(rootUri, maxFiles) {
+    const { getSetting } = require('../../state/settings.state');
+    const showDotfiles = getSetting('showDotfiles');
+    const ignorePatterns = getIgnorePatterns();
+    let listing;
+    try {
+      listing = await projectFs.listFiles(rootUri);
+    } catch {
+      return [];
+    }
+    const results = [];
+    for (const rel of listing.files) {
+      const segments = rel.split('/');
+      if (segments.some(seg => ignorePatterns.has(seg))) continue;
+      if (showDotfiles === false && segments.some(seg => seg.startsWith('.'))) continue;
+      let full;
+      try { full = remotePath.join(rootUri, rel); } catch { continue; }
+      results.push({ name: segments[segments.length - 1], path: full });
+      if (results.length >= maxFiles) break;
+    }
+    return results;
+  }
+
+  /** One request per directory: names, kinds, sizes and mtimes together. */
+  async _readRemoteDirectory(dirPath) {
+    try {
+      const { getSetting } = require('../../state/settings.state');
+      const showDotfiles = getSetting('showDotfiles');
+      const ignorePatterns = getIgnorePatterns();
+      const entries = await projectFs.remoteFsPromises.readdir(dirPath, { withFileTypes: true });
+      const result = [];
+      let skipped = 0;
+      for (const entry of entries) {
+        if (ignorePatterns.has(entry.name)) continue;
+        if (showDotfiles === false && entry.name.startsWith('.')) continue;
+        if (result.length >= MAX_DISPLAY_ENTRIES) {
+          skipped++;
+          continue;
+        }
+        let fullPath;
+        try { fullPath = remotePath.join(dirPath, entry.name); } catch { continue; }
+        result.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory(),
+          size: entry.size || 0,
+          mtime: entry.mtimeMs || 0,
+        });
+      }
+      this._sortEntries(result);
+      if (skipped > 0) {
+        const truncLabel = (t('fileExplorer.truncatedItems') || '{count} more items hidden').replace('{count}', skipped);
+        result.push({ name: truncLabel, path: null, isDirectory: false, isTruncated: true });
+      }
+      return result;
+    } catch (e) {
+      return [];
+    }
+  }
+
   // ========== ROOT PATH ==========
   setRootPath(projectPath) {
     if (this._rootPath === projectPath) return;
@@ -258,6 +480,14 @@ class FileExplorer extends BaseComponent {
       this.render();
     }
     this._updateSearchBarVisibility();
+    // Remote roots: visibility for main's poller, a slower git poll, and a
+    // repaint when the host connects. Nothing changes for two local roots.
+    if (this._hasRemoteRoot()) this._watchRemoteHosts();
+    this._syncRemoteVisibility();
+    if (this._gitPollingInterval && this._gitPollRemote !== projectFs.isRemote(this._rootPath)) {
+      this._stopGitStatusPolling();
+      this._startGitStatusPolling();
+    }
   }
 
   // ========== VISIBILITY ==========
@@ -268,6 +498,7 @@ class FileExplorer extends BaseComponent {
       this._isVisible = true;
       this._startGitStatusPolling();
       this._updateSearchBarVisibility();
+      this._syncRemoteVisibility();
     }
   }
 
@@ -284,6 +515,7 @@ class FileExplorer extends BaseComponent {
       panel.style.display = 'none';
       this._isVisible = false;
       this._stopGitStatusPolling();
+      this._syncRemoteVisibility();
     }
   }
 
@@ -319,7 +551,8 @@ class FileExplorer extends BaseComponent {
    */
   _sessionRollupFor(dirPath) {
     if (!this._sessionFiles) return null;
-    const prefix = dirPath.endsWith(this._path.sep) ? dirPath : dirPath + this._path.sep;
+    const sep = this._pathFor(dirPath).sep;
+    const prefix = dirPath.endsWith(sep) ? dirPath : dirPath + sep;
     let files = 0, additions = 0, deletions = 0;
     for (const [p, s] of this._sessionFiles) {
       if (!p.startsWith(prefix)) continue;
@@ -345,11 +578,12 @@ class FileExplorer extends BaseComponent {
     if (!this._rootPath || !paths || !paths.length) { this.render(); return; }
     const wanted = new Set();
     for (const p of paths) {
-      let dir = this._path.dirname(p);
+      const pm = this._pathFor(p);
+      let dir = pm.dirname(p);
       // Walk up to the root, collecting each ancestor inside the project.
       while (dir && dir.startsWith(this._rootPath) && dir !== this._rootPath) {
         wanted.add(dir);
-        const parent = this._path.dirname(dir);
+        const parent = pm.dirname(dir);
         if (parent === dir) break;
         dir = parent;
       }
@@ -383,13 +617,19 @@ class FileExplorer extends BaseComponent {
   // ========== GIT STATUS ==========
   async _refreshGitStatus() {
     if (!this._rootPath) return;
+    // A git read would connect an idle host: badges wait for it to be up.
+    if (projectFs.isRemote(this._rootPath)) {
+      const host = this._remoteHostOf(this._rootPath);
+      if (!host || host.state !== 'connected') return;
+    }
     try {
       const result = await this._api.git.statusDetailed({ projectPath: this._rootPath });
       if (!result || !result.success) return;
 
       this._gitStatusMap.clear();
+      const sep = this._pathFor(this._rootPath).sep;
       for (const file of result.files) {
-        const normalized = file.path.replace(/\//g, this._path.sep);
+        const normalized = file.path.replace(/\//g, sep);
         this._gitStatusMap.set(normalized, { status: file.status, staged: file.staged });
       }
 
@@ -405,7 +645,8 @@ class FileExplorer extends BaseComponent {
     if (this._gitPollingInterval) return;
     this._refreshGitStatus();
     const self = this;
-    this._gitPollingInterval = setInterval(() => self._refreshGitStatus(), 10000);
+    this._gitPollRemote = projectFs.isRemote(this._rootPath);
+    this._gitPollingInterval = setInterval(() => self._refreshGitStatus(), this._gitPollRemote ? REMOTE_GIT_POLL_MS : LOCAL_GIT_POLL_MS);
   }
 
   _stopGitStatusPolling() {
@@ -424,7 +665,7 @@ class FileExplorer extends BaseComponent {
       const nodePath = node.dataset.path;
       const isDir = node.dataset.isDir === 'true';
       const existingBadge = node.querySelector('.fe-git-status');
-      const newBadgeHtml = getGitBadgeHtml(nodePath, isDir, this._gitStatusMap, this._rootPath, this._path);
+      const newBadgeHtml = getGitBadgeHtml(nodePath, isDir, this._gitStatusMap, this._rootPath, this._pathFor(this._rootPath));
 
       if (existingBadge) {
         if (!newBadgeHtml) {
@@ -443,6 +684,7 @@ class FileExplorer extends BaseComponent {
 
   // ========== FILE SYSTEM ==========
   async _readDirectoryAsync(dirPath) {
+    if (projectFs.isRemote(dirPath)) return this._readRemoteDirectory(dirPath);
     try {
       const exists = await this._fs.promises.access(dirPath).then(() => true).catch(() => false);
       if (!exists) return [];
@@ -558,7 +800,8 @@ class FileExplorer extends BaseComponent {
       const affectedParents = new Set();
 
       for (const change of changes) {
-        const parentDir = this._path.dirname(change.path);
+        const pm = this._pathFor(change.path);
+        const parentDir = pm.dirname(change.path);
 
         if (change.type === 'add') {
           const entry = this._expandedFolders.get(parentDir);
@@ -571,7 +814,7 @@ class FileExplorer extends BaseComponent {
             entry.children = entry.children.filter(c => c.path !== change.path);
           }
           if (change.isDirectory) {
-            const prefix = change.path + this._path.sep;
+            const prefix = change.path + pm.sep;
             for (const key of [...this._expandedFolders.keys()]) {
               if (key === change.path || key.startsWith(prefix)) {
                 this._expandedFolders.delete(key);
@@ -657,6 +900,7 @@ class FileExplorer extends BaseComponent {
 
   // ========== SEARCH ==========
   async _collectAllFiles(dirPath, maxFiles = 5000) {
+    if (projectFs.isRemote(dirPath)) return this._collectRemoteFiles(dirPath, maxFiles);
     const { getSetting } = require('../../state/settings.state');
     const showDotfiles = getSetting('showDotfiles');
     const ignorePatterns = getIgnorePatterns();
@@ -697,7 +941,8 @@ class FileExplorer extends BaseComponent {
     const parts = [];
     for (const file of this._searchResults.slice(0, 200)) {
       const icon = getFileIcon(file.name, false, false);
-      const relativePath = this._rootPath ? this._path.relative(this._rootPath, this._path.dirname(file.path)) : '';
+      const spm = this._pathFor(file.path);
+      const relativePath = this._rootPath ? spm.relative(this._rootPath, spm.dirname(file.path)) : '';
       const isSelected = this._selectedFiles.has(file.path);
 
       const query = this._searchQuery.trim().toLowerCase();
@@ -789,16 +1034,18 @@ class FileExplorer extends BaseComponent {
 
   async _executeRename(filePath, newName) {
     const sanitized = sanitizeFileName(newName);
-    const dirPath = this._path.dirname(filePath);
-    const newPath = this._path.join(dirPath, sanitized);
+    const pm = this._pathFor(filePath);
+    const ops = this._ops(filePath);
+    const dirPath = pm.dirname(filePath);
+    const newPath = pm.join(dirPath, sanitized);
 
-    if (!isPathSafe(newPath, this._rootPath, this._path)) {
+    if (!isPathSafe(newPath, this._rootPath, pm)) {
       Toast.showError(t('fileExplorer.errorOutsideProject'));
       this.render();
       return;
     }
 
-    if (await fileExists(newPath)) {
+    if (await ops.exists(newPath)) {
       const overwrite = await showConfirm({
         title: t('fileExplorer.rename') || 'Rename',
         message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', sanitized),
@@ -810,11 +1057,11 @@ class FileExplorer extends BaseComponent {
         return;
       }
       try {
-        const stat = await fsp.stat(newPath);
+        const stat = await ops.stat(newPath);
         if (stat.isDirectory()) {
-          await fsp.rm(newPath, { recursive: true, force: true });
+          await ops.rm(newPath, { recursive: true, force: true });
         } else {
-          await fsp.unlink(newPath);
+          await ops.unlink(newPath);
         }
       } catch (e) {
         Toast.showError(`${t('common.error')}: ${e.message}`);
@@ -824,7 +1071,7 @@ class FileExplorer extends BaseComponent {
     }
 
     try {
-      await fsp.rename(filePath, newPath);
+      await ops.rename(filePath, newPath);
 
       if (this._expandedFolders.has(filePath)) {
         const entry = this._expandedFolders.get(filePath);
@@ -871,15 +1118,17 @@ class FileExplorer extends BaseComponent {
 
   // ========== COPY NAME GENERATION ==========
   async generateCopyName(targetDir, baseName) {
-    const ext = this._path.extname(baseName);
+    const pm = this._pathFor(targetDir);
+    const ops = this._ops(targetDir);
+    const ext = pm.extname(baseName);
     const nameNoExt = ext ? baseName.slice(0, -ext.length) : baseName;
     let counter = 1;
     let newPath;
     do {
       const newName = ext ? `${nameNoExt} (${counter})${ext}` : `${nameNoExt} (${counter})`;
-      newPath = this._path.join(targetDir, newName);
+      newPath = pm.join(targetDir, newName);
       counter++;
-    } while (await fileExists(newPath));
+    } while (await ops.exists(newPath));
     return newPath;
   }
 
@@ -895,24 +1144,27 @@ class FileExplorer extends BaseComponent {
     if (this._copiedPaths.length === 0 || !targetDir) return;
 
     const sourcePaths = [...this._copiedPaths];
+    if (this._refuseCrossSide(sourcePaths, targetDir)) return;
+    const pm = this._pathFor(targetDir);
+    const ops = this._ops(targetDir);
 
     for (const sourcePath of sourcePaths) {
-      const baseName = this._path.basename(sourcePath);
-      let destPath = this._path.join(targetDir, baseName);
+      const baseName = pm.basename(sourcePath);
+      let destPath = pm.join(targetDir, baseName);
 
       if (sourcePath === destPath) continue;
-      if (!isPathSafe(destPath, this._rootPath, this._path)) continue;
+      if (!isPathSafe(destPath, this._rootPath, pm)) continue;
 
-      if (await fileExists(destPath)) {
+      if (await ops.exists(destPath)) {
         destPath = await this.generateCopyName(targetDir, baseName);
       }
 
       try {
-        const stat = await fsp.stat(sourcePath);
+        const stat = await ops.stat(sourcePath);
         if (stat.isDirectory()) {
-          await copyDirRecursive(sourcePath, destPath);
+          await ops.copyDir(sourcePath, destPath);
         } else {
-          await fsp.copyFile(sourcePath, destPath);
+          await ops.copyFile(sourcePath, destPath);
         }
       } catch (e) {
         // Skip failed copies
@@ -926,16 +1178,18 @@ class FileExplorer extends BaseComponent {
 
   // ========== DUPLICATE FILE ==========
   async _duplicateFile(filePath) {
-    const dirPath = this._path.dirname(filePath);
-    const baseName = this._path.basename(filePath);
+    const pm = this._pathFor(filePath);
+    const ops = this._ops(filePath);
+    const dirPath = pm.dirname(filePath);
+    const baseName = pm.basename(filePath);
     const destPath = await this.generateCopyName(dirPath, baseName);
 
     try {
-      const stat = await fsp.stat(filePath);
+      const stat = await ops.stat(filePath);
       if (stat.isDirectory()) {
-        await copyDirRecursive(filePath, destPath);
+        await ops.copyDir(filePath, destPath);
       } else {
-        await fsp.copyFile(filePath, destPath);
+        await ops.copyFile(filePath, destPath);
       }
 
       await this._refreshFolder(dirPath);
@@ -965,7 +1219,7 @@ class FileExplorer extends BaseComponent {
 
     for (const file of this._contentSearchResults) {
       const icon = getFileIcon(file.name, false, false);
-      const relativePath = this._rootPath ? this._path.relative(this._rootPath, file.path) : file.path;
+      const relativePath = this._rootPath ? this._pathFor(file.path).relative(this._rootPath, file.path) : file.path;
       const isSelected = this._selectedFiles.has(file.path);
 
       parts.push(`<div class="fe-node fe-file fe-search-result ${isSelected ? 'selected' : ''}"
@@ -1036,6 +1290,8 @@ class FileExplorer extends BaseComponent {
       && next.every((p, i) => p === this._extraRoots[i]);
     if (same) return;
     this._extraRoots = next;
+    if (this._hasRemoteRoot()) this._watchRemoteHosts();
+    this._syncRemoteVisibility();
   }
 
   /** Every root to draw, active project first, in project-bar order. */
@@ -1057,7 +1313,8 @@ class FileExplorer extends BaseComponent {
     } else if (this._searchQuery.trim()) {
       treeEl.innerHTML = this._renderSearchResults();
     } else if (roots.length === 1) {
-      treeEl.innerHTML = this._renderTreeNodes(roots[0], 0);
+      const placeholder = this._remoteRootPlaceholder(roots[0]);
+      treeEl.innerHTML = placeholder ? this._remotePlaceholderHtml(placeholder) : this._renderTreeNodes(roots[0], 0);
     } else {
       treeEl.innerHTML = roots.map(r => this._renderRootNode(r)).join('');
     }
@@ -1066,7 +1323,13 @@ class FileExplorer extends BaseComponent {
 
   /** A project as a collapsible top-level folder, for the Overview tree. */
   _renderRootNode(rootPath) {
-    const name = this._path.basename(rootPath) || rootPath;
+    const name = this._pathFor(rootPath).basename(rootPath) || rootPath;
+    // A remote root stays collapsed behind its host state until the host is
+    // connected, so a dead host never stalls the Overview.
+    const remoteHost = projectFs.isRemote(rootPath) ? this._remoteHostOf(rootPath) : null;
+    const hostHtml = remoteHost
+      ? `<span class="fe-root-host fe-root-host--${escapeHtml(remoteHost.state)}" title="${escapeHtml(t('ssh.files.rootHost', { host: remoteHost.label }))}">${escapeHtml(remoteHost.label)}</span>`
+      : '';
     const isExpanded = this._expandedFolders.has(rootPath) && this._expandedFolders.get(rootPath).loaded;
     const roll = this._sessionRollupFor(rootPath);
     const badge = roll
@@ -1078,6 +1341,7 @@ class FileExplorer extends BaseComponent {
       <span class="fe-node-chevron ${isExpanded ? 'expanded' : ''}">${CHEVRON_ICON}</span>
       <span class="fe-node-icon">${getFileIcon(name, true, isExpanded)}</span>
       <span class="fe-node-name" title="${escapeHtml(rootPath)}">${escapeHtml(name)}</span>
+      ${hostHtml}
       ${badge}
     </div>${isExpanded ? this._renderTreeNodes(rootPath, 1) : ''}`;
   }
@@ -1117,7 +1381,7 @@ class FileExplorer extends BaseComponent {
         ? `<span class="fe-node-chevron ${isExpanded ? 'expanded' : ''}">${CHEVRON_ICON}</span>`
         : `<span class="fe-node-chevron-spacer"></span>`;
 
-      const gitBadge = getGitBadgeHtml(item.path, item.isDirectory, this._gitStatusMap, this._rootPath, this._path);
+      const gitBadge = getGitBadgeHtml(item.path, item.isDirectory, this._gitStatusMap, this._rootPath, this._pathFor(this._rootPath));
       const sessionBadge = this._sessionBadgeHtml(item);
 
       parts.push(`<div class="fe-node ${isSelected ? 'selected' : ''} ${isCut ? 'fe-cut' : ''} ${isCopied ? 'fe-copied' : ''} ${item.isDirectory ? 'fe-dir' : 'fe-file'}${sessionBadge ? ' fe-session-touched' : ''}"
@@ -1167,8 +1431,10 @@ class FileExplorer extends BaseComponent {
   _showFileContextMenu(e, filePath, isDirectory) {
     e.preventDefault();
     e.stopPropagation();
-    const fileName = this._path.basename(filePath);
-    const relativePath = this._rootPath ? this._path.relative(this._rootPath, filePath) : filePath;
+    const pm = this._pathFor(filePath);
+    const isRemoteNode = projectFs.isRemote(filePath);
+    const fileName = pm.basename(filePath);
+    const relativePath = this._rootPath && projectFs.sameSide(this._rootPath, filePath) ? pm.relative(this._rootPath, filePath) : filePath;
 
     if (!this._selectedFiles.has(filePath)) {
       this._selectedFiles.clear();
@@ -1252,9 +1518,14 @@ class FileExplorer extends BaseComponent {
         onClick: async () => { await this._refreshFolder(filePath); this.render(); }
       });
     } else {
+      // A remote file opens only in the VS Code family, over Remote-SSH.
+      const editorCap = isRemoteNode
+        ? canOpenInEditor({ path: filePath }, require('../../state/settings.state').getSetting('editor') || 'code')
+        : { ok: true };
       items.push({
         label: t('fileExplorer.openInEditor') || 'Open in editor',
         icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
+        ...(editorCap.ok ? {} : { disabled: true, title: t(editorCap.reasonKey) }),
         onClick: () => openInEditor(filePath)
       });
 
@@ -1272,7 +1543,7 @@ class FileExplorer extends BaseComponent {
     items.push({
       label: t('fileExplorer.copyPath') || 'Copy absolute path',
       icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>',
-      onClick: () => copyText(filePath)
+      onClick: () => copyText(isRemoteNode ? remotePath.toPosix(filePath) : filePath)
     });
     items.push({
       label: t('fileExplorer.copyRelativePath') || 'Copy relative path',
@@ -1305,6 +1576,8 @@ class FileExplorer extends BaseComponent {
     items.push({
       label: t('ui.openInExplorer') || 'Reveal in Explorer',
       icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>',
+      // There is no local folder to reveal for a remote file.
+      ...(isRemoteNode ? { disabled: true, title: t('ssh.disabled.openInExplorer') } : {}),
       onClick: () => this._api.dialog.openInExplorer(isDirectory ? filePath : this._path.dirname(filePath))
     });
 
@@ -1335,15 +1608,16 @@ class FileExplorer extends BaseComponent {
     if (!name || !name.trim()) return;
 
     const sanitized = sanitizeFileName(name.trim());
-    const fullPath = this._path.join(dirPath, sanitized);
+    const pm = this._pathFor(dirPath);
+    const fullPath = pm.join(dirPath, sanitized);
 
-    if (!isPathSafe(fullPath, this._rootPath, this._path)) {
+    if (!isPathSafe(fullPath, this._rootPath, pm)) {
       Toast.showError(t('fileExplorer.errorOutsideProject'));
       return;
     }
 
     try {
-      await fsp.writeFile(fullPath, '', 'utf-8');
+      await this._ops(fullPath).writeFile(fullPath, '', 'utf-8');
       await this._refreshFolder(dirPath);
       this.render();
       this._selectedFiles.clear();
@@ -1361,15 +1635,16 @@ class FileExplorer extends BaseComponent {
     if (!name || !name.trim()) return;
 
     const sanitized = sanitizeFileName(name.trim());
-    const fullPath = this._path.join(dirPath, sanitized);
+    const pm = this._pathFor(dirPath);
+    const fullPath = pm.join(dirPath, sanitized);
 
-    if (!isPathSafe(fullPath, this._rootPath, this._path)) {
+    if (!isPathSafe(fullPath, this._rootPath, pm)) {
       Toast.showError(t('fileExplorer.errorOutsideProject'));
       return;
     }
 
     try {
-      await fsp.mkdir(fullPath, { recursive: true });
+      await this._ops(fullPath).mkdir(fullPath, { recursive: true });
       await this._refreshFolder(dirPath);
       this.render();
       this._refreshGitStatus();
@@ -1390,17 +1665,18 @@ class FileExplorer extends BaseComponent {
     if (!confirmed) return;
 
     try {
+      const ops = this._ops(filePath);
       if (isDirectory) {
-        await fsp.rm(filePath, { recursive: true, force: true });
+        await ops.rm(filePath, { recursive: true, force: true });
       } else {
-        await fsp.unlink(filePath);
+        await ops.unlink(filePath);
       }
 
       this._expandedFolders.delete(filePath);
       this._selectedFiles.delete(filePath);
       if (this._lastSelectedFile === filePath) this._lastSelectedFile = null;
 
-      const dirPath = this._path.dirname(filePath);
+      const dirPath = this._pathFor(filePath).dirname(filePath);
       await this._refreshFolder(dirPath);
       this.render();
       this._refreshGitStatus();
@@ -1418,11 +1694,12 @@ class FileExplorer extends BaseComponent {
     const toDelete = [...this._selectedFiles];
     for (const filePath of toDelete) {
       try {
-        const stat = await fsp.stat(filePath);
+        const ops = this._ops(filePath);
+        const stat = await ops.stat(filePath);
         if (stat.isDirectory()) {
-          await fsp.rm(filePath, { recursive: true, force: true });
+          await ops.rm(filePath, { recursive: true, force: true });
         } else {
-          await fsp.unlink(filePath);
+          await ops.unlink(filePath);
         }
         this._expandedFolders.delete(filePath);
         this._selectedFiles.delete(filePath);
@@ -1433,7 +1710,7 @@ class FileExplorer extends BaseComponent {
 
     this._lastSelectedFile = null;
 
-    const parentDirs = new Set(toDelete.map(f => this._path.dirname(f)));
+    const parentDirs = new Set(toDelete.map(f => this._pathFor(f).dirname(f)));
     for (const dir of parentDirs) {
       await this._refreshFolder(dir);
     }
@@ -1443,16 +1720,19 @@ class FileExplorer extends BaseComponent {
 
   // ========== DRAG & DROP ==========
   async _moveItems(sourcePaths, targetDir) {
+    if (this._refuseCrossSide(sourcePaths, targetDir)) return;
+    const pm = this._pathFor(targetDir);
+    const ops = this._ops(targetDir);
     for (const sourcePath of sourcePaths) {
-      const baseName = this._path.basename(sourcePath);
-      const destPath = this._path.join(targetDir, baseName);
+      const baseName = pm.basename(sourcePath);
+      const destPath = pm.join(targetDir, baseName);
 
       if (sourcePath === targetDir) continue;
-      if (isDescendant(sourcePath, targetDir, this._path)) continue;
-      if (this._path.dirname(sourcePath) === targetDir) continue;
-      if (!isPathSafe(destPath, this._rootPath, this._path)) continue;
+      if (isDescendant(sourcePath, targetDir, pm)) continue;
+      if (pm.dirname(sourcePath) === targetDir) continue;
+      if (!isPathSafe(destPath, this._rootPath, pm)) continue;
 
-      if (await fileExists(destPath)) {
+      if (await ops.exists(destPath)) {
         const overwrite = await showConfirm({
           title: t('fileExplorer.rename') || 'Move',
           message: (t('fileExplorer.renameOverwriteConfirm') || 'A file named "{name}" already exists. Overwrite?').replace('{name}', baseName),
@@ -1461,11 +1741,11 @@ class FileExplorer extends BaseComponent {
         });
         if (!overwrite) continue;
         try {
-          const destStat = await fsp.stat(destPath);
+          const destStat = await ops.stat(destPath);
           if (destStat.isDirectory()) {
-            await fsp.rm(destPath, { recursive: true, force: true });
+            await ops.rm(destPath, { recursive: true, force: true });
           } else {
-            await fsp.unlink(destPath);
+            await ops.unlink(destPath);
           }
         } catch (e) {
           continue;
@@ -1473,7 +1753,7 @@ class FileExplorer extends BaseComponent {
       }
 
       try {
-        await fsp.rename(sourcePath, destPath);
+        await ops.rename(sourcePath, destPath);
 
         if (this._expandedFolders.has(sourcePath)) {
           const entry = this._expandedFolders.get(sourcePath);
@@ -1492,7 +1772,7 @@ class FileExplorer extends BaseComponent {
 
     const affectedDirs = new Set();
     affectedDirs.add(targetDir);
-    for (const sp of sourcePaths) affectedDirs.add(this._path.dirname(sp));
+    for (const sp of sourcePaths) affectedDirs.add(pm.dirname(sp));
     for (const dir of affectedDirs) {
       await this._refreshFolder(dir);
     }
@@ -1532,6 +1812,12 @@ class FileExplorer extends BaseComponent {
     const self = this;
 
     treeEl.onclick = (e) => {
+      const connectBtn = e.target.closest('.fe-remote-connect');
+      if (connectBtn) {
+        // An explicit Connect: the one way a remote tree loads before its host is up.
+        require('../../state/remoteHosts.state').connectHost(connectBtn.dataset.profileId).then(() => self.render());
+        return;
+      }
       const node = e.target.closest('.fe-node');
       if (!node || node.classList.contains('fe-truncated')) return;
       if (self._renameActivePath) return;
@@ -1575,7 +1861,7 @@ class FileExplorer extends BaseComponent {
       const isDir = node.dataset.isDir === 'true';
       if (isDir) return;
 
-      const fileName = self._path.basename(nodePath);
+      const fileName = self._pathFor(nodePath).basename(nodePath);
       const dotIdx = fileName.lastIndexOf('.');
       const ext = dotIdx !== -1 ? fileName.substring(dotIdx + 1).toLowerCase() : '';
       if (ext === 'md') {
@@ -1588,17 +1874,17 @@ class FileExplorer extends BaseComponent {
     treeEl.onkeydown = async (e) => {
       if (e.key === 'F2' && self._lastSelectedFile) {
         e.preventDefault();
-        const fileName = self._path.basename(self._lastSelectedFile);
+        const fileName = self._pathFor(self._lastSelectedFile).basename(self._lastSelectedFile);
         self._startInlineRename(self._lastSelectedFile, fileName);
       }
       if (e.key === 'Delete' && self._selectedFiles.size > 0) {
         e.preventDefault();
         if (self._selectedFiles.size === 1) {
           const filePath = [...self._selectedFiles][0];
-          const fileName = self._path.basename(filePath);
+          const fileName = self._pathFor(filePath).basename(filePath);
           let isDir = false;
           try {
-            const stat = await fsp.stat(filePath);
+            const stat = await self._ops(filePath).stat(filePath);
             isDir = stat.isDirectory();
           } catch {
             // File may not exist anymore
@@ -1620,15 +1906,16 @@ class FileExplorer extends BaseComponent {
         e.preventDefault();
         let targetDir = self._rootPath;
         if (self._lastSelectedFile) {
+          const lpm = self._pathFor(self._lastSelectedFile);
           try {
-            const stat = await fsp.stat(self._lastSelectedFile);
+            const stat = await self._ops(self._lastSelectedFile).stat(self._lastSelectedFile);
             if (stat.isDirectory()) {
               targetDir = self._lastSelectedFile;
             } else {
-              targetDir = self._path.dirname(self._lastSelectedFile);
+              targetDir = lpm.dirname(self._lastSelectedFile);
             }
           } catch {
-            targetDir = self._path.dirname(self._lastSelectedFile);
+            targetDir = lpm.dirname(self._lastSelectedFile);
           }
         }
         if (self._cutPaths.length > 0) {
@@ -1699,11 +1986,13 @@ class FileExplorer extends BaseComponent {
         const isDir = node.dataset.isDir === 'true';
 
         if (!isDir || !self._draggedPaths.length) return;
+        if (self._refuseCrossSide(self._draggedPaths, targetPath)) return;
 
+        const dpm = self._pathFor(targetPath);
         const validPaths = self._draggedPaths.filter(p =>
           p !== targetPath &&
-          !isDescendant(p, targetPath, self._path) &&
-          self._path.dirname(p) !== targetPath
+          !isDescendant(p, targetPath, dpm) &&
+          dpm.dirname(p) !== targetPath
         );
 
         if (validPaths.length > 0) {
@@ -1858,6 +2147,18 @@ class FileExplorer extends BaseComponent {
   }
 
   _toggleFolder(folderPath) {
+    // An Overview remote root whose host is not up: the click is the user
+    // asking to connect, and the tree opens once it is.
+    if (!this._expandedFolders.has(folderPath) && this._extraRoots.includes(folderPath)) {
+      const host = this._remoteRootPlaceholder(folderPath);
+      if (host) {
+        require('../../state/remoteHosts.state').connectHost(host.profileId).then((status) => {
+          if (status && status.state === 'connected') this._toggleFolder(folderPath);
+          else this.render();
+        });
+        return;
+      }
+    }
     const entry = this._expandedFolders.get(folderPath);
     if (entry && entry.loaded) {
       this._expandedFolders.delete(folderPath);
@@ -1969,6 +2270,7 @@ class FileExplorer extends BaseComponent {
   // ========== DESTROY ==========
   destroy() {
     this._stopGitStatusPolling();
+    if (this._remoteHostsUnsub) { this._remoteHostsUnsub(); this._remoteHostsUnsub = null; }
     super.destroy();
   }
 }

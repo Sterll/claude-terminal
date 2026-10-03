@@ -408,12 +408,20 @@ function createRemoteFs(runner) {
     return res.stdout.toString('utf8').replace(/\n$/, '');
   }
 
-  /** Read a file, capped at `maxBytes`. */
-  async function readFile(p, { maxBytes = DEFAULT_READ_LIMIT, timeoutMs = 30000 } = {}) {
+  /**
+   * Read a file, capped at `maxBytes`. `oneShot` sends the transfer through a
+   * one-shot exec instead of a channel lane, for files over PUT_LIMIT: a lane
+   * busy streaming a large file would hold up every request queued behind it.
+   */
+  async function readFile(p, { maxBytes = DEFAULT_READ_LIMIT, timeoutMs = 30000, oneShot = false } = {}) {
     assertAbsolute(p);
     const cap = Math.max(0, Math.floor(maxBytes));
     const script = `f=${q(p)}; [ -e "$f" ] || exit 2; [ -d "$f" ] && exit 4; [ -r "$f" ] || exit 13; printf '%s\\n' "$(( $(wc -c <"$f") ))"; head -c ${cap} "$f"`;
-    const res = unwrap(await exec(script, { timeoutMs, maxBuffer: cap + 64 }), 'read');
+    const viaOneShot = oneShot && typeof runner.oneShot === 'function';
+    const raw = viaOneShot
+      ? await runner.oneShot(assertOneLine(script), { timeoutMs, maxBuffer: cap + 64 })
+      : await exec(script, { timeoutMs, maxBuffer: cap + 64 });
+    const res = unwrap(raw, 'read');
     const nl = res.stdout.indexOf(10);
     const size = Number(res.stdout.subarray(0, nl).toString('latin1'));
     const data = Buffer.from(res.stdout.subarray(nl + 1));
@@ -552,10 +560,108 @@ function createRemoteFs(runner) {
     return { matches, truncated };
   }
 
+  /**
+   * Canonical forms of several paths in one request, for the containment and
+   * blocklist checks of the `ssh.fs` IPC (design/remote-ssh.md section 5.5).
+   *
+   * For each path: `canonical` is `cd -P && pwd -P` of its nearest existing
+   * ancestor directory with the rest of the path appended, so a path that does
+   * not exist yet still canonicalises through every symlink above it; `link`
+   * is null when the path itself is not a symlink, its `realpath` when it is,
+   * and '?' when that cannot be resolved (dangling, or no `realpath` on the
+   * host). `home` is the canonical $HOME, since a blocklist written against
+   * $HOME misses ~/.ssh reached through a symlinked home.
+   *
+   * @param {string[]} paths absolute POSIX paths
+   * @param {{write?: boolean, timeoutMs?: number}} [options] `write` makes the
+   *        request fail fast while the host is not connected, like the write it guards
+   * @returns {Promise<{home: string|null, entries: Array<{canonical: string|null, link: string|null}>}>}
+   */
+  async function canonicalize(paths, { write = false, timeoutMs = 10000 } = {}) {
+    if (!Array.isArray(paths) || paths.length === 0) throw fsError('EINVAL', 'canonicalize needs at least one path');
+    for (const p of paths) assertAbsolute(p);
+    const script = [
+      `ct_canon() { p=$1; s=; while [ ! -d "$p" ]; do s="/\${p##*/}$s"; p=\${p%/*}; [ -n "$p" ] || p=/; done; c=$(cd -P -- "$p" 2>/dev/null && pwd -P) || c=; printf '%s\\t%s\\n' "$c" "$s"; }`,
+      `ct_link() { if [ -L "$1" ]; then r=$(realpath -- "$1" 2>/dev/null) || r=; printf '%s\\n' "\${r:-?}"; else printf '\\n'; fi; }`,
+      "h=$(cd -P -- \"$HOME\" 2>/dev/null && pwd -P) || h=",
+      "printf '%s\\n' \"$h\"",
+      `for f in ${paths.map((p) => q(p)).join(' ')}; do ct_canon "$f"; ct_link "$f"; done`,
+      ':',
+    ].join('; ');
+    const res = unwrap(await exec(script, { timeoutMs, write }), 'canonicalize');
+    const lines = res.stdout.toString('utf8').split('\n');
+    // A canonical path with a newline in it (a symlink target can hold one)
+    // would shift every line after it: refuse rather than misread.
+    if (lines.length !== paths.length * 2 + 2) throw fsError('EREMOTEFAIL', 'Remote canonicalize answered in an unexpected shape');
+    const clean = (value) => {
+      if (!value || !value.startsWith('/')) return null;
+      try { return normalizeAbsolute(value); } catch { return null; }
+    };
+    const entries = [];
+    for (let i = 0; i < paths.length; i++) {
+      const canonLine = lines[1 + i * 2];
+      const linkLine = lines[2 + i * 2];
+      if (canonLine === undefined || linkLine === undefined) throw fsError('EREMOTEFAIL', 'Remote canonicalize answered short');
+      // The appended part comes from a q()-checked path and holds no tab.
+      const tab = canonLine.lastIndexOf('\t');
+      const base = tab === -1 ? canonLine : canonLine.slice(0, tab);
+      const rest = tab === -1 ? '' : canonLine.slice(tab + 1);
+      entries.push({
+        canonical: base ? clean(base + rest) : null,
+        link: linkLine === '' ? null : (linkLine === '?' ? '?' : (clean(linkLine) || '?')),
+      });
+    }
+    return { home: clean(lines[0]), entries };
+  }
+
+  /**
+   * One listing of several directories, for the explorer poller: the names
+   * and kinds of every entry of each directory (hidden ones included), in a
+   * single request however many directories are expanded. A directory that
+   * is gone or unreadable is reported as `missing`.
+   *
+   * @param {string[]} dirs absolute POSIX paths
+   * @returns {Promise<Map<string, {missing: boolean, entries: Array<{name: string, isDirectory: boolean}>}>>}
+   */
+  async function listDirs(dirs, { timeoutMs = 15000, maxBytes = LIST_MAX_BYTES } = {}) {
+    if (!Array.isArray(dirs) || dirs.length === 0) return new Map();
+    for (const d of dirs) assertAbsolute(d);
+    const script = [
+      `for d in ${dirs.map((d) => q(d)).join(' ')}; do printf '%s\\0' "$d"; if cd -- "$d" 2>/dev/null; then ${GLOB_ENTRIES}; for f do if [ -d "$f" ]; then printf 'd/%s\\0' "$f"; else printf 'f/%s\\0' "$f"; fi; done; else printf 'x/\\0'; fi; printf '\\0'; done`,
+      ':',
+    ].join('; ');
+    const res = unwrap(await exec(script, { timeoutMs, maxBuffer: maxBytes }), 'list');
+    const parts = res.stdout.toString('utf8').split('\0');
+    const out = new Map();
+    let i = 0;
+    while (i < parts.length) {
+      const dir = parts[i++];
+      if (!dir) continue;
+      const entry = { missing: false, entries: [] };
+      while (i < parts.length && parts[i] !== '') {
+        const rec = parts[i++];
+        if (rec === 'x/') { entry.missing = true; continue; }
+        const slash = rec.indexOf('/');
+        if (slash === -1) continue;
+        const name = rec.slice(slash + 1);
+        if (!name || name === '.' || name === '..') continue;
+        entry.entries.push({ name, isDirectory: rec.slice(0, slash) === 'd' });
+      }
+      i++; // the empty record closing this directory
+      out.set(dir, entry);
+    }
+    return out;
+  }
+
   return {
     stat, exists, readdir, listDirectories, realpathDir, readFile, readRange, readLines,
-    listSessionFiles, writeFile, mkdir, rm, rename, copy, listFiles, grep,
+    listSessionFiles, writeFile, mkdir, rm, rename, copy, listFiles, grep, canonicalize, listDirs,
   };
+}
+
+/** Normalise an absolute POSIX path (collapse `//`, resolve `.` and `..`). */
+function normalizeAbsolute(p) {
+  return require('../../shared/remote-path').toPosix(p);
 }
 
 module.exports = {

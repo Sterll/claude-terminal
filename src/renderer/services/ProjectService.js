@@ -19,8 +19,8 @@ const {
  * OS integration. Lazy: the badge module pulls in UI, and this service is
  * loaded on the boot path.
  */
-function refusedForRemote(project, feature) {
-  return require('../ui/components/RemoteHostBadge').refuseForRemote(project, feature);
+function refusedForRemote(project, feature, context) {
+  return require('../ui/components/RemoteHostBadge').refuseForRemote(project, feature, context);
 }
 
 function deriveProjectName(folderPath) {
@@ -71,7 +71,7 @@ class ProjectService extends BaseService {
 
   openInEditor(projectId, editor = 'code') {
     const project = getProject(projectId);
-    if (project && refusedForRemote(project, 'openInEditor')) return;
+    if (project && refusedForRemote(project, 'openInEditor', { editor })) return;
     if (project) require('../utils/editor').openInEditor(project.path, { editor });
   }
 

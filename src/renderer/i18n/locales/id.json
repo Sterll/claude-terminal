@@ -4564,11 +4564,12 @@
     },
     "disabled": {
       "openInExplorer": "Proyek jarak jauh tidak memiliki folder lokal untuk ditampilkan.",
-      "openInEditor": "Membuka proyek jarak jauh di editor eksternal belum didukung.",
+      "openInEditor": "Hanya VS Code, Cursor, dan Windsurf yang dapat membuka proyek jarak jauh, melalui ekstensi Remote-SSH mereka. Pilih salah satunya sebagai editor.",
       "accountBinding": "Proyek jarak jauh memakai login Claude milik host jarak jauh.",
       "cloudUpload": "Unggah cloud mengompres folder lokal, jadi proyek jarak jauh tidak dapat diunggah.",
       "sessionMove": "Sesi proyek jarak jauh berada di host-nya dan tidak dapat dipindahkan ke proyek lain.",
-      "pathAttachment": "Path file lokal tidak berarti apa pun bagi chat jarak jauh. File yang cukup kecil dikirim langsung."
+      "pathAttachment": "Path file lokal tidak berarti apa pun bagi chat jarak jauh. File yang cukup kecil dikirim langsung.",
+      "crossRootTransfer": "Memindahkan atau menyalin file antara proyek lokal dan proyek jarak jauh (atau antara dua host) tidak didukung."
     },
     "menu": {
       "section": "Host jarak jauh: {host}",
@@ -4684,6 +4685,12 @@
       "dashboardOffline": "{host} tidak terhubung: menampilkan angka terakhir yang diketahui. Angka diperbarui saat host kembali.",
       "worktreePathOnHost": "Path absolut di {host}",
       "worktreePathInvalid": "Masukkan path absolut di host jarak jauh, diawali dengan /."
+    },
+    "files": {
+      "notConnected": "{host} belum terhubung. File-nya dimuat begitu terhubung.",
+      "connect": "Hubungkan",
+      "rootHost": "Di {host}",
+      "editorNeedsAlias": "{editor} memerlukan alias ssh_config untuk host ini, karena host ini memakai port, jump host, atau file identitas. Tambahkan entri Host di ~/.ssh/config dan gunakan di profil host."
     }
   }
 }

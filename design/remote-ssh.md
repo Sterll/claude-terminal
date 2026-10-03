@@ -827,6 +827,65 @@ Specific handlers:
   `remote-cache/<projectId>/dashboard.json`; the app never writes its own files
   into a remote repository.
 
+**As built (slice 6), where it departs from or adds to the above:**
+
+- **One handler.** `ssh.fs` is a single IPC handler, `ssh-fs`, taking
+  `{ op, ... }` with an allowlisted `op` (`stat`, `readdir`, `readFile`,
+  `writeFile`, `mkdir`, `rm`, `rename`, `copy`, `listFiles`, `grep`,
+  `cacheMedia`, `privatePaths`), built by `createSshFs()` in `ssh.ipc.js` so
+  a test can hand it a resolver and a host. The renderer side is
+  `src/renderer/utils/projectFs.js`, whose remote adapter has the method names
+  and return shapes of `fs.promises` and whose local answer is the preload's
+  own `fs.promises` and `path`, the same objects as before.
+- **Reads are canonicalised too, for the blocklist only.** A content read
+  (`readFile`, `cacheMedia`) first resolves the file's canonical path and its
+  symlink target in the same `canonicalize` request writes use, and refuses one
+  that lands in `~/.ssh` or on the credentials (a project symlink to a private
+  key would otherwise leak it), and a symlink that cannot be resolved. Reads
+  are not held to the canonical root: a project may legitimately link to a
+  shared directory outside it. Writes are, and so is a write through a
+  symlinked file. The blocklist is checked against both `$HOME` and the
+  canonical `$HOME`.
+- **The private memory grant** is `<sessions dir>/CLAUDE.md` and
+  `<sessions dir>/memory/` of a project registered for that host, not the
+  whole `~/.claude/projects/<encoded>/`: its transcripts stay readable only
+  through `claude.ipc`. `privatePaths` names both from the handshake without a
+  round trip.
+- **Text reads** are capped at 2 MB by default and 8 MB at most; the renderer
+  adapter throws `EFBIG` rather than hand back a silently cut file.
+- **Media cache**: 64 MB per file, 512 MB and 7 days for the whole cache,
+  keyed by path, size and mtime so an unchanged file is downloaded once; a
+  file over 256 KB comes through a one-shot exec, not a lane.
+- **Watching never connects.** The explorer asks to watch the selected
+  project's root on every selection, the startup restore included, so the
+  poller (`src/main/utils/remoteDirPoller.js`) authorises a directory with
+  `resolveTarget` alone and applies the blocklist at poll time, once the
+  connected host has reported its home. Likewise a remote root whose host is
+  not connected is shown with a Connect button and not loaded, and the
+  explorer's git badges (every 30 s for a remote root) wait for the host.
+- **Visibility** reaches main as `explorer:setVisible`, sent only when a
+  remote root is shown, so a local-only explorer sends nothing new.
+- **inotifywait** does not replace the listing: its events trigger an
+  immediate batched listing (debounced 300 ms), and while it runs the periodic
+  poll drops to a 30 s resync. If it ends on its own (missing after all, the
+  watch limit, a dropped connection) the host falls back to plain polling for
+  a minute. It is restarted when the set of expanded directories changes.
+- **Overview**: a remote root shows its host label coloured by state; opening
+  it while the host is not connected connects first, then expands.
+- **Open in editor**: the authority is the ssh_config alias, else
+  `user@host`. A profile with a port, a jump host or an identity file and no
+  alias is refused with a message asking for an alias, since the editor would
+  connect without them. On macOS without the CLI shim, the bundle gets the
+  arguments after `--args`; on Windows `%` and `!` are refused in the remote
+  arguments because the `.cmd` launcher runs through cmd.exe. The capability
+  table keeps its `openInEditor` row for callers that do not know the editor;
+  `canOpenInEditor(project, editor)` lets the VS Code family through.
+- **Relative images in a remote markdown tab** are shown as their alt text:
+  resolving them would mean looking for a local file.
+- **A capability row `crossRootTransfer`** carries the reason for the refused
+  local/remote move, paste or drop, and `copy` / `rename` across two hosts are
+  refused in main as well.
+
 ---
 
 ## 6. Connection lifecycle and reconnect

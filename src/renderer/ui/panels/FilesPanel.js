@@ -24,6 +24,7 @@ const { t } = require('../../i18n');
 const { getOpenProjects } = require('../../state');
 const { isRemoteProject } = require('../../../shared/remote-capabilities');
 const { getProjectHost } = require('../../state/remoteHosts.state');
+const projectFs = require('../../utils/projectFs');
 
 const api = window.electron_api;
 
@@ -246,7 +247,10 @@ async function selectSession(sessionId, label) {
   try {
     const res = await api.claude.sessionChanges({ projectPath: _project.path, sessionId: _sessionId });
     if (_sessionId !== sessionId) return; // a later pick won the race
-    _sessionFiles = new Map((res && res.success ? res.files : []).map(f => [f.path, f]));
+    // A remote session names files by their path on the host; the tree's
+    // nodes are ssh-remote:// URIs, so the overlay is keyed the same way.
+    const remote = isRemoteProject(_project);
+    _sessionFiles = new Map((res && res.success ? res.files : []).map(f => [remote ? projectFs.toProjectUri(f.path, _project) : f.path, f]));
   } catch {
     if (_sessionId === sessionId) _sessionFiles = new Map();
   } finally {

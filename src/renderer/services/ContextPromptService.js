@@ -5,6 +5,18 @@
 
 const { BaseService } = require('../core/BaseService');
 const { contextPacksFile, promptTemplatesFile } = require('../utils/paths');
+const projectFs = require('../utils/projectFs');
+const remotePath = require('../../shared/remote-path');
+
+/**
+ * Where a pack item lives. A relative item of a remote (SSH) project is on
+ * that project's host, joined with POSIX rules onto its URI; an absolute item
+ * is a local file the user picked, as it always was.
+ */
+function _remoteItemPath(projectPath, itemPath) {
+  if (!projectFs.isRemote(projectPath) || !itemPath || itemPath.startsWith('/') || /^[A-Za-z]:[\\/]/.test(itemPath) || itemPath.startsWith('\\\\')) return null;
+  try { return remotePath.join(projectPath, itemPath.replace(/\\/g, '/')); } catch { return null; }
+}
 
 class ContextPromptService extends BaseService {
   constructor(api, container) {
@@ -90,9 +102,12 @@ class ContextPromptService extends BaseService {
       try {
         switch (item.type) {
           case 'file': {
-            const filePath = this.api.path.isAbsolute(item.path) ? item.path : this.api.path.join(projectPath || '', item.path);
+            const remoteItem = _remoteItemPath(projectPath, item.path);
+            const filePath = remoteItem || (this.api.path.isAbsolute(item.path) ? item.path : this.api.path.join(projectPath || '', item.path));
             try {
-              const raw = await this.api.fs.promises.readFile(filePath, 'utf8');
+              const raw = remoteItem
+                ? await projectFs.remoteFsPromises.readFile(remoteItem, 'utf8')
+                : await this.api.fs.promises.readFile(filePath, 'utf8');
               const lines = raw.split('\n');
               if (lines.length > 500) {
                 parts.push(`--- ${item.path} (first 500 of ${lines.length} lines) ---`);
@@ -108,10 +123,16 @@ class ContextPromptService extends BaseService {
             break;
           }
           case 'folder': {
-            const folderPath = this.api.path.isAbsolute(item.path) ? item.path : this.api.path.join(projectPath || '', item.path);
+            const remoteFolder = _remoteItemPath(projectPath, item.path);
+            const folderPath = remoteFolder || (this.api.path.isAbsolute(item.path) ? item.path : this.api.path.join(projectPath || '', item.path));
             try {
-              await this.api.fs.promises.access(folderPath);
-              const files = await this._listFolderFiles(folderPath, item.maxDepth || 2);
+              let files;
+              if (remoteFolder) {
+                files = await this._listRemoteFolderFiles(remoteFolder, item.maxDepth || 2);
+              } else {
+                await this.api.fs.promises.access(folderPath);
+                files = await this._listFolderFiles(folderPath, item.maxDepth || 2);
+              }
               parts.push(`--- ${item.path}/ (${files.length} files) ---`);
               for (const f of files.slice(0, 30)) parts.push(`  ${f}`);
               if (files.length > 30) parts.push(`  ... and ${files.length - 30} more`);
@@ -265,6 +286,26 @@ class ContextPromptService extends BaseService {
   async _writeJsonFile(filePath, data) {
     try { await this.api.fs.promises.writeFile(filePath, JSON.stringify(data, null, 2)); }
     catch (e) { console.error(`Error writing ${filePath}:`, e); }
+  }
+
+  /**
+   * A remote folder's files in one request (`git ls-files`, else `find`),
+   * trimmed to the depth and the ignore list the local walk uses.
+   */
+  async _listRemoteFolderFiles(folderUri, maxDepth) {
+    const ignoreDirs = new Set(['node_modules', '.git', 'dist', 'build', '__pycache__', '.next', '.cache', 'coverage']);
+    const { files } = await projectFs.listFiles(folderUri);
+    const results = [];
+    for (const rel of files) {
+      const segments = rel.split('/');
+      if (segments.length > maxDepth) continue;
+      const dirs = segments.slice(0, -1);
+      if (dirs.some(seg => seg.startsWith('.') || ignoreDirs.has(seg))) continue;
+      if (ignoreDirs.has(segments[segments.length - 1])) continue;
+      results.push(rel);
+      if (results.length >= 200) break;
+    }
+    return results;
   }
 
   async _listFolderFiles(dirPath, maxDepth, currentDepth = 0) {

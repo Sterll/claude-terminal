@@ -4564,11 +4564,12 @@
     },
     "disabled": {
       "openInExplorer": "Um projeto remoto não tem pasta local para mostrar.",
-      "openInEditor": "Abrir um projeto remoto em um editor externo ainda não é compatível.",
+      "openInEditor": "Somente o VS Code, o Cursor e o Windsurf podem abrir um projeto remoto, pela extensão Remote-SSH deles. Escolha um deles como editor.",
       "accountBinding": "Um projeto remoto usa o login do Claude do host remoto.",
       "cloudUpload": "O envio para a nuvem compacta uma pasta local, então projetos remotos não podem ser enviados.",
       "sessionMove": "As sessões de um projeto remoto ficam no host dele e não podem ser movidas para outro projeto.",
-      "pathAttachment": "Um caminho de arquivo local não significa nada para um chat remoto. Arquivos pequenos o bastante são enviados diretamente."
+      "pathAttachment": "Um caminho de arquivo local não significa nada para um chat remoto. Arquivos pequenos o bastante são enviados diretamente.",
+      "crossRootTransfer": "Mover ou copiar arquivos entre um projeto local e um remoto (ou entre dois hosts) não é compatível."
     },
     "menu": {
       "section": "Host remoto: {host}",
@@ -4684,6 +4685,12 @@
       "dashboardOffline": "{host} não está conectado: mostrando os últimos números conhecidos. Eles se atualizam quando o host voltar.",
       "worktreePathOnHost": "Caminho absoluto em {host}",
       "worktreePathInvalid": "Informe um caminho absoluto no host remoto, começando com /."
+    },
+    "files": {
+      "notConnected": "{host} não está conectado. Os arquivos dele são carregados assim que estiver.",
+      "connect": "Conectar",
+      "rootHost": "Em {host}",
+      "editorNeedsAlias": "O {editor} precisa de um alias do ssh_config para este host, porque ele usa uma porta, um host de salto ou um arquivo de identidade. Adicione uma entrada Host em ~/.ssh/config e use-a no perfil do host."
     }
   }
 }

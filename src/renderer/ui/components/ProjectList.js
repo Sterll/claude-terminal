@@ -60,7 +60,7 @@ const { getWorkspacesForProject } = require('../../state/workspace.state');
 const { isSidebarNavigation } = require('../navigationMode');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 const { matchModel } = require('../../../shared/model-options');
-const { can } = require('../../../shared/remote-capabilities');
+const { can, canOpenInEditor } = require('../../../shared/remote-capabilities');
 const { buildHostBadgeHtml, projectLocation, onHostBadgeClick } = require('./RemoteHostBadge');
 const { getProjectHost, connectProjectHost, connectHost, disconnectHost } = require('../../state/remoteHosts.state');
 
@@ -70,12 +70,24 @@ const { getProjectHost, connectProjectHost, connectHost, disconnectHost } = requ
  * tooltip (a real `disabled` would drop both); the click handler refuses it.
  */
 function remoteDisabledClass(project, feature) {
-  return can(project, feature).ok ? '' : ' is-disabled';
+  return projectCap(project, feature).ok ? '' : ' is-disabled';
+}
+
+/**
+ * The capability answer for a menu item. "Open in editor" depends on which
+ * editor: a remote project opens in the VS Code family over Remote-SSH.
+ */
+function projectCap(project, feature) {
+  if (feature === 'openInEditor') {
+    const editor = getProjectEditor(project.id) || getSetting('editor') || 'code';
+    return canOpenInEditor(project, getEditorCommand(editor));
+  }
+  return can(project, feature);
 }
 
 /** The matching attributes: aria-disabled, the reason as tooltip and data. */
 function remoteDisabledAttrs(project, feature) {
-  const cap = can(project, feature);
+  const cap = projectCap(project, feature);
   if (cap.ok) return '';
   return ` aria-disabled="true" data-reason-key="${escapeHtml(cap.reasonKey)}" title="${escapeHtml(t(cap.reasonKey))}"`;
 }

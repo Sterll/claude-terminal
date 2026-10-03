@@ -1453,8 +1453,11 @@ function bindChangesEvents(container) {
       // A remote project's files are joined with POSIX rules onto its URI, and
       // the capability table decides whether an editor can open them.
       if (isRemoteProject(selectedProject)) {
-        if (require('../ui/components/RemoteHostBadge').refuseForRemote(selectedProject, 'openInEditor')) return;
-        require('../utils/editor').openInEditor(remotePathLib.join(selectedProject.path, fileItem.dataset.path));
+        // The VS Code family opens it on the host over Remote-SSH; any other
+        // editor is refused with the reason.
+        const editor = require('../state/settings.state').getSetting('editor') || 'code';
+        if (require('../ui/components/RemoteHostBadge').refuseForRemote(selectedProject, 'openInEditor', { editor })) return;
+        require('../utils/editor').openInEditor(remotePathLib.join(selectedProject.path, fileItem.dataset.path), { editor });
         return;
       }
       const fullPath = window.electron_nodeModules.path.join(selectedProject.path, fileItem.dataset.path);

@@ -18,6 +18,47 @@ async function getChokidar() {
   return chokidar;
 }
 const path = require('path');
+const { isRemotePath } = require('../../shared/remote-path');
+
+// ==================== REMOTE (SSH) DIRECTORIES ====================
+
+/**
+ * Whether the renderer says the file explorer is on screen. Together with the
+ * window being visible and focused, this is what lets the remote poller ask a
+ * host anything (design/remote-ssh.md section 5.5).
+ */
+let explorerVisible = false;
+
+/** Lazily created: a machine with no remote project never loads it. */
+let remotePoller = null;
+
+function isExplorerActive() {
+  return explorerVisible && !!mainWindow && !mainWindow.isDestroyed()
+    && mainWindow.isVisible() && !mainWindow.isMinimized() && mainWindow.isFocused();
+}
+
+function getRemotePoller() {
+  if (!remotePoller) {
+    const { createRemoteDirPoller } = require('../utils/remoteDirPoller');
+    const { resolveTarget } = require('../utils/projectTarget');
+    remotePoller = createRemoteDirPoller({
+      service: require('../services/SshHostService'),
+      // Inside a registered project, without contacting the host: the root of
+      // the selected project is watched on every selection, the startup
+      // restore included, and nothing may connect then.
+      authorize: async (uri) => {
+        const target = await resolveTarget(uri);
+        return { profileId: target.profileId, path: target.remotePath };
+      },
+      isActive: isExplorerActive,
+      // The same channel and the same change shape chokidar's watchers use.
+      emit: (changes) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('explorer:changes', changes);
+      },
+    });
+  }
+  return remotePoller;
+}
 
 // ==================== MODULE STATE ====================
 
@@ -227,6 +268,7 @@ function stopAllDirWatchers() {
  * @param {number} ownerId - webContents.id
  */
 function stopWatchersForOwner(ownerId) {
+  if (remotePoller) remotePoller.unwatchOwner(ownerId);
   for (const [dirPath, entry] of dirWatchers) {
     if (entry.ownerId !== ownerId) continue;
     try { entry.watcher.close(); } catch (_) { /* already closed */ }
@@ -279,6 +321,7 @@ function bindRendererLifetime(contents) {
  */
 function stopWatch() {
   stopAllDirWatchers();
+  if (remotePoller) remotePoller.stopAll();
 }
 
 // ==================== IPC REGISTRATION ====================
@@ -290,18 +333,39 @@ function stopWatch() {
  */
 function registerExplorerHandlers(mw) {
   mainWindow = mw;
+  // A return to the window polls remote directories at once instead of
+  // waiting for the next tick; leaving it stops any inotify watcher.
+  if (mw && typeof mw.on === 'function') {
+    mw.on('focus', () => { if (remotePoller) remotePoller.kick(); });
+    mw.on('blur', () => { if (remotePoller) remotePoller.kick(); });
+  }
 
   // Start watching a single directory (shallow, depth:0)
   ipcMain.on('explorer:watchDir', (event, dirPath) => {
     if (!dirPath || typeof dirPath !== 'string') return;
     bindRendererLifetime(event.sender);
+    if (isRemotePath(dirPath)) {
+      getRemotePoller().watch(dirPath, event.sender.id).catch(() => { /* not authorised or host away: nothing to watch */ });
+      return;
+    }
     watchDir(dirPath, event.sender.id);
   });
 
   // Stop watching a single directory
   ipcMain.on('explorer:unwatchDir', (event, dirPath) => {
     if (!dirPath || typeof dirPath !== 'string') return;
+    if (isRemotePath(dirPath)) {
+      if (remotePoller) remotePoller.unwatch(dirPath);
+      return;
+    }
     unwatchDir(dirPath);
+  });
+
+  // The explorer was shown or hidden. Only remote directories care: a hidden
+  // explorer must not keep polling a host.
+  ipcMain.on('explorer:setVisible', (event, visible) => {
+    explorerVisible = visible === true;
+    if (remotePoller) remotePoller.kick();
   });
 
   // Stop all watchers (project deselect / collapse-all / refresh)
@@ -310,4 +374,4 @@ function registerExplorerHandlers(mw) {
   });
 }
 
-module.exports = { registerExplorerHandlers, stopWatch };
+module.exports = { registerExplorerHandlers, stopWatch, _getRemotePoller: getRemotePoller, _isExplorerActive: isExplorerActive };

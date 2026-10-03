@@ -41,6 +41,7 @@ const { attachExportMenu } = require('./chat/exportConversation');
 const { createTranscriptSearch } = require('./chat/transcriptSearch');
 const { createAttachmentTray } = require('./chat/attachmentTray');
 const { createRemoteChat } = require('./chat/remoteSession');
+const projectFs = require('../../utils/projectFs');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
@@ -1972,7 +1973,33 @@ class ChatView extends BaseComponent {
 
   // ── Mention picker infrastructure ──
 
+  /**
+   * A remote project's files for the @file picker: one `git ls-files` (or
+   * `find`) on its host, filtered like the local walk.
+   */
+  async function scanRemoteProjectFiles(projectUri) {
+    const ignoreDirs = new Set(['node_modules', '.git', 'dist', 'build', '.next', '__pycache__', 'vendor', '.cache', 'coverage', '.nuxt']);
+    let listing;
+    try {
+      listing = await projectFs.listFiles(projectUri);
+    } catch {
+      return [];
+    }
+    const files = [];
+    for (const rel of listing.files) {
+      if (files.length >= 500) break;
+      const segments = rel.split('/');
+      if (segments.length > 7) continue;
+      if (segments.some(seg => (seg.startsWith('.') && seg !== '.env') || ignoreDirs.has(seg))) continue;
+      let fullPath;
+      try { fullPath = projectFs.remotePathApi.join(projectUri, rel); } catch { continue; }
+      files.push({ path: rel, fullPath, mtime: 0 });
+    }
+    return files;
+  }
+
   async function scanProjectFiles(projectPath) {
+    if (projectFs.isRemote(projectPath)) return scanRemoteProjectFiles(projectPath);
     const { fileExists, fsp } = require('../../utils/fs-async');
     const { path } = window.electron_nodeModules;
     const files = [];
@@ -2613,7 +2640,10 @@ class ChatView extends BaseComponent {
 
         case 'file': {
           try {
-            const raw = await fs.promises.readFile(mention.data.fullPath, 'utf8');
+            // A remote project's file is read on its host, over ssh.fs.
+            const raw = projectFs.isRemote(mention.data.fullPath)
+              ? await projectFs.remoteFsPromises.readFile(mention.data.fullPath, 'utf8')
+              : await fs.promises.readFile(mention.data.fullPath, 'utf8');
             const lines = raw.split('\n');
             const range = mention.data.lineRange;
             if (range) {
@@ -2709,8 +2739,11 @@ class ChatView extends BaseComponent {
           // Use selected project data if available, otherwise fall back to current project
           const targetName = mention.data?.name || project.name || 'Unknown';
           const targetPath = mention.data?.path || project.path;
+          // A remote project is read on its host and named by its path there.
+          const remoteTarget = projectFs.isRemote(targetPath);
+          const shownPath = remoteTarget ? require('../../../shared/remote-path').toPosix(targetPath) : targetPath;
           try {
-            const parts = [`Project: ${targetName}`, `Path: ${targetPath}`];
+            const parts = [`Project: ${targetName}`, `Path: ${shownPath}`];
             // Git info
             const [branch, status, stats] = await Promise.all([
               api.git.currentBranch({ projectPath: targetPath }).catch(() => null),
@@ -2735,7 +2768,8 @@ class ChatView extends BaseComponent {
                 parts.push('Top Languages:\n' + top.join('\n'));
               }
             }
-            const { fs, path: pathModule } = window.electron_nodeModules;
+            const fs = remoteTarget ? { promises: projectFs.remoteFsPromises } : window.electron_nodeModules.fs;
+            const pathModule = remoteTarget ? projectFs.remotePathApi : window.electron_nodeModules.path;
 
             // Try to read CLAUDE.md from the target project
             const claudeMdPath = pathModule.join(targetPath, 'CLAUDE.md');
@@ -3828,8 +3862,11 @@ class ChatView extends BaseComponent {
    */
   async function getLineOffset(filePath, searchStr) {
     try {
-      const { fs } = window.electron_nodeModules;
-      const content = await fs.promises.readFile(filePath, 'utf8');
+      // A remote chat's tool paths are on its host: read them there.
+      const remoteFile = projectFs.toProjectUri(filePath, project);
+      const content = projectFs.isRemote(remoteFile)
+        ? await projectFs.remoteFsPromises.readFile(remoteFile, 'utf8')
+        : await window.electron_nodeModules.fs.promises.readFile(filePath, 'utf8');
       const idx = content.indexOf(searchStr);
       if (idx === -1) return 1;
       return content.substring(0, idx).split('\n').length;
@@ -3863,7 +3900,8 @@ class ChatView extends BaseComponent {
 
   function _openFileBtn(filePath) {
     if (!filePath) return '';
-    const escaped = escapeHtml(filePath).replace(/"/g, '&quot;');
+    // A remote chat's path opens the file on its host.
+    const escaped = escapeHtml(projectFs.toProjectUri(filePath, project)).replace(/"/g, '&quot;');
     return `<button class="chat-open-file-btn" data-file-path="${escaped}" title="${t('chat.openFile') || 'Open file'}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></button>`;
   }
 
@@ -3907,6 +3945,17 @@ class ChatView extends BaseComponent {
       const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']);
       const BINARY_EXTS = new Set(['pdf', 'zip', 'gz', 'tar', 'rar', '7z', 'exe', 'dll', 'so', 'dylib', 'bin', 'dat', 'db', 'sqlite', 'wasm', 'mp3', 'mp4', 'mov', 'avi', 'mkv', 'wav', 'ogg', 'ttf', 'otf', 'woff', 'woff2']);
 
+      const remoteReadPath = projectFs.toProjectUri(path, project);
+      if (IMAGE_EXTS.has(ext) && path && projectFs.isRemote(remoteReadPath)) {
+        // Never a file:// URL of a host path, which would name a local file:
+        // the image is downloaded into the remote-cache first.
+        let localImage = null;
+        try { localImage = await projectFs.mediaPath(remoteReadPath); } catch { /* too large or host away */ }
+        if (!localImage) return `<div class="chat-tool-content-path">${escapeHtml(path)} ${_openFileBtn(path)}</div>`;
+        return `<div class="chat-tool-content-path">${escapeHtml(path)} ${_openFileBtn(path)}</div>
+          <div class="chat-inline-images"><div class="chat-inline-img-wrap"><img src="${escapeHtml(projectFs.fileUrl(localImage))}" class="chat-inline-img" alt="${escapeHtml(path)}" loading="lazy"></div></div>`;
+      }
+
       if (IMAGE_EXTS.has(ext) && path) {
         const fileUrl = 'file:///' + path.replace(/\\/g, '/');
         return `<div class="chat-tool-content-path">${escapeHtml(path)} ${_openFileBtn(path)}</div>
@@ -3922,7 +3971,9 @@ class ChatView extends BaseComponent {
       if (!effectiveOutput && path) {
         try {
           const { fs } = window.electron_nodeModules;
-          const raw = await fs.promises.readFile(path, 'utf8');
+          const raw = projectFs.isRemote(remoteReadPath)
+            ? await projectFs.remoteFsPromises.readFile(remoteReadPath, 'utf8')
+            : await fs.promises.readFile(path, 'utf8');
           const allLines = raw.split('\n');
           const start = Math.max(0, (parseInt(offset, 10) || 1) - 1);
           const end = limit ? start + parseInt(limit, 10) : allLines.length;
@@ -4546,7 +4597,12 @@ class ChatView extends BaseComponent {
     const { fsp } = require('../../utils/fs-async');
     let source;
     try {
-      source = await fsp.readFile(input.file_path, 'utf8');
+      // A remote chat published a file on its host; main only serves it from
+      // inside the project (a temp file elsewhere is skipped like a gone one).
+      const remoteFile = projectFs.toProjectUri(input.file_path, project);
+      source = projectFs.isRemote(remoteFile)
+        ? await projectFs.remoteFsPromises.readFile(remoteFile, 'utf8')
+        : await fsp.readFile(input.file_path, 'utf8');
     } catch (e) {
       // Often a temp file that is already gone. Without content there is
       // nothing to preview, and a sourceless card would just be dead weight.

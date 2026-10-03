@@ -153,11 +153,16 @@ async function onHostBadgeClick(projectId) {
  * local project, which callers then handle exactly as before.
  * @param {Object|string} projectOrPath - a project, or a path that may be an ssh-remote:// URI
  * @param {string} feature - a row of src/shared/remote-capabilities.js
+ * @param {{editor?: string}} [context] - for 'openInEditor', the editor that
+ *        would open it: the VS Code family can open a remote project over Remote-SSH
  * @returns {boolean} true when refused
  */
-function refuseForRemote(projectOrPath, feature) {
+function refuseForRemote(projectOrPath, feature, context = {}) {
   const project = typeof projectOrPath === 'string' ? { path: projectOrPath } : projectOrPath;
-  const cap = require('../../../shared/remote-capabilities').can(project, feature);
+  const caps = require('../../../shared/remote-capabilities');
+  const cap = feature === 'openInEditor' && context.editor
+    ? caps.canOpenInEditor(project, context.editor)
+    : caps.can(project, feature);
   if (cap.ok) return false;
   require('./Toast').showToast({ type: 'info', message: t(cap.reasonKey) });
   return true;

@@ -1,4 +1,4 @@
-const { can, isRemoteProject, sameProject, CAPABILITIES } = require('../../src/shared/remote-capabilities');
+const { can, canOpenInEditor, editorFamily, REMOTE_EDITORS, isRemoteProject, sameProject, CAPABILITIES } = require('../../src/shared/remote-capabilities');
 
 describe('remote-capabilities', () => {
   const local = { id: 'p1', path: 'C:\\code\\app' };
@@ -44,6 +44,23 @@ describe('remote-capabilities', () => {
       expect(can(remote, feature).ok).toBe(false);
       expect(can(local, feature)).toEqual({ ok: true });
     }
+  });
+
+  test('moving files between a local and a remote tree is refused for a remote project', () => {
+    expect(can(remote, 'crossRootTransfer')).toEqual({ ok: false, reasonKey: 'ssh.disabled.crossRootTransfer' });
+    expect(can(local, 'crossRootTransfer')).toEqual({ ok: true });
+  });
+
+  test('the VS Code family opens a remote project over Remote-SSH, other editors do not', () => {
+    expect(REMOTE_EDITORS).toEqual(['code', 'cursor', 'windsurf']);
+    for (const editor of ['code', 'cursor', 'windsurf', 'Code.cmd', '/usr/local/bin/cursor', 'C:/Tools/Windsurf.exe']) {
+      expect(canOpenInEditor(remote, editor)).toEqual({ ok: true });
+    }
+    for (const editor of ['webstorm', 'idea', 'subl', 'zed', '']) {
+      expect(canOpenInEditor(remote, editor)).toEqual({ ok: false, reasonKey: 'ssh.disabled.openInEditor' });
+    }
+    expect(canOpenInEditor(local, 'webstorm')).toEqual({ ok: true });
+    expect(editorFamily('C:/Program Files/Microsoft VS Code/bin/code.cmd')).toBe('code');
   });
 
   test('terminals and chat run over ssh, so they are no longer refused', () => {

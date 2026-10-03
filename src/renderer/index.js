@@ -157,9 +157,9 @@ function _registerMcpProjectListeners(api) {
           console.warn(`[MCP] project:open for unknown project "${projectId}"`);
           return;
         }
-        // A remote (SSH) project has no local folder to hand to an editor.
-        if (require('./ui/components/RemoteHostBadge').refuseForRemote(project, 'openInEditor')) return;
         const editor = getProjectEditor(projectId) || getSetting('editor') || 'code';
+        // A remote (SSH) project opens only in the VS Code family, over Remote-SSH.
+        if (require('./ui/components/RemoteHostBadge').refuseForRemote(project, 'openInEditor', { editor: getEditorCommand(editor) })) return;
         // Through the helper like every other call site, so a missing editor
         // toasts here too. An MCP-driven open is the case where the user is
         // least likely to be looking at a console.

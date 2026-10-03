@@ -9,6 +9,8 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 const { grant } = require('../utils/rendererSecurity');
 const updaterService = require('../services/UpdaterService');
+const { isRemotePath } = require('../../shared/remote-path');
+const { REMOTE_EDITORS, editorFamily } = require('../../shared/remote-capabilities');
 
 let mainWindow = null;
 
@@ -123,7 +125,7 @@ function _buildEditorCommand(editorBin) {
     const bundle = MAC_APP_BUNDLES[path.basename(editorBin).toLowerCase()];
     // `open` waits for LaunchServices rather than for the editor, so it exits
     // right away and its exit code tells us whether the bundle was found.
-    if (bundle) return { file: '/usr/bin/open', args: ['-a', bundle], viaLauncher: true };
+    if (bundle) return { file: '/usr/bin/open', args: ['-a', bundle], viaLauncher: true, macOpen: true };
     return { file: editorBin, args: [] };
   }
   if (process.platform !== 'win32') return { file: editorBin, args: [] };
@@ -156,15 +158,20 @@ function _buildEditorCommand(editorBin) {
  * into a button that does nothing: the renderer was told `success: true` and
  * the ENOENT went to a console nobody reads.
  *
- * @param {{ file: string, args: string[], viaLauncher?: boolean }} cmd
+ * @param {{ file: string, args: string[], viaLauncher?: boolean, macOpen?: boolean }} cmd
  * @param {string} targetPath
+ * @param {string[]} [extraArgs] editor arguments before the path (remote
+ *        projects: `--remote ssh-remote+<alias>`); `open -a` needs them after `--args`
  * @returns {Promise<Error|null>} the launch failure, or null
  */
-function _spawnEditor(cmd, targetPath) {
+function _spawnEditor(cmd, targetPath, extraArgs = []) {
   return new Promise((resolve) => {
     let proc;
     try {
-      proc = spawn(cmd.file, [...cmd.args, targetPath], {
+      const argv = extraArgs.length === 0
+        ? [...cmd.args, targetPath]
+        : (cmd.macOpen ? [...cmd.args, '--args', ...extraArgs, targetPath] : [...cmd.args, ...extraArgs, targetPath]);
+      proc = spawn(cmd.file, argv, {
         detached: true,
         stdio: 'ignore',
         windowsHide: true,
@@ -231,6 +238,7 @@ async function openInEditor(params) {
     console.error(`[Dialog IPC] Target path rejected (dangerous chars): "${targetPath}"`);
     return { success: false, error: 'Target path contains forbidden characters' };
   }
+  if (isRemotePath(targetPath)) return openRemoteInEditor(editorBin, targetPath);
 
   const baseName = path.basename(editorBin).replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
   if (!ALLOWED_EDITORS.includes(baseName)) {
@@ -243,6 +251,136 @@ async function openInEditor(params) {
     return { success: false, error: failure.message, editor: editorBin };
   }
   return { success: true, editor: editorBin };
+}
+
+/**
+ * The Remote-SSH authority for a host profile: its ssh_config alias, else
+ * `user@host`. A profile that needs a port, a jump host or an identity file
+ * without an alias is refused, because the editor would connect without them
+ * and fail somewhere the app cannot see; an alias carries all three.
+ * @param {object} profile
+ * @returns {{ authority: string } | { error: string, code: string }}
+ */
+function remoteEditorAuthority(profile) {
+  if (profile.sshConfigAlias) return { authority: profile.sshConfigAlias };
+  if ((profile.port && profile.port !== 22) || profile.proxyJump || profile.identityFile) {
+    return { code: 'REMOTE_EDITOR_NEEDS_ALIAS', error: 'This host needs an ssh_config alias to be opened in an editor (it uses a port, a jump host or an identity file)' };
+  }
+  return { authority: profile.user ? `${profile.user}@${profile.host}` : profile.host };
+}
+
+/**
+ * Open a file or folder of a remote project in a VS Code family editor:
+ * `<editor> --remote ssh-remote+<alias or user@host> <remote path>`. The
+ * editor's Remote-SSH extension makes its own connection from the same
+ * ~/.ssh/config. Any other editor is refused: there is no local file to give
+ * it. The URI is resolved like every remote path (inside a registered
+ * project of a host configured here), and the destination comes from the
+ * stored profile, never from the renderer.
+ *
+ * @param {string} editorBin
+ * @param {string} uri
+ * @param {object} [deps]  injectable for tests
+ */
+async function openRemoteInEditor(editorBin, uri, {
+  resolveTarget = (u) => require('../utils/projectTarget').resolveTarget(u),
+  platform = process.platform,
+} = {}) {
+  const family = editorFamily(editorBin);
+  if (!REMOTE_EDITORS.includes(family)) {
+    return { success: false, code: 'REMOTE_EDITOR_UNSUPPORTED', error: 'Only VS Code, Cursor and Windsurf can open files of a remote project', editor: editorBin };
+  }
+  let target;
+  try {
+    target = await resolveTarget(uri);
+  } catch (e) {
+    return { success: false, code: e.code, error: e.message, editor: editorBin };
+  }
+  const auth = remoteEditorAuthority(target.profile || {});
+  if (auth.error) return { success: false, code: auth.code, error: auth.error, editor: editorBin };
+  const remoteArg = `ssh-remote+${auth.authority}`;
+  // cmd.exe expands %VAR% and !VAR! inside a .cmd launcher's arguments.
+  const unsafe = platform === 'win32' ? /[%!]/ : null;
+  for (const value of [remoteArg, target.remotePath]) {
+    if (DANGEROUS_CHARS.test(value) || (unsafe && unsafe.test(value)) || value.startsWith('-')) {
+      return { success: false, code: 'REMOTE_EDITOR_UNSAFE', error: 'Remote path or host contains forbidden characters', editor: editorBin };
+    }
+  }
+  const failure = await _spawnEditor(_buildEditorCommand(editorBin), target.remotePath, ['--remote', remoteArg]);
+  if (failure) {
+    console.error(`[Dialog IPC] Failed to open editor "${editorBin}" on a remote project:`, failure.message);
+    return { success: false, error: failure.message, editor: editorBin };
+  }
+  return { success: true, editor: editorBin, remote: true };
+}
+
+// ─── Remote file watching ───────────────────────────────────────────────────
+
+/** A markdown tab's live reload on a remote file: its stat, every few seconds. */
+const REMOTE_WATCH_MS = 3000;
+
+/** uri -> { refCount, timer, last, busy, clear } */
+const remoteFileWatchers = new Map();
+
+/**
+ * Poll the remote stat of a file and send `file-changed` with its URI when
+ * its size or mtime moves, the event a local `fs.watch` sends. Nothing is
+ * asked while the host is not connected, so a dead host costs nothing.
+ *
+ * @param {string} uri
+ * @param {object} [deps]  injectable for tests
+ */
+async function watchRemoteFile(uri, {
+  authorize = (u) => require('./ssh.ipc').createSshFs().authorize(u, 'read'),
+  service = require('../services/SshHostService'),
+  send = (channel, payload) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload); },
+  timers = { setInterval, clearInterval },
+  intervalMs = REMOTE_WATCH_MS,
+} = {}) {
+  const existing = remoteFileWatchers.get(uri);
+  if (existing) { existing.refCount++; return true; }
+  const entry = { refCount: 1, timer: null, last: null, busy: false, clear: null };
+  remoteFileWatchers.set(uri, entry);
+  let target;
+  try {
+    target = await authorize(uri);
+  } catch {
+    remoteFileWatchers.delete(uri);
+    return false;
+  }
+  if (remoteFileWatchers.get(uri) !== entry) return false; // unwatched meanwhile
+  const fsApi = require('../utils/remoteFs').createRemoteFs(service.runner(target.profileId));
+  const poll = async () => {
+    if (entry.busy) return;
+    const status = service.getStatus(target.profileId);
+    if (!status || status.state !== 'connected') return;
+    entry.busy = true;
+    try {
+      const st = await fsApi.stat(target.path);
+      const sig = `${st.size}:${st.mtimeMs}`;
+      if (entry.last !== null && sig !== entry.last) send('file-changed', uri);
+      entry.last = sig;
+    } catch {
+      // Gone or briefly unreadable: say nothing, the next stat decides.
+    } finally {
+      entry.busy = false;
+    }
+  };
+  await poll();
+  if (remoteFileWatchers.get(uri) !== entry) return false;
+  entry.timer = timers.setInterval(() => { poll(); }, intervalMs);
+  entry.clear = () => timers.clearInterval(entry.timer);
+  return true;
+}
+
+function unwatchRemoteFile(uri) {
+  const entry = remoteFileWatchers.get(uri);
+  if (!entry) return;
+  entry.refCount--;
+  if (entry.refCount <= 0) {
+    if (entry.clear) entry.clear();
+    remoteFileWatchers.delete(uri);
+  }
 }
 
 /**
@@ -404,6 +542,11 @@ function registerDialogHandlers() {
 
   // File watcher for markdown live reload
   ipcMain.handle('watch-file', (event, filePath) => {
+    // A remote file: polled over the channel, never handed to fs.watch.
+    if (isRemotePath(filePath)) {
+      watchRemoteFile(filePath).catch(() => {});
+      return;
+    }
     if (fileWatchers.has(filePath)) {
       fileWatchers.get(filePath).refCount++;
       return;
@@ -427,6 +570,10 @@ function registerDialogHandlers() {
   });
 
   ipcMain.handle('unwatch-file', (event, filePath) => {
+    if (isRemotePath(filePath)) {
+      unwatchRemoteFile(filePath);
+      return;
+    }
     const entry = fileWatchers.get(filePath);
     if (!entry) return;
     entry.refCount--;
@@ -439,5 +586,9 @@ function registerDialogHandlers() {
 
 module.exports = {
   registerDialogHandlers,
-  setMainWindow
+  setMainWindow,
+  openRemoteInEditor,
+  remoteEditorAuthority,
+  watchRemoteFile,
+  unwatchRemoteFile,
 };
