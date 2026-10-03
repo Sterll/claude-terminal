@@ -37,8 +37,10 @@ const remotePath = require('../../shared/remote-path');
  *
  * A remote (SSH) project substitutes the way the UI does for it: $PROJECT_PATH
  * is the path on the host, $HOME stays literal for the remote shell to expand,
- * and $BRANCH is empty, because main has no cached remote status and the
- * project's `.git` is not on this machine to read.
+ * and $BRANCH is read on the host through the remote git primitives while it
+ * is connected (the project's `.git` is not on this machine to read). It is
+ * empty only while the host is not connected: reading it would connect the
+ * host or wait on it, and a node must not hang on a branch name.
  */
 
 /**
@@ -60,6 +62,29 @@ function currentBranch(projectPath) {
     const head = fs.readFileSync(path.join(projectPath, '.git', 'HEAD'), 'utf8').trim();
     const ref  = head.match(/^ref:\s*refs\/heads\/(.+)$/);
     return ref ? ref[1] : head.slice(0, 7);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Current branch of a remote project, asked of its host with
+ * `git rev-parse --abbrev-ref HEAD` through git.js, which routes the URI to
+ * the host. Only while the host is connected; '' otherwise, and on failure.
+ * @param {object} project
+ * @param {object} [deps]  { hosts, git }, injectable for tests
+ * @returns {Promise<string>}
+ */
+async function remoteBranch(project, deps = {}) {
+  const parsed = remotePath.tryParse(project.path);
+  const profileId = (project.remote && project.remote.profileId) || (parsed && parsed.profileId);
+  if (!profileId) return '';
+  try {
+    const hosts = deps.hosts || require('../services/SshHostService');
+    if (hosts.getStatus(profileId).state !== 'connected') return '';
+    const git = deps.git || require('../utils/git');
+    const branch = await git.getCurrentBranch(project.path);
+    return typeof branch === 'string' ? branch : '';
   } catch {
     return '';
   }
@@ -153,7 +178,7 @@ module.exports = {
       ...varsToObject(vars),
       PROJECT_PATH: remote ? remoteDirOf(project) : (project.path || ''),
       PROJECT_NAME: projectLabel(project),
-      BRANCH:       currentBranch(project.path),
+      BRANCH:       remote ? await remoteBranch(project) : currentBranch(project.path),
       // Left as the literal `$HOME` for the remote shell to expand.
       HOME:         remote ? '$HOME' : os.homedir(),
       ...(project.envVars && typeof project.envVars === 'object' ? project.envVars : {}),

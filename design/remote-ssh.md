@@ -524,12 +524,16 @@ path is fixed, which gives local scraping events their project too.)
 
 Quick actions create a terminal and type a command into it, so they follow the
 terminal routing. `$HOME` is left literal for the remote shell to expand,
-`$BRANCH` comes from the same status map as for a local project (filled in for
-remote projects by the git slice), `$PROJECT_PATH` is `remote.path`. On a remote
+`$BRANCH` is read on the host (`git-current-branch` with the project's URI, so
+the remote git primitives) once the tab has answered, falling back to the status
+map, and is empty only while the host is not connected, since the read would
+otherwise connect the host or wait on it; `$PROJECT_PATH` is `remote.path`. On a remote
 project the command is typed once the tab has printed something, not after a
 fixed 300 ms, because typeahead during ssh authentication could be read by a
 password prompt. The `quickaction` workflow node does the same substitution and
-never reads `.git/HEAD` out of a URI; it hands the command to a terminal tab like
+never reads `.git/HEAD` out of a URI: its `$BRANCH` comes from `git.js`
+`getCurrentBranch(uri)` on the host while `SshHostService` reads it connected,
+and is empty otherwise; it hands the command to a terminal tab like
 the UI does, so it works for remote projects and is not on the section 8 list.
 
 Tab ownership comparisons (`termData.project.path === project.path`, about ten
