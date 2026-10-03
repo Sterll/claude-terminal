@@ -311,7 +311,7 @@ function _remoteFailure(reason, error) {
 }
 
 /** One request, no cache: resolve, build, run, map. Never rejects. */
-async function _remoteRunUncached(uri, build, { readOnly, timeout, maxBuffer, signal }) {
+async function _remoteRunUncached(uri, build, { readOnly, timeout, maxBuffer, signal, input }) {
   if (signal && signal.aborted) return _remoteFailure('cancelled', 'Operation cancelled');
   const executor = _remoteExecutor();
   let target;
@@ -340,7 +340,13 @@ async function _remoteRunUncached(uri, build, { readOnly, timeout, maxBuffer, si
   let res;
   try {
     res = await Promise.race([
-      Promise.resolve().then(() => executor.exec(target, script, { write: !readOnly, timeoutMs: timeout, maxBuffer, signal: controller.signal })),
+      Promise.resolve().then(() => executor.exec(target, script, {
+        write: !readOnly,
+        timeoutMs: timeout,
+        maxBuffer,
+        signal: controller.signal,
+        ...(input ? { input } : {}),
+      })),
       cancelled,
     ]);
   } catch (e) {
@@ -377,11 +383,13 @@ function _copyResult(result) {
  * @param {number} spec.timeout
  * @param {number} [spec.maxBuffer]
  * @param {AbortSignal} [spec.signal]
+ * @param {Buffer} [spec.input]  bytes for the command's stdin; always a write
  */
-function _remoteRun(uri, { cacheKey, readOnly, build, timeout, maxBuffer = 1024 * 1024, signal }) {
+function _remoteRun(uri, { cacheKey, readOnly, build, timeout, maxBuffer = 1024 * 1024, signal, input }) {
   const parsed = remotePath.tryParse(uri);
   const profileId = parsed ? parsed.profileId : null;
-  const options = { readOnly, timeout, maxBuffer, signal };
+  if (input) readOnly = false;
+  const options = { readOnly, timeout, maxBuffer, signal, ...(input ? { input } : {}) };
   if (!readOnly) {
     _invalidateRemoteHost(profileId);
     return _remoteRunUncached(uri, build, options).then((result) => {
@@ -421,15 +429,50 @@ function _remoteRun(uri, { cacheKey, readOnly, build, timeout, maxBuffer = 1024 
   return entry.pending.then(_copyResult);
 }
 
+/** Subcommands whose `-m <message>` can be replaced by `-F -` (the message read from stdin). */
+const STDIN_MESSAGE_COMMANDS = new Set(['commit', 'tag']);
+
+/**
+ * Move a multi-line `-m` message onto stdin.
+ *
+ * Every remote script is one line and q() refuses control characters, so a
+ * commit or tag message with a body (a newline) or a tab cannot travel as an
+ * argument. `git commit -F -` and `git tag -F -` read the same message from
+ * stdin, with the same cleanup, and the channel carries stdin as bytes. A
+ * message without a control character stays `-m`, so the script of an
+ * ordinary commit does not change. Anything else holding a control character
+ * still fails as 'badargs' when the script is built.
+ *
+ * @param {string[]} argsArray
+ * @returns {{ args: string[], input: Buffer|null }}
+ */
+function _stdinMessageArgs(argsArray) {
+  if (!Array.isArray(argsArray)) return { args: argsArray, input: null };
+  let i = 0;
+  while (i < argsArray.length && (argsArray[i] === '-c' || argsArray[i] === '-C')) i += 2;
+  if (!STDIN_MESSAGE_COMMANDS.has(argsArray[i])) return { args: argsArray, input: null };
+  for (let j = i + 1; j < argsArray.length - 1; j++) {
+    if (argsArray[j] === '--') break;
+    const value = argsArray[j + 1];
+    if (argsArray[j] === '-m' && typeof value === 'string' && remotePath.hasControlChars(value)) {
+      const args = [...argsArray.slice(0, j), '-F', '-', ...argsArray.slice(j + 2)];
+      return { args, input: Buffer.from(value, 'utf8') };
+    }
+  }
+  return { args: argsArray, input: null };
+}
+
 /** git on the host of a remote project path. */
 function _remoteGit(uri, argsArray, { timeout, maxBuffer, signal } = {}) {
+  const { args, input } = _stdinMessageArgs(argsArray);
   return _remoteRun(uri, {
-    cacheKey: argsArray,
-    readOnly: isReadOnlyGitCommand(argsArray),
-    build: (dir) => remoteShell.gitScript(dir, argsArray),
+    cacheKey: args,
+    readOnly: !input && isReadOnlyGitCommand(args),
+    build: (dir) => remoteShell.gitScript(dir, args),
     timeout,
     maxBuffer,
     signal,
+    ...(input ? { input } : {}),
   });
 }
 

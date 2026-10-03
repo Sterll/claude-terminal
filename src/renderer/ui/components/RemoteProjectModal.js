@@ -363,9 +363,11 @@ async function renderVerifyHost(root, profileId, { onDone, onBack, cleanup }) {
   const api = _api();
   let ptyId = null;
   let exited = false;
+  let stopped = false;
   let term = null;
   const offs = [];
   const stop = () => {
+    stopped = true;
     for (const off of offs) { try { off(); } catch (_) { /* gone */ } }
     offs.length = 0;
     if (ptyId != null && !exited) { try { api.terminal.kill({ id: ptyId }); } catch (_) { /* gone */ } }
@@ -385,6 +387,12 @@ async function renderVerifyHost(root, profileId, { onDone, onBack, cleanup }) {
     return;
   }
   ptyId = res.id;
+  // Closed or navigated away while the PTY was starting: nothing will ever
+  // answer OpenSSH's prompt, so end it now instead of leaving ssh waiting.
+  if (stopped) {
+    try { api.terminal.kill({ id: ptyId }); } catch (_) { /* gone */ }
+    return;
+  }
 
   const pending = [];
   offs.push(api.terminal.onData(({ id, data }) => {
@@ -401,6 +409,7 @@ async function renderVerifyHost(root, profileId, { onDone, onBack, cleanup }) {
 
   try {
     const { Terminal, FitAddon } = await require('../../services/xtermLoader').loadXterm();
+    if (stopped) return; // stop() already ended the PTY; nothing to show it in
     const css = getComputedStyle(document.documentElement);
     const color = (name) => css.getPropertyValue(name).trim() || undefined;
     term = new Terminal({

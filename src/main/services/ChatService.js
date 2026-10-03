@@ -2303,6 +2303,11 @@ class ChatService {
    * @returns {Promise<{success: boolean, type: string, error?: string, genId: string}>}
    */
   async generateSkillOrAgent({ type, description, cwd, model, genId }) {
+    // The generator runs the local CLI with every permission granted; a remote
+    // project's URI is no local directory to run it in.
+    if (isRemotePath(cwd)) {
+      return { success: false, type, genId, error: 'Skills and agents cannot be generated in a remote project yet. Pick the global scope or a local project.' };
+    }
     const sdk = await loadSDK();
     const abortController = new AbortController();
 

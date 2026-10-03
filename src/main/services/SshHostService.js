@@ -398,6 +398,7 @@ class SshHostService extends EventEmitter {
         lanes: [],
         opening: 0,
         connectPromise: null,
+        connectGeneration: 0,
         retryTimer: null,
         pingTimer: null,
         waiters: new Set(),
@@ -476,7 +477,13 @@ class SshHostService extends EventEmitter {
     const host = this._host(profileId);
     host.wanted = true;
     if (host.state === 'connected') return this._statusOf(host);
-    if (host.connectPromise) return host.connectPromise;
+    if (host.connectPromise) {
+      // Join the attempt in progress, unless a disconnect (or a profile edit)
+      // made it stale: that one settles without connecting, and a connect
+      // asked for after the disconnect must start a fresh attempt once it has.
+      if (host.connectGeneration === host.generation) return host.connectPromise;
+      return host.connectPromise.catch(() => {}).then(() => this.connect(profileId));
+    }
     clearTimeout(host.retryTimer);
     host.retryTimer = null;
     if (host.state !== 'reconnecting') host.attempt = 0;
@@ -486,6 +493,7 @@ class SshHostService extends EventEmitter {
   _attempt(host) {
     const generation = host.generation;
     const stale = () => generation !== host.generation || this._disposed;
+    host.connectGeneration = generation;
     host.connectPromise = (async () => {
       if (host.state !== 'reconnecting') this._setState(host, 'connecting', host.attempt ? { attempt: host.attempt } : null);
 
@@ -738,7 +746,8 @@ class SshHostService extends EventEmitter {
 
       if (host.state !== 'connected') {
         if (isWrite || STOPPED_STATES.has(host.state)) return fail('disconnected', { state: host.state });
-        if (host.state === 'idle' && !host.connectPromise) this.connect(profileId).catch(() => {});
+        // connect() joins a current attempt and outwaits a stale one.
+        if (host.state === 'idle') this.connect(profileId).catch(() => {});
         const ok = await this._waitConnected(host, remaining, signal);
         if (!ok) return fail(signal && signal.aborted ? 'cancelled' : 'disconnected', { state: host.state });
         continue;
@@ -777,7 +786,7 @@ class SshHostService extends EventEmitter {
    *
    * @returns {Promise<{ ok: boolean, code: number|null, stdout: Buffer, stderr: Buffer, reason?: string }>}
    */
-  async oneShot(profileId, script, { input, onStdout, onStderr, timeoutMs = 300000, maxBuffer = 1024 * 1024, signal } = {}) {
+  async oneShot(profileId, script, { input, onStdout, onStderr, timeoutMs = 300000, maxBuffer = 1024 * 1024, signal, keepStdinOpen = false } = {}) {
     const empty = { code: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
     const host = this.hosts.get(profileId);
     if (!host || host.state !== 'connected' || !host.profile || !host.launcher) return { ok: false, reason: 'disconnected', ...empty };
@@ -844,8 +853,11 @@ class SshHostService extends EventEmitter {
       child.on('error', (e) => { errText += e.message; finish(null); });
       child.on('exit', (code) => { exitTimer = setTimeout(() => finish(code), 1000); });
       child.on('close', (code) => { clearTimeout(exitTimer); finish(code); });
+      // `keepStdinOpen`: a long-running script that watches its stdin for the
+      // end of the session (the remote inotify watcher). The pipe closes when
+      // this ssh exits or is killed.
       if (input) child.stdin.end(Buffer.from(input));
-      else child.stdin.end();
+      else if (!keepStdinOpen) child.stdin.end();
     });
   }
 

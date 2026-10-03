@@ -233,6 +233,55 @@ describe('SshHostService connection state machine (fake timers)', () => {
     expect(lanes[lanes.length - 1].closingReason).toBe('reconnect');
   });
 
+  test('a connect asked for after a disconnect is not swallowed by the attempt it cancelled', async () => {
+    const { service, createLane } = makeService();
+    let releaseOpen;
+    const gate = new Promise((resolve) => { releaseOpen = resolve; });
+    const original = createLane.getMockImplementation();
+    let first = true;
+    createLane.mockImplementation((opts) => {
+      const lane = original(opts);
+      if (first) {
+        first = false;
+        const open = lane.open.bind(lane);
+        lane.open = async () => { await gate; return open(); };
+      }
+      return lane;
+    });
+    const stale = service.connect(PROFILE_ID);
+    await jest.advanceTimersByTimeAsync(0);
+    service.disconnect(PROFILE_ID);
+    const fresh = service.connect(PROFILE_ID);
+    releaseOpen();
+    expect((await stale).state).toBe('idle');
+    expect((await fresh).state).toBe('connected');
+    expect(createLane).toHaveBeenCalledTimes(2);
+    service.disposeAll();
+  });
+
+  test('a one-shot ends its stdin unless its script watches stdin for the end of the session', async () => {
+    const children = [];
+    const spawnImpl = jest.fn(() => {
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.stdin = Object.assign(new EventEmitter(), { end: jest.fn() });
+      child.kill = jest.fn();
+      children.push(child);
+      return child;
+    });
+    const { service } = makeService({ spawnImpl });
+    await service.connect(PROFILE_ID);
+    const plain = service.oneShot(PROFILE_ID, 'true');
+    const watching = service.oneShot(PROFILE_ID, 'inotifywait -m x', { keepStdinOpen: true });
+    expect(children).toHaveLength(2);
+    expect(children[0].stdin.end).toHaveBeenCalled();
+    expect(children[1].stdin.end).not.toHaveBeenCalled();
+    for (const child of children) child.emit('close', 0);
+    await Promise.all([plain, watching]);
+    service.disposeAll();
+  });
+
   test('an idle host connects lazily on the first read', async () => {
     const { service, createLane } = makeService();
     const res = await service.exec(PROFILE_ID, 'echo ok', { timeoutMs: 5000 });

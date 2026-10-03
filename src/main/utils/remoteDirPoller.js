@@ -43,9 +43,31 @@ const INOTIFY_RESTART_MS = 500;
 const INOTIFY_RETRY_AFTER_MS = 60000;
 const INOTIFY_MAX_DIRS = 200;
 
-/** The inotifywait command for a set of directories: one line per event, naming the directory. */
+/**
+ * The inotifywait command for a set of directories: one line per event,
+ * naming the directory.
+ *
+ * sshd does not signal a command without a terminal when its connection goes
+ * away, and inotifywait only writes (and so only meets the broken pipe) on an
+ * event. A watcher on a quiet directory would therefore outlive every restart
+ * (each focus change, each expanded folder), holding one of the user's
+ * inotify instances on the host until none were left. So the script binds
+ * inotifywait to the session: the caller keeps ssh's stdin open, a sibling
+ * reads it, and its end of file (the local ssh stopped, for whatever reason)
+ * kills the watcher. A watcher that ends on its own still ends the script with
+ * its status, so the poller can fall back to polling.
+ */
 function inotifyScript(dirs) {
-  return `exec inotifywait -m -q -e create -e delete -e moved_from -e moved_to --format '%w' -- ${dirs.map((d) => q(d)).join(' ')}`;
+  const watch = `inotifywait -m -q -e create -e delete -e moved_from -e moved_to --format '%w' -- ${dirs.map((d) => q(d)).join(' ')}`;
+  return [
+    'exec 3<&0',
+    `${watch} </dev/null & p=$!`,
+    '{ cat <&3 >/dev/null 2>&1; kill $p 2>/dev/null; } & w=$!',
+    'exec 3<&-',
+    'wait $p; s=$?',
+    'kill $w 2>/dev/null',
+    'exit $s',
+  ].join('; ');
 }
 
 /**
@@ -153,6 +175,8 @@ function createRemoteDirPoller({
       signal: controller.signal,
       timeoutMs: 6 * 60 * 60 * 1000,
       maxBuffer: 1024 * 1024,
+      // The script ends the remote watcher on stdin's end of file (see inotifyScript).
+      keepStdinOpen: true,
       onStdout: (chunk) => {
         if (h.inotify !== run) return;
         run.buffer = (run.buffer + chunk.toString('utf8')).slice(-65536);

@@ -112,6 +112,24 @@ describe('ssh.ipc never takes a destination from the renderer', () => {
     expect(opts).toMatchObject({ write: true });
   });
 
+  test('mkdir, init and clone refuse the protected paths of the remote home', async () => {
+    const connected = { profileId: 'abcd1234', state: 'connected', capabilities: { home: '/home/yanis' } };
+    mockService.connect.mockResolvedValue(connected);
+    try {
+      expect(await invoke('ssh-mkdir', { profileId: 'abcd1234', path: '/home/yanis/.ssh/keys' })).toMatchObject({ success: false, code: 'REMOTE_PATH_BLOCKED' });
+      expect(await invoke('ssh-init', { profileId: 'abcd1234', path: '/home/yanis/.config/fish' })).toMatchObject({ success: false, code: 'REMOTE_PATH_BLOCKED' });
+      const clone = await invoke('ssh-clone', { profileId: 'abcd1234', url: 'https://github.com/a/b.git', path: '/home/yanis/.config/fish/conf.d' });
+      expect(clone.success).toBe(false);
+      expect(mockService.exec).not.toHaveBeenCalled();
+      expect(mockService.oneShot).not.toHaveBeenCalled();
+      expect(mockService.runner).not.toHaveBeenCalled();
+      // An ordinary directory of the same home is still fine.
+      expect(await invoke('ssh-init', { profileId: 'abcd1234', path: '/home/yanis/code/api' })).toMatchObject({ success: true });
+    } finally {
+      mockService.connect.mockImplementation(async (profileId) => ({ profileId, state: 'connected' }));
+    }
+  });
+
   test('a host that does not connect makes writes fail with the state', async () => {
     mockService.connect.mockResolvedValueOnce({ profileId: 'abcd1234', state: 'authFailed' });
     const res = await invoke('ssh-mkdir', { profileId: 'abcd1234', path: '/srv/x' });

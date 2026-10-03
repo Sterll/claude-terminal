@@ -78,7 +78,10 @@ function permitted(file, write = false) {
     // Keep upstream's credential/startup guards when moving I/O into main.
     // A project or dialog grant must not override these boundaries.
     const home = os.homedir();
-    const blocked = ['.ssh', '.aws', '.gnupg', '.claude/.credentials.json'].map(name => path.join(home, name));
+    // remote-hosts.json is main-process only: its `sshBinary` names the program
+    // spawned for every SSH connection, so a renderer able to write it would
+    // choose what runs here. The data directory grant must not reach it.
+    const blocked = ['.ssh', '.aws', '.gnupg', '.claude/.credentials.json', '.claude-terminal/remote-hosts.json'].map(name => path.join(home, name));
     if (write) {
       blocked.push(...['.bashrc', '.bash_profile', '.zshrc', '.zshenv', '.profile', '.claude.json'].map(name => path.join(home, name)));
       if (process.platform === 'win32' && process.env.APPDATA) blocked.push(path.join(process.env.APPDATA, 'Microsoft/Windows/Start Menu/Programs/Startup'));

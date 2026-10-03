@@ -189,6 +189,8 @@ describe('inotifywait when the host has it', () => {
     expect(host.service.oneShot).toHaveBeenCalledTimes(1);
     expect(host.service.oneShot.mock.calls[0][1]).toBe(inotifyScript(['/home/y/api']));
     expect(host.service.oneShot.mock.calls[0][1]).toContain("-- '/home/y/api'");
+    // The watcher's lifetime is bound to ssh's stdin, so it must stay open.
+    expect(host.service.oneShot.mock.calls[0][2]).toMatchObject({ keepStdinOpen: true });
 
     // The periodic poll stands down while inotify covers the host.
     host.requests.length = 0;
@@ -237,4 +239,51 @@ describe('explorer.ipc routes remote directories to the poller', () => {
     expect(poller._dirs.size).toBe(0);
     poller.dispose();
   });
+});
+
+// ── The remote watcher's lifetime, against a real sh ────────────────────────
+
+const { findSh, toShPath } = require('../helpers/fake-ssh');
+const SH = findSh();
+
+(SH ? describe : describe.skip)('inotifyScript under a real sh', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { spawn } = require('child_process');
+  let dir;
+
+  beforeEach(() => { dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-inotify-')); });
+  afterEach(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
+
+  /** A stand-in inotifywait on PATH, then the real script, with stdin kept open. */
+  function run(fakeBody) {
+    fs.writeFileSync(path.join(dir, 'inotifywait'), `#!/bin/sh\n${fakeBody}\n`, { mode: 0o755 });
+    const script = `PATH='${toShPath(dir)}':$PATH; export PATH; ${inotifyScript(['/tmp'])}`;
+    const child = spawn(SH, ['-c', script], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const exited = new Promise((resolve) => child.on('exit', (code) => resolve(code)));
+    return { child, exited };
+  }
+
+  const within = (promise, ms) => {
+    let timer;
+    const late = new Promise((resolve) => { timer = setTimeout(() => resolve('still running'), ms); });
+    return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+  };
+
+  test('the end of ssh\'s stdin ends the watcher on the host', async () => {
+    const marker = toShPath(path.join(dir, 'marker'));
+    const { child, exited } = run(`trap 'echo killed > "${marker}"; exit 0' TERM; echo ready > "${marker}"; while :; do sleep 1; done`);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(await within(exited, 200)).toBe('still running');
+    child.stdin.end();
+    expect(await within(exited, 5000)).not.toBe('still running');
+    expect(fs.readFileSync(path.join(dir, 'marker'), 'utf8').trim()).toBe('killed');
+  }, 10000);
+
+  test('a watcher that stops on its own still ends the script, with its status', async () => {
+    const { child, exited } = run('exit 3');
+    expect(await within(exited, 5000)).toBe(3);
+    child.stdin.end();
+  }, 10000);
 });

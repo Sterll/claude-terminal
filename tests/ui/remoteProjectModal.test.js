@@ -273,3 +273,20 @@ describe('host badge', () => {
     expect(Badge().projectLocation({ path: '/srv/x' })).toBe('/srv/x');
   });
 });
+
+describe('Verify host PTY lifecycle', () => {
+  test('a modal closed while the verify PTY is starting kills it once it exists', async () => {
+    let release;
+    api.ssh.verifyHost.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    Modal.openVerifyHost('abcd1234');
+    await flush();
+    // Opening another dialog closes this one before main has answered.
+    Modal.openHostEditor({});
+    await flush();
+    expect(api.terminal.kill).not.toHaveBeenCalled();
+    release({ success: true, id: 7 });
+    await flush();
+    expect(api.terminal.kill).toHaveBeenCalledWith({ id: 7 });
+    expect(api.terminal.onData).not.toHaveBeenCalled();
+  });
+});

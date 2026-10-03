@@ -129,8 +129,6 @@ module.exports = {
       || '';
     // A remote (SSH) project's URI never exists locally, so the fallback below
     // would quietly run the step in the home directory instead.
-    // A remote (SSH) project's URI never exists locally, so the fallback below
-    // would quietly run the step in the home directory instead.
     require('./_projects').assertLocalTargets(cwd);
     if (!cwd || !fs.existsSync(cwd)) {
       console.warn(`[claude.node] cwd invalid or missing: "${cwd}", falling back to ${home}`);

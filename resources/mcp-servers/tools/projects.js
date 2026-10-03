@@ -881,7 +881,7 @@ async function handle(name, args) {
       if (isRemoteProject(p)) return fail(remoteUnreadable(p));
       if (!p.path || !fs.existsSync(p.path)) return fail(`Project path not found: ${p.path}`);
 
-      const stats ={ fileCount: 0, totalLines: 0, languages: {} };
+      const stats = { fileCount: 0, totalLines: 0, languages: {} };
       scanStats(p.path, stats);
 
       const projectName = p.name || path.basename(p.path);

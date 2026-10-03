@@ -102,10 +102,37 @@ describe('remote command construction', () => {
 
   test('a control character in an argument is refused before anything is sent', async () => {
     const ex = use(scriptedExecutor());
-    const res = await git.execGitResult(URI, ['commit', '-m', 'two\nlines']);
+    const res = await git.execGitResult(URI, ['checkout', 'two\nlines']);
     expect(res.ok).toBe(false);
     expect(res.reason).toBe('badargs');
     expect(ex.exec).not.toHaveBeenCalled();
+  });
+
+  test('a multi-line commit message travels on stdin as `-F -`, never on the command line', async () => {
+    const ex = use(scriptedExecutor(() => ({ ok: true, stdout: '[main abc1234] feat: subject\n' })));
+    const message = 'feat: subject\n\n- first point\n\tindented';
+    const res = await git.gitCommit(URI, message);
+    expect(res.success).toBe(true);
+    const { script, options } = ex.calls[0];
+    expect(script).toContain("exec git -c protocol.ext.allow=never 'commit' '-F' '-'");
+    expect(script).not.toContain('first point');
+    expect(Buffer.isBuffer(options.input)).toBe(true);
+    expect(options.input.toString('utf8')).toBe(message);
+    expect(options.write).toBe(true);
+  });
+
+  test('a one-line commit message keeps its `-m` script and sends no stdin', async () => {
+    const ex = use(scriptedExecutor(() => ({ ok: true })));
+    await git.gitCommit(URI, 'fix: one line');
+    expect(ex.calls[0].script).toContain("'commit' '-m' 'fix: one line'");
+    expect(ex.calls[0].options.input).toBeUndefined();
+  });
+
+  test('an annotated tag with a multi-line message uses `-F -` as well', async () => {
+    const ex = use(scriptedExecutor(() => ({ ok: true })));
+    await git.createTag(URI, 'v1.0.0', 'Release 1.0\n\nNotes');
+    expect(ex.calls[0].script).toContain("'tag' '-a' 'v1.0.0' '-F' '-'");
+    expect(ex.calls[0].options.input.toString('utf8')).toBe('Release 1.0\n\nNotes');
   });
 
   test('a path refused by the resolver never reaches the host and reads as nodir', async () => {
@@ -437,10 +464,23 @@ function shExecutor() {
       const { profileId, path: p } = remotePath.parse(uri);
       return { kind: 'remote', profileId, remotePath: p, uri };
     },
-    exec: async (_target, script) => {
+    exec: async (_target, script, options = {}) => {
+      const env = { ...process.env, LC_ALL: 'C' };
+      if (options.input) {
+        // A PUT: the script reads the bytes on stdin, so the script itself
+        // goes through a file rather than through the same stdin.
+        const file = path.join(os.tmpdir(), `ct-git-remote-${process.pid}-${Date.now()}.sh`);
+        fs.writeFileSync(file, `${script}\n`);
+        try {
+          const r = spawnSync(SH, [toShPath(file)], { input: options.input, encoding: 'buffer', env, maxBuffer: 64 * 1024 * 1024 });
+          return { ok: r.status === 0, code: r.status, stdout: r.stdout, stderr: r.stderr };
+        } finally {
+          try { fs.rmSync(file, { force: true }); } catch { /* best effort */ }
+        }
+      }
       // On stdin, as the driver receives it: an argv would be re-parsed by the
       // Windows command line (msys reads backslashes there), which no host does.
-      const r = spawnSync(SH, ['-s'], { input: Buffer.from(`${script}\n`), encoding: 'buffer', env: { ...process.env, LC_ALL: 'C' }, maxBuffer: 64 * 1024 * 1024 });
+      const r = spawnSync(SH, ['-s'], { input: Buffer.from(`${script}\n`), encoding: 'buffer', env, maxBuffer: 64 * 1024 * 1024 });
       return { ok: r.status === 0, code: r.status, stdout: r.stdout, stderr: r.stderr };
     },
     isConnected: () => true,
@@ -487,6 +527,14 @@ describeSh('scripts executed by a real sh', () => {
     expect(await git.createBranch(uri, branch)).toMatchObject({ success: true });
     expect(await git.getCurrentBranch(uri)).toBe(branch);
     expect(gitIn(repo, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(branch);
+  });
+
+  test('a commit message with a body is committed whole, through stdin', async () => {
+    fs.writeFileSync(path.join(repo, 'c.txt'), 'body test\n');
+    gitIn(repo, 'add', 'c.txt');
+    const message = "feat: it's a $HOME subject\n\n- first point\n- second point";
+    expect(await git.gitCommit(uri, message)).toMatchObject({ success: true });
+    expect(gitIn(repo, 'log', '-1', '--format=%B').trim()).toBe(message);
   });
 
   test('a missing directory is nodir', async () => {

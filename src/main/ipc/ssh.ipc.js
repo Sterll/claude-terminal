@@ -58,6 +58,22 @@ async function requireConnected(profileId) {
   return status;
 }
 
+/**
+ * The browse writes (mkdir, init, clone) take any absolute path on the host,
+ * so they apply the remote blocklist themselves: no directory, repository or
+ * clone lands in ~/.ssh, a shell rc path or the CLI's credentials.
+ * @param {object} status   the connected status, with the handshake's home
+ * @param {string} posix    normalised absolute remote path
+ */
+function refuseBlockedBrowseWrite(status, posix) {
+  const home = status && status.capabilities && status.capabilities.home;
+  if (isBlockedRemotePath(posix, home, 'write')) {
+    const error = new Error('This remote path is protected and cannot be written from the app');
+    error.code = 'REMOTE_PATH_BLOCKED';
+    throw error;
+  }
+}
+
 function absolutePath(value) {
   if (typeof value !== 'string' || !value.startsWith('/')) {
     const error = new Error('Remote path must be absolute');
@@ -87,7 +103,7 @@ function absolutePath(value) {
 async function cloneOnHost({ profileId, url, path: dir, signal, progress }) {
   if (!isAllowedCloneUrl(url)) return { success: false, error: 'Only https:// and git@ URLs are allowed' };
   const target = await resolveBrowseTarget(profileId, absolutePath(dir));
-  await requireConnected(target.profileId);
+  refuseBlockedBrowseWrite(await requireConnected(target.profileId), target.remotePath);
   const script = [
     `if [ -e ${q(target.remotePath)} ]; then echo 'Destination already exists' >&2; exit 17; fi`,
     'GIT_TERMINAL_PROMPT=0',
@@ -609,7 +625,7 @@ function registerSshHandlers() {
   ipcMain.handle('ssh-mkdir', async (_event, { profileId, path: dir } = {}) => {
     try {
       const target = await resolveBrowseTarget(profileId, absolutePath(dir));
-      await requireConnected(target.profileId);
+      refuseBlockedBrowseWrite(await requireConnected(target.profileId), target.remotePath);
       const fsApi = createRemoteFs(sshHostService.runner(target.profileId));
       await fsApi.mkdir(target.remotePath, { recursive: true });
       return { success: true, path: await fsApi.realpathDir(target.remotePath) };
@@ -621,7 +637,7 @@ function registerSshHandlers() {
   ipcMain.handle('ssh-init', async (_event, { profileId, path: dir } = {}) => {
     try {
       const target = await resolveBrowseTarget(profileId, absolutePath(dir));
-      await requireConnected(target.profileId);
+      refuseBlockedBrowseWrite(await requireConnected(target.profileId), target.remotePath);
       const res = await sshHostService.exec(target.profileId, gitScript(target.remotePath, ['init']), { write: true, timeoutMs: 30000 });
       if (!res.ok) {
         const detail = res.reason || (res.stderr && res.stderr.toString('utf8').trim()) || `exit code ${res.code}`;

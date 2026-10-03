@@ -321,6 +321,15 @@ describe('workflow prompts refuse a remote project', () => {
     expect(query).not.toHaveBeenCalled();
   });
 
+  test('skill and agent generation refuses a remote project before any SDK call', async () => {
+    const query = jest.fn();
+    const { service } = loadChatService(query);
+    const result = await service.generateSkillOrAgent({ type: 'skill', description: 'x', cwd: URI, genId: 'gen-1' });
+    expect(result).toMatchObject({ success: false, type: 'skill', genId: 'gen-1' });
+    expect(result.error).toMatch(/remote project/);
+    expect(query).not.toHaveBeenCalled();
+  });
+
   test('CLAUDE.md suggestions are not applied to a URI', async () => {
     const { service } = loadChatService(jest.fn());
     expect(service.applyClaudeMdSections(URI, [{ section: '## X', content: 'y' }])).toMatchObject({ success: false });

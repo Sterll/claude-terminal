@@ -132,3 +132,11 @@ describe('remote projects are never granted to the renderer', () => {
     }
   });
 });
+test('the SSH host store stays out of reach of the data directory grant', () => {
+  const data = path.join(temporary, '.claude-terminal');
+  fs.mkdirSync(data);
+  security.grant(data);
+  expect(security.permitted(path.join(data, 'projects.json'), true)).toBe(true);
+  expect(security.permitted(path.join(data, 'remote-hosts.json'), true)).toBe(false);
+  expect(security.permitted(path.join(data, 'remote-hosts.json'))).toBe(false);
+});
