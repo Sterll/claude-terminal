@@ -874,6 +874,47 @@ function spawnGit(cwd, args, opts = {}) {
   });
 }
 
+const C_ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+
+/**
+ * Undo git's C-style quoting of one path ("sub tract.js" in double quotes,
+ * \303\251 for an e with an acute accent). An unquoted path comes back as is.
+ * @param {string} quoted
+ * @returns {string}
+ */
+function unquoteGitPath(quoted) {
+  if (typeof quoted !== 'string' || quoted.length < 2 || quoted[0] !== '"' || quoted[quoted.length - 1] !== '"') return quoted;
+  const chunks = [];
+  const token = /\\([0-7]{3})|\\(.)|([^\\]+)/gs;
+  let match;
+  const body = quoted.slice(1, -1);
+  while ((match = token.exec(body)) !== null) {
+    if (match[1] !== undefined) chunks.push(Buffer.from([parseInt(match[1], 8)]));
+    else if (match[2] !== undefined) chunks.push(Buffer.from([C_ESCAPES[match[2]] !== undefined ? C_ESCAPES[match[2]] : match[2].charCodeAt(0)]));
+    else chunks.push(Buffer.from(match[3], 'utf8'));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
+/**
+ * The path field of a `git status --porcelain` line, unquoted. Git quotes a
+ * path holding whitespace or an unusual character, so `line.slice(3)` handed
+ * back `"src/sub tract.js"` with its quotes: the Git panel listed it that
+ * way, and staging it asked git for a file that does not exist. A rename or
+ * copy keeps its `old -> new` shape, each side unquoted.
+ * @param {string} field - the line from its fourth character on
+ * @param {boolean} renamed - the line's status is R or C
+ * @returns {string}
+ */
+function porcelainPath(field, renamed) {
+  if (!field || !field.includes('"')) return field;
+  if (renamed) {
+    const pair = /^("(?:[^"\\]|\\.)*"|.*?) -> ("(?:[^"\\]|\\.)*"|.*)$/s.exec(field);
+    if (pair) return `${unquoteGitPath(pair[1])} -> ${unquoteGitPath(pair[2])}`;
+  }
+  return unquoteGitPath(field);
+}
+
 /**
  * Parse git status porcelain output into categorized files
  * @param {string} status - Git status --porcelain output
@@ -894,7 +935,7 @@ function parseGitStatus(status) {
 
     const indexStatus = line[0];
     const workTreeStatus = line[1];
-    const filePath = line.slice(3);
+    const filePath = porcelainPath(line.slice(3), /[RC]/.test(indexStatus + workTreeStatus));
 
     let type = 'modified';
     let category = 'unstaged';
@@ -1526,7 +1567,7 @@ function parseDiffNumstat(output) {
     if (!line.trim()) continue;
     const match = line.match(/^(\d+|-)\s+(\d+|-)\s+(.+)$/);
     if (match) {
-      map.set(match[3], {
+      map.set(unquoteGitPath(match[3]), {
         additions: match[1] === '-' ? 0 : parseInt(match[1], 10) || 0,
         deletions: match[2] === '-' ? 0 : parseInt(match[2], 10) || 0
       });
@@ -1577,7 +1618,7 @@ async function getGitStatusDetailed(projectPath) {
       for (const line of lines) {
         const indexStatus = line[0];
         const workTreeStatus = line[1];
-        const filePath = line.slice(3);
+        const filePath = porcelainPath(line.slice(3), /[RC]/.test(indexStatus + workTreeStatus));
 
         // Determine the status code to show
         let status = 'M';
@@ -2637,6 +2678,7 @@ async function getRemotes(projectPath) {
 module.exports = {
   parseGitStatus,
   parseDiffNumstat,
+  unquoteGitPath,
   execGit,
   execGitResult,
   // Defined here but never exported, so git.node.js destructured `undefined`
