@@ -368,6 +368,70 @@ function removeHooks() {
 }
 
 /**
+ * Whether one of our entries points at a script that no longer exists.
+ *
+ * Reads the first quoted path in the command that names HOOK_IDENTIFIER, which
+ * covers both shapes buildHookInvocation() has written: `node "<handler>" Key`
+ * and `"<launcher>" Key`. A command it cannot parse is reported alive, so an
+ * entry is only ever pruned on positive evidence that its target is gone.
+ *
+ * @param {Object} hookEntry
+ * @returns {boolean}
+ */
+function isDeadHook(hookEntry) {
+  if (!isOurHook(hookEntry)) return false;
+  return hookEntry.hooks.some(h => {
+    if (h.type !== 'command' || typeof h.command !== 'string') return false;
+    const quoted = h.command.match(/"([^"]+)"/g) || [];
+    const target = quoted.map(q => q.slice(1, -1)).find(p => p.includes(HOOK_IDENTIFIER));
+    return !!target && !fs.existsSync(target);
+  });
+}
+
+/**
+ * Remove our entries whose script no longer exists, and nothing else.
+ *
+ * Runs when hooks are disabled, which is exactly when verifyAndRepairHooks()
+ * does not: an install that was moved or reinstalled under another directory
+ * (the NSIS layout changed from `Programs/claude-terminal/Claude Terminal` to
+ * `Programs/Claude Terminal`) otherwise leaves every Claude session printing a
+ * MODULE_NOT_FOUND stack on each Stop, forever. Entries that still resolve are
+ * left alone, as are every other tool's hooks and every hook key we do not
+ * define today, since an older version may have installed one.
+ *
+ * @returns {{ success: boolean, pruned: number, error?: string }}
+ */
+function pruneDeadHooks() {
+  try {
+    // Throws on a malformed/unreadable file -> we abort before any write
+    const settings = readClaudeSettings();
+    if (!settings.hooks || typeof settings.hooks !== 'object') {
+      return { success: true, pruned: 0 };
+    }
+
+    let pruned = 0;
+    for (const hookKey of Object.keys(settings.hooks)) {
+      const existing = settings.hooks[hookKey];
+      const arr = Array.isArray(existing) ? existing : [existing];
+      const kept = arr.filter(entry => !isDeadHook(entry));
+      if (kept.length === arr.length) continue;
+
+      pruned += arr.length - kept.length;
+      if (kept.length === 0) delete settings.hooks[hookKey];
+      else settings.hooks[hookKey] = kept;
+    }
+
+    if (pruned === 0) return { success: true, pruned: 0 };
+    if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+    writeClaudeSettings(settings);
+    return { success: true, pruned };
+  } catch (e) {
+    console.error('Failed to prune dead hooks:', e);
+    return { success: false, pruned: 0, error: e.message };
+  }
+}
+
+/**
  * Check if our hooks are currently installed
  * @returns {{ installed: boolean, count: number }}
  */
@@ -498,6 +562,7 @@ module.exports = {
   removeHooks,
   areHooksInstalled,
   verifyAndRepairHooks,
+  pruneDeadHooks,
   // Exported for tests and diagnostics: which runtime the hooks will use.
   findNodeOnPath,
   getLauncherPath,

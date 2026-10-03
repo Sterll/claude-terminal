@@ -96,6 +96,12 @@ async function load() {
     _initialized = true;
   }
 
+  // The board is otherwise drawn on state changes only, and a project with no
+  // run produces none: without this the screen stayed blank instead of
+  // showing its empty state.
+  _updateBoard();
+  // After the board: its empty state carries a second "new run" button, which
+  // a remote project greys out like the header one.
   _applyNewRunAvailability();
   _loadHistory();
 }
@@ -1472,7 +1478,7 @@ async function _loadHistory() {
       addRun({ ...run, _fromHistory: true });
     }
   });
-
+  _updateBoard();
 }
 
 function _deriveNameFromGoal(goal) {

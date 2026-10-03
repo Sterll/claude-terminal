@@ -407,7 +407,7 @@
 .memory-markdown a.memory-link {
   color: var(--accent);
   text-decoration: none;
-  border-bottom: 1px dashed rgba(217, 119, 6, 0.4);
+  border-bottom: 1px dashed rgba(var(--accent-rgb), 0.4);
   transition: border-color 0.15s;
 }
 
@@ -499,10 +499,10 @@
 
 /* ── Search Highlight ── */
 .search-highlight {
-  background: rgba(217, 119, 6, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
   padding: 1px 3px;
   border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.3);
 }
 
 /* ── Empty State ── */

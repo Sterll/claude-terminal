@@ -497,7 +497,7 @@ mark.chat-search-hit.current {
 }
 
 .chat-msg-enhanced-badge:hover {
-  background: rgba(217, 119, 6, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
 }
 
 /* Original prompt (collapsed by default, toggled via badge click) */
@@ -4784,7 +4784,7 @@ hr.chat-plan-separator {
 
 @keyframes perm-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; background: rgba(217, 119, 6, 0.08); }
+  50% { opacity: 0.5; background: rgba(var(--accent-rgb), 0.08); }
 }
 
 /* Fix #7: Disabled model/effort buttons during streaming.

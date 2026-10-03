@@ -1355,7 +1355,7 @@
 
 .library-new-btn:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
 }
 
 .library-new-btn svg {
@@ -1823,7 +1823,7 @@
 }
 
 .rp-master-toggle:has(input:checked) {
-  border-color: rgba(217, 119, 6, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
 }
 
 .rp-master-toggle-content {
@@ -2324,7 +2324,7 @@
 
 .rp-server-btn:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
 }
 
 .rp-server-btn:disabled {

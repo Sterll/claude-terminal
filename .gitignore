@@ -103,3 +103,10 @@ scripts/test-plan-output.log
 /test.txt
 /test-audit-prompt.md
 /proofwebhook.txt
+# design-sync (claude.ai/design): staged scripts, build output and the whole
+# working directory. Kept out of the repo on purpose, so the project pin, the
+# conventions header and the build script are machine-local - a fresh clone
+# re-derives them.
+.ds-sync/
+ds-bundle/
+.design-sync/

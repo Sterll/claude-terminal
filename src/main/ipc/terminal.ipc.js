@@ -55,21 +55,22 @@ function endRemoteTmuxSession(remote) {
  */
 function registerTerminalHandlers() {
   // Create terminal
-  ipcMain.handle('terminal-create', async (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountId, sessionKey }) => {
+  ipcMain.handle('terminal-create', async (event, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountId, sessionKey, claudeCommand }) => {
     try {
       // A remote (ssh-remote://) project runs over ssh. Decided on the paths
       // alone, so a local terminal never reads projects.json or the host store.
       if (isRemotePath(cwd) || isRemotePath(projectPath)) {
         sendFeaturePing('terminal:create');
         const remote = await resolveRemoteTerminal({ cwd, projectPath, sessionKey });
-        // No account overlay: the remote host has its own `claude /login`.
-        return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote });
+        // No account overlay: the remote host has its own `claude /login`,
+        // which is also where a handed-over /login or /design-login lands.
+        return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote, claudeCommand });
       }
       sendFeaturePing('terminal:create');
       // Resolved here rather than inside create(), which stays synchronous:
       // reading an account's store can hit the Keychain.
       const accountEnv = await AccountManager.accountEnv(accountId || null);
-      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv });
+      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv, claudeCommand });
     } catch (error) {
       console.error('[Terminal IPC] Create error:', error);
       return { success: false, error: error.message };

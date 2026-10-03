@@ -6,7 +6,7 @@
 
 jest.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => '/mock/app', getPath: () => '/mock/data' },
-}), { virtual: true });
+}));
 
 // git utils are required at module load — stub them out.
 jest.mock('../../src/main/utils/git', () => ({

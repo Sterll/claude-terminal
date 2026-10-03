@@ -1339,6 +1339,9 @@
     "resetError": "Gagal mengurungkan commit"
   },
   "skillsAgents": {
+    "filterSkills": "Saring skill menurut nama, deskripsi...",
+    "filterAgents": "Saring agen menurut nama, alat...",
+    "noMatch": "Tidak ada yang cocok dengan filter ini.",
     "panelDescription": "Skill menyesuaikan cara Claude merespons. Agent adalah pekerja otonom dengan tool-nya sendiri.",
     "noSkills": "Belum ada skill terpasang",
     "noSkillsHint": "Skill adalah instruksi kustom yang membentuk perilaku Claude dalam proyek Anda (standar penulisan kode, gaya commit, aturan review...).",
@@ -2071,6 +2074,9 @@
     "runInBackground": "Jalankan di latar belakang",
     "backgroundWorkFailed": "Tidak dapat memindahkan pekerjaan ke latar belakang. {error}",
     "slashRemoteControl": "Bagikan percakapan ini ke claude.ai (on / off)",
+    "terminalCommandOpened": "{command} dibuka di terminal Claude: perintah ini hanya berjalan dalam mode interaktif CLI. Kembali ke sini setelah selesai.",
+    "terminalCommandFailed": "Tidak dapat membuka terminal untuk {command}.",
+    "terminalCommandUnsafeArgs": "{command} tidak dijalankan: salah satu argumennya berisi karakter yang tidak dapat diteruskan ke terminal dengan aman.",
     "mentionKnowledge": "Pengetahuan global"
   },
   "hooks": {

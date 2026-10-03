@@ -139,3 +139,39 @@ describe('parseFrontmatter', () => {
     });
   });
 });
+
+describe('parseFrontmatter: multi-line values', () => {
+  test('a folded block scalar is read, not left as its indicator', () => {
+    const content = [
+      '---',
+      'name: arsenal',
+      'description: >-',
+      '  Arsenal expert. Helps the user',
+      '  understand Arsenal concepts.',
+      '',
+      '  Use when: the user types /arsenal.',
+      'metadata: x',
+      '---',
+      'Body',
+    ].join('\n');
+    const { metadata, parsed } = parseFrontmatter(content);
+    expect(parsed.description).toBe('Arsenal expert. Helps the user understand Arsenal concepts.\nUse when: the user types /arsenal.');
+    // Indented lines holding a colon are not keys of their own.
+    expect(Object.keys(metadata)).toEqual(['name', 'description', 'metadata']);
+  });
+
+  test('a literal block scalar keeps its line breaks', () => {
+    const content = '---\ndescription: |\n  Line one.\n\n  - item\n---\n';
+    expect(parseFrontmatter(content).parsed.description).toBe('Line one.\n\n- item');
+  });
+
+  test('a block list of tools reads like an inline one', () => {
+    const content = '---\nname: a\ntools:\n  - Read\n  - "Grep"\n  - Bash\n---\n';
+    expect(parseFrontmatter(content).parsed.tools).toEqual(['Read', 'Grep', 'Bash']);
+  });
+
+  test('a plain scalar continued on the next lines is joined', () => {
+    const content = '---\ndescription: Reads the docs\n  and answers questions.\n---\n';
+    expect(parseFrontmatter(content).parsed.description).toBe('Reads the docs and answers questions.');
+  });
+});

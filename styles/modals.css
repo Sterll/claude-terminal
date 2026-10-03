@@ -137,12 +137,12 @@
 }
 
 .list-card:hover {
-  border-color: rgba(217, 119, 6, 0.12);
+  border-color: rgba(var(--accent-rgb), 0.12);
   background: linear-gradient(145deg, rgba(42, 42, 42, 0.5), var(--bg-secondary));
   transform: translateY(-2px);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.35),
-    0 0 0 1px rgba(217, 119, 6, 0.06);
+    0 0 0 1px rgba(var(--accent-rgb), 0.06);
 }
 
 .list-card:hover::before {
@@ -172,11 +172,11 @@
   text-transform: uppercase;
   letter-spacing: 0.8px;
   border-radius: 10px;
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
   color: var(--accent);
   white-space: nowrap;
   flex-shrink: 0;
-  border: 1px solid rgba(217, 119, 6, 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.12);
 }
 
 .list-card-badge.agent {
@@ -1985,7 +1985,7 @@ mark.qp-hl {
 .worktree-btn-create:hover:not(:disabled) {
   background: var(--accent-hover);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.35);
 }
 
 .worktree-btn-create:disabled {

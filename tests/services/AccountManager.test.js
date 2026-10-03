@@ -500,6 +500,57 @@ describe('MCP server tokens', () => {
   });
 });
 
+describe('Claude Design grant', () => {
+  // `/design-login` stores `designOauth` beside the login, for that account
+  // only: the CLI's own /logout deletes it together with `claudeAiOauth`.
+  const withDesign = (accessToken, grant) => ({
+    ...creds(accessToken),
+    organizationUuid: `org-${accessToken}`,
+    designOauth: { accessToken: `design-${grant}`, refreshToken: `design-refresh-${grant}` }
+  });
+
+  test('the snapshot keeps the account\'s design grant and organisation', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withDesign('tok-a', 'a')));
+    const a = await AccountManager.captureCurrent('Account A');
+
+    expect(snapshotOf(a.id)).toEqual({
+      claudeAiOauth: creds('tok-a').claudeAiOauth,
+      organizationUuid: 'org-tok-a',
+      designOauth: { accessToken: 'design-a', refreshToken: 'design-refresh-a' }
+    });
+  });
+
+  test('switching does not hand one account\'s design grant to the other', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-b')));
+    const b = await AccountManager.captureCurrent('Account B');
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withDesign('tok-a', 'a')));
+    const a = await AccountManager.captureCurrent('Account A');
+
+    await AccountManager.switchTo(b.id);
+    const live = JSON.parse(mockKeychain.get(MOCK_KEY));
+    expect(live.claudeAiOauth.accessToken).toBe('tok-b');
+    expect(live.designOauth).toBeUndefined();
+    expect(live.organizationUuid).toBeUndefined();
+
+    await AccountManager.switchTo(a.id);
+    expect(JSON.parse(mockKeychain.get(MOCK_KEY)).designOauth.accessToken).toBe('design-a');
+  });
+
+  test('a grant added after capture is picked up before the account is swapped out', async () => {
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-b')));
+    const b = await AccountManager.captureCurrent('Account B');
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-a')));
+    const a = await AccountManager.captureCurrent('Account A');
+
+    // `/design-login` run on A after it was saved.
+    mockKeychain.set(MOCK_KEY, JSON.stringify(withDesign('tok-a', 'a')));
+    await AccountManager.switchTo(b.id);
+    await AccountManager.switchTo(a.id);
+
+    expect(JSON.parse(mockKeychain.get(MOCK_KEY)).designOauth.accessToken).toBe('design-a');
+  });
+});
+
 describe('errors', () => {
   test('capture without credentials tells the user to log in', async () => {
     await expect(AccountManager.captureCurrent('Nope'))

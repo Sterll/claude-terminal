@@ -169,7 +169,7 @@
 
 .btn-sm.btn-install:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.3);
 }
 
 .btn-sm.btn-install:disabled {
@@ -738,7 +738,7 @@
   flex-shrink: 0;
   background: linear-gradient(135deg, var(--accent-dim), var(--bg-tertiary));
   color: var(--accent);
-  border: 1px solid rgba(217, 119, 6, 0.15);
+  border: 1px solid rgba(var(--accent-rgb), 0.15);
 }
 
 .plugin-installed-info {
@@ -862,8 +862,8 @@
 }
 
 .plugin-marketplace-card.official {
-  border-color: rgba(217, 119, 6, 0.3);
-  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(217, 119, 6, 0.04) 100%);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(var(--accent-rgb), 0.04) 100%);
 }
 
 .plugin-mp-header {
@@ -886,7 +886,7 @@
 
 .plugin-marketplace-card.official .plugin-mp-icon {
   background: var(--accent-dim);
-  border-color: rgba(217, 119, 6, 0.2);
+  border-color: rgba(var(--accent-rgb), 0.2);
   color: var(--accent);
 }
 
@@ -1246,9 +1246,9 @@
 
 /* Edit button — accent-colored */
 .btn-sm.btn-accent {
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   color: var(--accent);
-  border: 1px solid rgba(217, 119, 6, 0.18);
+  border: 1px solid rgba(var(--accent-rgb), 0.18);
   font-weight: 600;
 }
 
@@ -1256,7 +1256,7 @@
   background: var(--accent);
   color: #000;
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
 }
 
 /* Shared install button spinner (used by plugins, marketplace, mcp) */
@@ -1595,7 +1595,7 @@
 }
 
 .skill-editor-textarea::selection {
-  background: rgba(217, 119, 6, 0.25);
+  background: rgba(var(--accent-rgb), 0.25);
 }
 
 .skill-editor-textarea::placeholder {
@@ -1622,4 +1622,191 @@
 .list-card {
   content-visibility: auto;
   contain-intrinsic-size: auto 64px;
+}
+
+/* ==================== SKILLS & AGENTS LIST ====================
+ * Compact cards in the same language as the Cost and Dashboard screens: flat
+ * bg-secondary, a thin border, actions as icons, the whole card opens the
+ * editor. Scoped to .sa-*, so the marketplace cards keep .list-card.
+ */
+
+.sa-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.sa-search {
+  flex: 1;
+  max-width: 420px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+}
+
+.sa-search:focus-within {
+  border-color: var(--accent);
+}
+
+.sa-search svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sa-search input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  box-shadow: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+}
+
+.sa-no-match {
+  padding: 32px 0;
+  text-align: center;
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.sa-section {
+  margin-bottom: 20px;
+}
+
+.sa-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.sa-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.sa-card:hover {
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: var(--bg-tertiary);
+}
+
+.sa-card[hidden] {
+  display: none;
+}
+
+.sa-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+}
+
+.sa-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sa-card-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.sa-card:hover .sa-card-actions,
+.sa-card:focus-within .sa-card-actions {
+  opacity: 1;
+}
+
+.sa-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sa-icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.sa-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.sa-icon-btn.danger:hover {
+  color: var(--danger);
+}
+
+.sa-card-desc {
+  font-size: var(--font-xs);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sa-card-desc.empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.sa-card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.sa-chip {
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-2xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sa-chip.more {
+  color: var(--text-muted);
 }

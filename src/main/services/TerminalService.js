@@ -8,6 +8,7 @@ const fs = require('fs');
 const pty = require('node-pty');
 const { execFileSync } = require('child_process');
 const terminalCapture = require('./TerminalOutputCapture');
+const { terminalCommandArgv } = require('../../shared/terminal-commands');
 const sshCommand = require('../utils/sshCommand');
 const {
   shC,
@@ -112,13 +113,24 @@ class TerminalService {
    * @param {Object|null} [options.remote] - A remote (SSH) project's launch
    *   context, resolved in main by the terminal IPC from a registered project
    *   (see `_createRemote`). Never taken from the renderer as-is.
+   * @param {string} [options.claudeCommand] - A terminal-only slash command for
+   *   the CLI to run on start (see src/shared/terminal-commands.js)
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null, remote = null }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null, remote = null, claudeCommand = null }) {
+    // Validated again here rather than trusted from the renderer: these words
+    // end up on a cmd.exe or shell command line, local or on a remote host.
+    let commandArgv = [];
+    if (claudeCommand) {
+      commandArgv = terminalCommandArgv(claudeCommand);
+      if (!commandArgv) return { success: false, error: `Refusing to run "${claudeCommand}" in a terminal.` };
+      if (!runClaude) return { success: false, error: 'A Claude command needs a Claude terminal.' };
+    }
+
     const id = ++this.terminalId;
     // A remote project takes its own branch before anything below looks at the
     // local filesystem: its cwd is a URI that never exists here.
-    if (remote) return this._createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote });
+    if (remote) return this._createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote, commandArgv });
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
 
@@ -150,6 +162,7 @@ class TerminalService {
       if (_remoteControlEnabled()) {
         claudeArgs.push('--rc');
       }
+      claudeArgs.push(...commandArgv);
       shellPath = 'cmd.exe';
       shellArgs = ['/c', ...claudeArgs];
     }
@@ -261,6 +274,7 @@ class TerminalService {
         if (_remoteControlEnabled()) {
           claudeCmd += ' --rc';
         }
+        if (commandArgv.length) claudeCmd += ' ' + commandArgv.join(' ');
         try { ptyProcess.write(claudeCmd + '\r'); } catch (e) {}
       }, 500);
     }
@@ -321,6 +335,10 @@ class TerminalService {
     if (ctx.resumeSessionId && RESUME_ID_RE.test(ctx.resumeSessionId)) argv.push('--resume', ctx.resumeSessionId);
     if (ctx.skipPermissions) argv.push('--dangerously-skip-permissions');
     if (_remoteControlEnabled()) argv.push('--rc');
+    // A command handed over from the chat (/login, /design-login...) runs on
+    // the host, against the host's own login. Already checked word by word by
+    // terminalCommandArgv(), and quoted again by terminalClaudeScript().
+    if (Array.isArray(ctx.commandArgv)) argv.push(...ctx.commandArgv);
     return argv;
   }
 
@@ -352,7 +370,7 @@ class TerminalService {
     return { file: ctx.command, args: [...(ctx.prefixArgs || []), ...sshArgs], tmuxSession };
   }
 
-  _createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote }) {
+  _createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote, commandArgv = [] }) {
     const sessionKey = typeof remote.sessionKey === 'string' && SESSION_KEY_RE.test(remote.sessionKey)
       ? remote.sessionKey
       : `t${Date.now().toString(36)}${id}`;
@@ -362,6 +380,7 @@ class TerminalService {
       runClaude: Boolean(runClaude),
       skipPermissions: Boolean(skipPermissions),
       resumeSessionId: resumeSessionId && RESUME_ID_RE.test(resumeSessionId) ? resumeSessionId : null,
+      commandArgv: runClaude && Array.isArray(commandArgv) ? commandArgv : [],
       projectId: projectId || null,
       projectPath: projectPath || cwd || null,
       cwd: cwd || null,
@@ -553,6 +572,9 @@ class TerminalService {
       size: prev.size,
       resumeSessionId: resumeSessionId && RESUME_ID_RE.test(resumeSessionId) ? resumeSessionId : prev.resumeSessionId,
     };
+    // A handed-over command (/login...) runs again only when there is no
+    // conversation to pick up: `--resume <id> /login` would be neither.
+    ctx.commandArgv = ctx.resumeSessionId ? [] : (prev.commandArgv || []);
     this.disconnected.delete(id);
     const result = this._spawnRemote(id, ctx);
     if (!result.success) this.disconnected.set(id, prev);

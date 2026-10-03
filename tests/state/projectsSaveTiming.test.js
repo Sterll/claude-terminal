@@ -1,16 +1,18 @@
 /**
  * When projects.json is written, and what that means for the other writers.
  *
- * Two things found by driving the real app against a remote host:
+ * Two things found by driving the real app:
  *
  *   - The debounce timer of saveProjects() was never cleared once it fired, so
  *     `_checkExternalWrite()` read "a save of ours is pending" forever after
  *     the first save of the session and ignored every write by another
  *     process (the MCP project and kanban tools, a second window).
- *   - A remote project is opened the moment it is added, and the main process
- *     resolves its URI against projects.json. Inside the 500 ms debounce the
- *     file did not list it yet, so the first requests about it were refused.
- *     flushProjectsSave() writes it now.
+ *   - A caller that needs a just-added project on disk at once (the main
+ *     process resolves some requests against projects.json) cannot wait out
+ *     the 500 ms debounce. flushProjectsSave() writes it now. A remote project
+ *     is the case that found it: it is opened the moment it is added, and main
+ *     resolves its URI against projects.json, so inside the debounce the
+ *     first requests about it were refused.
  */
 
 const {
@@ -64,6 +66,19 @@ test('a write by another process is still picked up after one of our own saves',
   await jest.advanceTimersByTimeAsync(3100);
 
   expect(projectsState.get().projects.map((p) => p.id)).toEqual(['p1', 'p2']);
+});
+
+test('flushProjectsSave writes a just-added project without waiting for the debounce', async () => {
+  setDisk({ projects: [], folders: [], rootOrder: [] }, 1000);
+  await loadProjects();
+  fsMock.promises.writeFile.mockClear();
+
+  const project = addProject({ name: 'app', type: 'standalone', path: 'C:\\code\\app' });
+  await flushProjectsSave();
+
+  expect(fsMock.promises.writeFile).toHaveBeenCalledTimes(1);
+  const written = JSON.parse(fsMock.promises.writeFile.mock.calls[0][1]);
+  expect(written.projects.map((p) => p.path)).toContain(project.path);
 });
 
 test('flushProjectsSave writes a just-added remote project without waiting for the debounce', async () => {

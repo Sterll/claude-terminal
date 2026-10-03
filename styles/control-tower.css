@@ -71,7 +71,7 @@
   transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
   white-space: nowrap;
   flex-shrink: 0;
-  box-shadow: 0 0 14px rgba(217, 119, 6, 0.3), 0 1px 3px rgba(0,0,0,0.4);
+  box-shadow: 0 0 14px rgba(var(--accent-rgb), 0.3), 0 1px 3px rgba(0,0,0,0.4);
   letter-spacing: 0.01em;
 }
 

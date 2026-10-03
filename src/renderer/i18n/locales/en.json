@@ -1339,6 +1339,9 @@
     "resetError": "Failed to undo commit"
   },
   "skillsAgents": {
+    "filterSkills": "Filter skills by name, description...",
+    "filterAgents": "Filter agents by name, tool...",
+    "noMatch": "Nothing matches this filter.",
     "panelDescription": "Skills customize how Claude responds. Agents are autonomous workers with their own tools.",
     "noSkills": "No skills installed",
     "noSkillsHint": "Skills are custom instructions that shape how Claude behaves in your projects (coding standards, commit style, review rules...).",
@@ -2071,6 +2074,9 @@
     "runInBackground": "Run in background",
     "backgroundWorkFailed": "Could not move the work to the background. {error}",
     "slashRemoteControl": "Share this conversation with claude.ai (on / off)",
+    "terminalCommandOpened": "Opened {command} in a Claude terminal: it only runs in the CLI's interactive mode. Come back here once it is done.",
+    "terminalCommandFailed": "Could not open a terminal for {command}.",
+    "terminalCommandUnsafeArgs": "{command} was not run: one of its arguments contains characters that cannot be passed to a terminal safely.",
     "mentionKnowledge": "Global knowledge"
   },
   "hooks": {

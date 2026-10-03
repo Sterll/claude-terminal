@@ -18,9 +18,11 @@
  *   fallback and environment.
  */
 
+// Not virtual: see TerminalService.test.js. A virtual electron mock is keyed on
+// the bare name and leaks into the next suite of the same worker.
 jest.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => '/mock/app', getPath: () => '/mock/data' },
-}), { virtual: true });
+}));
 
 jest.mock('../../src/main/services/TerminalOutputCapture', () => ({ record: jest.fn(), flush: jest.fn() }));
 jest.mock('../../src/main/services/RemoteControlService', () => ({ launchesTerminalsConnected: () => false }));
@@ -185,6 +187,35 @@ describe('remote create', () => {
     element = remoteCommandOf(last().args)[0];
     expect(element).not.toContain('--resume');
     expect(element).not.toContain('rm -rf');
+  });
+
+  test('a command handed over from the chat runs after the remote claude, quoted', () => {
+    const res = createRemote({ runClaude: true, claudeCommand: '/plugin install foo@bar' });
+    expect(res.success).toBe(true);
+    const element = remoteCommandOf(last().args)[0];
+    expect(element).toMatch(/claude.*\/plugin.*install.*foo@bar/);
+    expect(last().options.env).toBe(process.env);
+  });
+
+  test('a handed-over command is checked before anything is spawned, remote or not', () => {
+    const calls = pty.spawn.mock.calls.length;
+    expect(createRemote({ runClaude: true, claudeCommand: '/login $(id)' }).success).toBe(false);
+    expect(createRemote({ runClaude: true, claudeCommand: '/model opus' }).success).toBe(false);
+    expect(createRemote({ runClaude: false, claudeCommand: '/login' }).success).toBe(false);
+    expect(pty.spawn.mock.calls.length).toBe(calls);
+  });
+
+  test('a command tab reruns its command on reconnect, unless there is a conversation to resume', () => {
+    const { id } = createRemote({ runClaude: true, claudeCommand: '/design-login' });
+    last().emitExit(255);
+    terminalService.respawn(id, { remote: remoteContext() });
+    expect(remoteCommandOf(last().args)[0]).toContain('/design-login');
+
+    last().emitExit(255);
+    terminalService.respawn(id, { remote: remoteContext(), resumeSessionId: 'aaaabbbb-1111-2222-3333-444455556666' });
+    const element = remoteCommandOf(last().args)[0];
+    expect(element).toContain('--resume');
+    expect(element).not.toContain('/design-login');
   });
 
   test('a profile can name the remote claude binary', () => {

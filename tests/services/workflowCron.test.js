@@ -3,7 +3,7 @@
 
 jest.mock('electron', () => ({
   app: { isPackaged: false, getAppPath: () => '/mock/app', getPath: () => '/mock/data' },
-}), { virtual: true });
+}));
 
 const WorkflowScheduler = require('../../src/main/services/WorkflowScheduler');
 const { parseCron } = WorkflowScheduler;

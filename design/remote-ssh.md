@@ -490,6 +490,12 @@ given (main resolves `project.remote`; the renderer sends nothing host-related):
   it, since it is a server-wide option of the user's own tmux;
 - no local `existsSync` on the cwd, no `accountEnv` overlay (the remote host has
   its own `claude /login`); the ssh process starts in the local home directory;
+- a terminal-only CLI command the chat hands over (`/login`, `/design-login`,
+  `/plugin`..., `src/shared/terminal-commands.js`) opens a remote Claude tab
+  running `claude /<command>` on the host. `TerminalService.create` checks it
+  against the allowlist before either branch, and `terminalClaudeScript()`
+  quotes it like the rest of the argv. A reconnect runs it again only when the
+  tab has no conversation to resume;
 - ConPTY and Unix PTY resizes already propagate to ssh as window-change events.
   The last size is remembered, so a respawned PTY opens at it.
 

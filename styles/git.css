@@ -167,7 +167,7 @@
 
 .git-select-all input[type="checkbox"]:indeterminate {
   border-color: var(--accent);
-  background: rgba(217, 119, 6, 0.3);
+  background: rgba(var(--accent-rgb), 0.3);
 }
 
 .git-select-all input[type="checkbox"]:indeterminate::after {
@@ -383,7 +383,7 @@
 }
 
 .git-file-item.selected {
-  background: rgba(217, 119, 6, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
   border-left-color: var(--accent);
 }
 
@@ -501,7 +501,7 @@
 .git-file-item.diff-open .git-diff-toggle {
   opacity: 1;
   color: var(--accent);
-  background: rgba(217,119,6,0.12);
+  background: rgba(var(--accent-rgb), 0.12);
 }
 
 .git-diff-toggle:hover {
@@ -690,7 +690,7 @@
 }
 
 .git-changes-stash-save-btn:hover:not(:disabled) {
-  background: rgba(217,119,6,0.14);
+  background: rgba(var(--accent-rgb), 0.14);
   border-color: var(--accent);
   color: var(--accent);
   transform: scale(1.08);
@@ -893,7 +893,7 @@
 .git-commit-section textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.12);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb), 0.12);
 }
 
 .git-commit-section textarea::placeholder {
@@ -940,7 +940,7 @@
 
 .git-commit-actions .btn-primary:hover {
   background: var(--accent-hover);
-  box-shadow: 0 2px 12px rgba(217, 119, 6, 0.3);
+  box-shadow: 0 2px 12px rgba(var(--accent-rgb), 0.3);
 }
 
 .git-commit-actions .btn-primary:disabled {
@@ -1082,7 +1082,7 @@
 }
 
 .git-sidebar-header .btn-icon:hover {
-  background: rgba(217, 119, 6, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
 }
 
@@ -1218,7 +1218,7 @@
 }
 
 .git-project-item.active {
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .git-project-item.active::before {
@@ -1502,7 +1502,7 @@
 .git-branch-item.current {
   color: var(--accent);
   font-weight: 600;
-  background: rgba(217, 119, 6, 0.06);
+  background: rgba(var(--accent-rgb), 0.06);
 }
 
 .git-branch-dot {
@@ -1653,7 +1653,7 @@
 }
 .git-stash-save-btn:hover {
   color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 /* ========== WORKTREES ========== */
@@ -2106,9 +2106,9 @@
 }
 
 .git-section-btn:hover {
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
   color: var(--accent);
-  border-color: rgba(217, 119, 6, 0.2);
+  border-color: rgba(var(--accent-rgb), 0.2);
 }
 
 .git-file-list {
@@ -2235,7 +2235,7 @@
 .git-file-btn.stage-btn:hover,
 .git-file-btn.diff-btn:hover {
   color: var(--accent);
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .git-file-btn.unstage-btn:hover {
@@ -2293,8 +2293,8 @@
 }
 
 .git-generate-btn:hover {
-  background: rgba(217, 119, 6, 0.1);
-  border-color: rgba(217, 119, 6, 0.3);
+  background: rgba(var(--accent-rgb), 0.1);
+  border-color: rgba(var(--accent-rgb), 0.3);
   color: var(--accent);
 }
 
@@ -2497,7 +2497,7 @@
 }
 
 .git-deco-head {
-  background: rgba(217, 119, 6, 0.12);
+  background: rgba(var(--accent-rgb), 0.12);
   color: var(--accent);
 }
 
@@ -2571,7 +2571,7 @@
 
 .git-commit-hash:hover {
   color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .git-commit-message {
@@ -2973,7 +2973,7 @@
 .git-tag-create-btn:hover {
   color: var(--accent);
   opacity: 1 !important;
-  background: rgba(217, 119, 6, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
 }
 
 .git-tag-item {
@@ -4091,7 +4091,7 @@
 
 .diff-mode-btn.active {
   color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 /* ========== SIDE-BY-SIDE DIFF ========== */
@@ -4237,14 +4237,14 @@
 
 .git-remote-add-btn:hover {
   color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 /* ========== STASH PREVIEW & POP ========== */
 
 .git-stash-btn.pop:hover {
   color: var(--accent);
-  background: rgba(217, 119, 6, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .git-stash-btn.preview:hover {

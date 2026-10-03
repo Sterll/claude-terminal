@@ -55,6 +55,7 @@ const { saveTerminalSessions } = require('../../services/TerminalSessionService'
 const { matchModel, resolveModelSelection, uncataloguedModelLabel, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
 const { PERMISSION_MODES, permissionModeInfo, modeFromSetting, settingFromMode } = require('../../../shared/permission-modes');
 const { contextTokensFromMessage } = require('../../../shared/context-usage');
+const { parseTerminalCommand } = require('../../../shared/terminal-commands');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
 // Catalog access is shared with the project-settings and parallel-run pickers
@@ -98,7 +99,7 @@ class ChatView extends BaseComponent {
 
   createChatView(wrapperEl, project, options = {}) {
     const api = this._api;
-  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
+  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, onRunInTerminal = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
   let sessionId = null;
   let destroyed = false;
 
@@ -158,6 +159,14 @@ class ChatView extends BaseComponent {
   let pendingDropsTurn = resumeDropsTurn || null;
   let lastStartOpts = null; // cached so we can re-launch the SDK after an account switch
   let switchingAccount = false; // suppress error UI while we hot-swap credentials
+
+  /**
+   * The account this conversation runs on: the one its session was started
+   * with, or the project's binding before there is a session.
+   */
+  function conversationAccountId() {
+    return lastStartOpts ? (lastStartOpts.accountId ?? null) : getProjectAccount(project.id);
+  }
   // A limit refused the turn that was running, so a switch has to ask for that
   // turn back instead of resuming into a session that answers nothing. Cleared
   // as soon as a turn runs again, so a later switch from the account menu on an
@@ -3284,6 +3293,28 @@ class ChatView extends BaseComponent {
       setInputText('');
       const wantOn = arg === 'on' ? true : arg === 'off' ? false : !remoteMirrored;
       await toggleRemoteControl(wantOn);
+      return;
+    }
+
+    // Commands the CLI only runs in its interactive UI (/design-login, /login...)
+    // answer "isn't available in this environment" here, so they open in a
+    // Claude terminal of their own, on the account this conversation runs on.
+    const terminalCommand = !hasImages && !hasMentions ? parseTerminalCommand(text) : null;
+    if (terminalCommand && onRunInTerminal) {
+      setInputText('');
+      const command = `/${terminalCommand.name}`;
+      if (!terminalCommand.valid) {
+        appendSystemNotice(t('chat.terminalCommandUnsafeArgs', { command }), 'command');
+        return;
+      }
+      const opened = await onRunInTerminal({ command: text, accountId: conversationAccountId() });
+      if (destroyed) return;
+      appendSystemNotice(
+        opened
+          ? t('chat.terminalCommandOpened', { command })
+          : t('chat.terminalCommandFailed', { command }),
+        'command'
+      );
       return;
     }
 
@@ -7736,6 +7767,10 @@ class ChatView extends BaseComponent {
       setStreaming(false);
       return false;
     }
+    // The session runs on `newId` from here, and everything that relaunches it
+    // later (a retry, the next switch, a command handed to a terminal) starts
+    // from lastStartOpts.
+    lastStartOpts = { ...lastStartOpts, accountId: newId ?? null };
     // A restart carries one prompt. Anything else that was still queued
     // goes back on the new session in the order it was typed, rather than
     // being dropped for being second.

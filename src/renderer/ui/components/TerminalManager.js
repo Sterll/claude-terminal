@@ -1588,10 +1588,30 @@ class TerminalManager extends BaseComponent {
 
   // ── Create terminal ──
 
-  async createTerminal(project, options = {}) {
-    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null } = options;
+  /**
+   * Open a Claude terminal running one terminal-only slash command, for a chat
+   * tab that could not run it (see src/shared/terminal-commands.js).
+   *
+   * @param {Object} project - the chat tab's project, its cwd included
+   * @param {{ command: string, accountId: string|null }} handoff - the command
+   *   as typed, and the account the conversation runs on
+   * @returns {Promise<number|null>} the new terminal's id
+   */
+  _runCommandInTerminal(project, { command, accountId }) {
+    return this.createTerminal(project, {
+      runClaude: true,
+      claudeCommand: command,
+      accountId,
+      name: command.split(/\s+/)[0]
+    });
+  }
 
-    const mode = explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal');
+  async createTerminal(project, options = {}) {
+    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null, claudeCommand = null, accountId: accountOverride } = options;
+
+    // A command handed over from the chat needs the CLI's own terminal UI,
+    // which is the whole reason it could not run in the chat.
+    const mode = claudeCommand ? 'terminal' : (explicitMode || (runClaude ? (getSetting('defaultTerminalMode') || 'terminal') : 'terminal'));
 
     // A remote (SSH) project's terminals and chats both run on its host:
     // main resolves the project URI, so nothing here is refused.
@@ -1612,14 +1632,17 @@ class TerminalManager extends BaseComponent {
       skipPermissions,
       // Only an explicit binding is sent: unbound projects run against the
       // machine-wide login, which is what keeps `claude /login` capturable.
-      accountId: getProjectAccount(project.id),
+      // A chat tab handing a command over passes the account its conversation
+      // runs on, which an account switch can have moved off the binding.
+      accountId: accountOverride !== undefined ? accountOverride : getProjectAccount(project.id),
       // Attribution for the output capture and the terminal_exit_code triggers.
       // A worktree tab keeps the parent's id — that is the project the capture
       // log is keyed by and the one a trigger is scoped to.
       projectId: project.id,
       projectPath: project.path,
       ...(resumeSessionId ? { resumeSessionId } : {}),
-      ...(remoteSessionKey ? { sessionKey: remoteSessionKey } : {})
+      ...(remoteSessionKey ? { sessionKey: remoteSessionKey } : {}),
+      ...(claudeCommand ? { claudeCommand } : {})
     });
 
     let id;
@@ -4165,6 +4188,7 @@ class TerminalManager extends BaseComponent {
       onModelChange: ({ family, tier }) => self._setChatTabModelTag(id, family, tier),
       onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
       onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
+      onRunInTerminal: (handoff) => self._runCommandInTerminal(project, handoff),
       onForkSession: ({ resumeSessionId: forkSid, resumeSessionAt: forkAt, resumeDropsTurn: forkDrops, model: forkModel, effort: forkEffort, skipPermissions: forkSkipPerms }) => {
         const src = getTerminal(id);
         self._createChatTerminal(project, {
@@ -4293,6 +4317,7 @@ class TerminalManager extends BaseComponent {
         onModelChange: ({ family, tier }) => self._setChatTabModelTag(id, family, tier),
         onSwitchTerminal: (dir) => self._callbacks.onSwitchTerminal?.(dir),
         onSwitchProject: (dir) => self._callbacks.onSwitchProject?.(dir),
+        onRunInTerminal: (handoff) => self._runCommandInTerminal(project, handoff),
       });
 
       // ptyId cleared along with the PTY it named, so a later close does not try

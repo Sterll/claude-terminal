@@ -1339,6 +1339,9 @@
     "resetError": "Falha ao desfazer o commit"
   },
   "skillsAgents": {
+    "filterSkills": "Filtrar skills por nome, descrição...",
+    "filterAgents": "Filtrar agentes por nome, ferramenta...",
+    "noMatch": "Nada corresponde a este filtro.",
     "panelDescription": "Skills personalizam como o Claude responde. Agentes são trabalhadores autônomos com suas próprias ferramentas.",
     "noSkills": "Nenhuma skill instalada",
     "noSkillsHint": "Skills são instruções personalizadas que moldam como o Claude se comporta nos seus projetos (padrões de código, estilo de commit, regras de revisão...).",
@@ -2071,6 +2074,9 @@
     "runInBackground": "Executar em segundo plano",
     "backgroundWorkFailed": "Não foi possível mover o trabalho para segundo plano. {error}",
     "slashRemoteControl": "Compartilhar esta conversa com o claude.ai (ligar / desligar)",
+    "terminalCommandOpened": "{command} foi aberto em um terminal do Claude: esse comando só funciona no modo interativo da CLI. Volte aqui quando terminar.",
+    "terminalCommandFailed": "Não foi possível abrir um terminal para {command}.",
+    "terminalCommandUnsafeArgs": "{command} não foi executado: um dos argumentos contém caracteres que não podem ser passados a um terminal com segurança.",
     "mentionKnowledge": "Conhecimento global"
   },
   "hooks": {

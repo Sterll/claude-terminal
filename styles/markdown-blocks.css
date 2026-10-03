@@ -965,7 +965,7 @@ code.line-numbers-off .code-line::before {
   border-radius: 4px;
 }
 .tl-badge.done { background: rgba(34,197,94,0.08); color: var(--success); }
-.tl-badge.active { background: rgba(217,119,6,0.08); color: var(--accent); }
+.tl-badge.active { background: rgba(var(--accent-rgb), 0.08); color: var(--accent); }
 .tl-badge.pending { background: rgba(255,255,255,0.04); color: var(--text-muted); }
 .tl-desc {
   font-size: 12px;
@@ -1189,7 +1189,7 @@ code.line-numbers-off .code-line::before {
 .chat-metric-card.accent-danger { border-color: rgba(239,68,68,0.25); }
 .chat-metric-card.accent-info { border-color: rgba(59,130,246,0.25); }
 .chat-metric-card.accent-warning { border-color: rgba(245,158,11,0.25); }
-.chat-metric-card.accent-accent { border-color: rgba(217,119,6,0.25); }
+.chat-metric-card.accent-accent { border-color: rgba(var(--accent-rgb), 0.25); }
 .chat-metric-label {
   font-size: 10px;
   text-transform: uppercase;
@@ -1677,7 +1677,7 @@ code.line-numbers-off .code-line::before {
   flex-shrink: 0;
 }
 .chat-config-badge.default { background: rgba(255,255,255,0.05); color: var(--text-muted); }
-.chat-config-badge.custom { background: rgba(217,119,6,0.12); color: var(--accent); }
+.chat-config-badge.custom { background: rgba(var(--accent-rgb), 0.12); color: var(--accent); }
 .chat-config-badge.required { background: rgba(239,68,68,0.1); color: var(--danger); }
 
 
