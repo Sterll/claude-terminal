@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 256 test files)
+npm test                 # Run Jest tests (jsdom, 257 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -355,7 +355,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
-**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray`, `elapsedTimer` and `remoteSession` (the host bar, host hold, "connection lost" banner and resume of a remote SSH chat); `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer` and `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab).
+**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray`, `elapsedTimer`, `remoteSession` (the host bar, host hold, "connection lost" banner and resume of a remote SSH chat) and `projectMentions` (`@git` and `@todos`, read on the host of a remote project and failing closed while it is away); `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer` and `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab).
 
 Two things make this harder than it looks and set the shape of the modules. `ChatView.js`'s body is a single ~8,600-line closure, so every helper in it closes over the same mutable session state; a unit only comes out as a `createXxx(deps)` factory taking its dependencies explicitly, reading late-bound ones (`getPruner`, `getInputEl`, `getProject`) through getters, and owning its own `destroy()` rather than leaving listeners for `createChatView`'s to remember. And the units have real couplings worth naming rather than hiding: `attachmentTray` reaches the mention rail because an attached file *is* a chip there, and `transcriptSearch` has to suspend the pruner because it walks the mounted tree.
 
@@ -755,7 +755,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 256 unit test files (jsdom environment)
+npm test                    # Run all 257 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -764,7 +764,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 256 test files
+- **Framework:** Jest with jsdom, 257 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

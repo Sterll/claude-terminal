@@ -41,6 +41,7 @@ const { attachExportMenu } = require('./chat/exportConversation');
 const { createTranscriptSearch } = require('./chat/transcriptSearch');
 const { createAttachmentTray } = require('./chat/attachmentTray');
 const { createRemoteChat } = require('./chat/remoteSession');
+const { createProjectMentions } = require('./chat/projectMentions');
 const projectFs = require('../../utils/projectFs');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 
@@ -1613,12 +1614,19 @@ class ChatView extends BaseComponent {
   initModeSelector();
 
   // ── Context suggestions (placeholder rotation before first message) ──
-  const contextSuggestions = createContextSuggestions(api, project, inputAdapter, () => t('chat.placeholder'));
+  // @git and @todos, read on the host for a remote project (and not at all
+  // while it is away); the two project hints below follow the same rule.
+  const projectMentions = createProjectMentions({
+    api,
+    getProjectHost: (p) => require('../../state/remoteHosts.state').getProjectHost(p),
+  });
+
+  const contextSuggestions = createContextSuggestions(api, project, inputAdapter, () => t('chat.placeholder'), () => projectMentions.mayRead(project));
   // Defer initial scan to let the component finish mounting
   contextSuggestions.setInitTimer(setTimeout(() => { if (project?.path) contextSuggestions.refresh(); }, 500));
 
   // ── Follow-up suggestion chips (shown after Claude responds) ──
-  const followupChips = createFollowupChips(api, followupSuggestionsEl, inputAdapter, project);
+  const followupChips = createFollowupChips(api, followupSuggestionsEl, inputAdapter, project, () => projectMentions.mayRead(project));
 
   // ── Turn elapsed time (the footer's wall clock) ──
   const elapsedTimer = createElapsedTimer(statusElapsedEl);
@@ -2664,27 +2672,10 @@ class ChatView extends BaseComponent {
           break;
         }
 
+        // A remote project's changes and TODOs are read on its host, and fail
+        // closed while it is not connected (chat/projectMentions).
         case 'git': {
-          try {
-            const status = await api.git.statusDetailed({ projectPath: project.path });
-            if (!status?.success || !status.files?.length) {
-              content = '[No git changes detected]';
-              break;
-            }
-            const diffs = [];
-            for (const file of status.files.slice(0, 20)) {
-              try {
-                // fileDiff resolves the diff as a plain string, or
-                // { error: true, message } when git could not run. Reading
-                // `d.diff` meant this context never carried any diff at all.
-                const d = await api.git.fileDiff({ projectPath: project.path, filePath: file.path });
-                if (typeof d === 'string' && d.trim()) diffs.push(`--- ${file.path} ---\n${d}`);
-              } catch (e) { /* skip */ }
-            }
-            content = diffs.length > 0 ? `Git Changes (${status.files.length} files):\n\n${diffs.join('\n\n')}` : '[No diff content available]';
-          } catch (e) {
-            content = '[Error fetching git diff]';
-          }
+          content = await projectMentions.resolveGit(project);
           break;
         }
 
@@ -2714,16 +2705,7 @@ class ChatView extends BaseComponent {
         }
 
         case 'todos': {
-          try {
-            const todos = await api.project.scanTodos(project.path);
-            if (todos?.length > 0) {
-              content = `TODO Items (${todos.length} found):\n\n${todos.slice(0, 50).map(t => `${t.type} [${t.file}:${t.line}]: ${t.text}`).join('\n')}`;
-            } else {
-              content = '[No TODOs found in project]';
-            }
-          } catch (e) {
-            content = '[Error scanning TODOs]';
-          }
+          content = await projectMentions.resolveTodos(project);
           break;
         }
 

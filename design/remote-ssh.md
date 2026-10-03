@@ -783,6 +783,14 @@ Specific handlers:
   classifies the lines locally with the existing regexes, the same 50-entry cap
   and the same depth limit. `project-init-git` initialises a registered remote
   project on its host; `project-scaffold` refuses a remote destination;
+- the chat's `@git` and `@todos` mentions (`chat/projectMentions.js`) hand the
+  project's URI to `git-status-detailed`, `git-file-diff` and `scan-todos`, so
+  they read the host through the primitives above, and only while it is
+  connected. Otherwise they fail closed without a request: the text Claude
+  gets says the changes or the TODOs live on the host, never "no changes",
+  which is also what a read that loses its host mid-way turns into. The
+  composer's two project hints (the rotating placeholder, the TODO follow-up
+  chip) skip such a project rather than connect its host;
 - pull/push run with the remote host's credentials; GitHub API calls (PRs, CI
   pill) stay local, they only need the remote URL;
 - the startup git sweep skips remote projects and fills them in, branch

@@ -9,7 +9,12 @@
 
 const { t } = require('../../../i18n');
 
-function createContextSuggestions(api, project, inputAdapter, getDefaultPlaceholder) {
+/**
+ * @param {Function} [mayRead]  whether the project may be read now: false for
+ *   a remote project whose host is not connected, which is then left alone
+ *   rather than connected for a hint
+ */
+function createContextSuggestions(api, project, inputAdapter, getDefaultPlaceholder, mayRead = () => true) {
   const CACHE_TTL = 30_000;
   const ROTATION_INTERVAL = 4_000;
 
@@ -31,7 +36,7 @@ function createContextSuggestions(api, project, inputAdapter, getDefaultPlacehol
   }
 
   async function refresh() {
-    if (!project?.path || _refreshing) return;
+    if (!project?.path || _refreshing || !mayRead()) return;
     _refreshing = true;
     const now = Date.now();
     if (cache && now - cache.timestamp < CACHE_TTL) {

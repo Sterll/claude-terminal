@@ -13,7 +13,12 @@ const { t } = require('../../../i18n');
 
 const SPARKLE_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5z"/><path d="M19 15l.75 2.25L22 18l-2.25.75L19 21l-.75-2.25L16 18l2.25-.75z"/></svg>`;
 
-function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project) {
+/**
+ * @param {Function} [mayRead]  whether the project may be read now: false for
+ *   a remote project whose host is not connected, which gets no TODO chip
+ *   rather than a read that would connect it
+ */
+function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project, mayRead = () => true) {
   // The SDK emits `prompt_suggestion` *after* the `result` message, so it lands
   // once the turn has already been flushed. Keep both sources in their own bucket
   // and re-render whenever either one changes, instead of snapshotting on flush.
@@ -108,7 +113,7 @@ function createFollowupChips(api, suggestionsContainerEl, inputAdapter, project)
   }
 
   async function _fetchContextChips() {
-    if (!project?.path) return [];
+    if (!project?.path || !mayRead()) return [];
     try {
       const todos = await api.project.scanTodos(project.path).catch(() => []);
       const todoCount = Array.isArray(todos) ? todos.length : 0;
