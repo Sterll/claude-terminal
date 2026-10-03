@@ -4125,6 +4125,12 @@ class TerminalManager extends BaseComponent {
     wrapper.dataset.id = id;
     container.appendChild(wrapper);
 
+    // A chat of a remote project runs on its host like a terminal tab does, so
+    // its tab carries the same host badge and holds the host. There is no PTY
+    // here: the record only ever paints the badge (a chat reports a lost
+    // connection in its own transcript). Answers false for a local project.
+    if (!isCloud) this._remoteTabs.attach(id, { project, tabEl: tab, wrapperEl: wrapper, isClaude: true });
+
     document.getElementById('empty-terminals').style.display = 'none';
 
     const projSettings = isCloud ? {} : getProjectSettingsState(parentProjectId || project.id);

@@ -362,6 +362,23 @@ describe('TerminalManager with remote projects', () => {
     expect(calls.some((c) => c.namespace === 'terminal' && c.method === 'kill' && c.args[0].id === 9)).toBe(true);
   });
 
+  test('a new chat tab of a remote project carries the host badge; a local one does not', async () => {
+    // Terminal tabs had it and a tab switched from terminal kept it, but a
+    // chat opened as a chat showed no host at all in the tab strip.
+    try { await manager._createChatTerminal(REMOTE, {}); } catch (_) { /* the chat view needs more DOM */ }
+    const remoteTab = document.querySelector('.terminal-tab.chat-mode');
+    expect(remoteTab.classList.contains('remote-tab')).toBe(true);
+    expect(remoteTab.querySelector('.tab-remote-host .remote-host-badge')).not.toBeNull();
+    expect(manager._remoteTabs.isRemoteTab(remoteTab.dataset.id)).toBe(true);
+    remoteTab.remove();
+
+    try { await manager._createChatTerminal(LOCAL, {}); } catch (_) { /* the chat view needs more DOM */ }
+    const localTab = document.querySelector('.terminal-tab.chat-mode');
+    expect(localTab.classList.contains('remote-tab')).toBe(false);
+    expect(localTab.querySelector('.tab-remote-host')).toBeNull();
+    expect(manager._remoteTabs.isRemoteTab(localTab.dataset.id)).toBe(false);
+  });
+
   test('a remote tab is no longer refused a switch to chat: chat runs on the host too', async () => {
     seedTab('t-remote', REMOTE, { isBasic: false });
     const refuse = jest.spyOn(require('../../src/renderer/ui/components/RemoteHostBadge'), 'refuseForRemote');
