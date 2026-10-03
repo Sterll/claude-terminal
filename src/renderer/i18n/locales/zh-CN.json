@@ -4512,6 +4512,7 @@
       "resuming": "正在 {host} 上恢复对话...",
       "resumed": "已重新连接到 {host}，正在恢复对话。",
       "resent": "已连接到 {host}，正在发送您的消息。",
+      "errorAuth": "{host} 上的 Claude Code 尚未登录。请在此项目中打开一个 Claude 终端标签页（它运行在该主机上），然后在其中使用 /login 登录。",
       "pathAttachmentRefused": "无法将 {name} 附加到远程聊天：本地路径在主机上没有意义。足够小的文件会直接内联发送。"
     },
     "openRemoteProject": "打开远程项目",

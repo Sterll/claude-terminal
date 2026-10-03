@@ -4512,6 +4512,7 @@
       "resuming": "Reprise de la conversation sur {host}...",
       "resumed": "De nouveau connecté à {host}. Reprise de la conversation.",
       "resent": "Connecté à {host}. Envoi de votre message.",
+      "errorAuth": "Claude Code n'est pas connecté sur {host}. Ouvrez un onglet terminal Claude dans ce projet, qui tourne sur cet hôte, et connectez-vous avec /login.",
       "pathAttachmentRefused": "{name} ne peut pas être joint à un chat distant : un chemin local n’a pas de sens sur l’hôte. Les fichiers assez petits sont envoyés directement."
     },
     "openRemoteProject": "Ouvrir un projet distant",

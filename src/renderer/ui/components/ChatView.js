@@ -4198,7 +4198,11 @@ class ChatView extends BaseComponent {
     const errorMessages = {
       rate_limit: t('chat.errorRateLimit'),
       billing_error: t('chat.errorBilling'),
-      authentication_failed: t('chat.errorAuth'),
+      // A remote CLI runs on its host's own login: "run claude in a
+      // terminal" would send the user to a local one, which logs in here.
+      authentication_failed: remoteChat.isRemote
+        ? t('ssh.chat.errorAuth', { host: remoteChat.hostLabel() })
+        : t('chat.errorAuth'),
       invalid_request: t('chat.errorInvalidRequest'),
       max_output_tokens: t('chat.errorMaxTokens'),
       server_error: t('chat.errorServer'),

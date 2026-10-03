@@ -150,6 +150,32 @@ describe('remote chat tabs', () => {
     expect(wrapper.querySelector('.chat-remote-banner').hidden).toBe(true);
   });
 
+  test('a remote CLI that is not logged in says to log in on the host, not locally', async () => {
+    // What a logged-out remote CLI really answers (seen against a real host).
+    const authFailure = (sessionId) => ({
+      sessionId,
+      message: { type: 'assistant', error: 'authentication_failed', session_id: 'cli-uuid-3', message: { role: 'assistant', content: [{ type: 'text', text: 'Not logged in · Please run /login' }] } },
+    });
+    await open(REMOTE);
+    view.sendMessage('hi');
+    await flush();
+    listeners.onMessage(authFailure(view.getSessionId()));
+    await flush();
+    const remoteText = wrapper.querySelector('.chat-msg-error .chat-error-content').textContent;
+    expect(remoteText).toContain('yanis@build');
+    expect(remoteText).toContain('/login');
+    expect(remoteText).not.toMatch(/running "claude" in a terminal/);
+    view.destroy();
+
+    wrapper.innerHTML = '';
+    await open(LOCAL);
+    view.sendMessage('hi');
+    await flush();
+    listeners.onMessage(authFailure(view.getSessionId()));
+    await flush();
+    expect(wrapper.querySelector('.chat-msg-error .chat-error-content').textContent).toMatch(/running "claude" in a terminal/);
+  });
+
   test('the Reconnect button asks for the host and resumes', async () => {
     window.electron_api = makeApiMock(listeners, calls, {
       'chat.start': (params) => ({ success: true, sessionId: params.sessionId }),

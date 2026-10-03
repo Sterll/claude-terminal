@@ -4512,6 +4512,7 @@
       "resuming": "Melanjutkan percakapan di {host}...",
       "resumed": "Terhubung kembali ke {host}. Melanjutkan percakapan.",
       "resent": "Terhubung ke {host}. Mengirim pesan Anda.",
+      "errorAuth": "Claude Code di {host} belum masuk. Buka tab terminal Claude di proyek ini, yang berjalan di host tersebut, lalu masuk di sana dengan /login.",
       "pathAttachmentRefused": "{name} tidak dapat dilampirkan ke chat jarak jauh: path lokal tidak berarti apa pun di host. File yang cukup kecil dikirim langsung."
     },
     "openRemoteProject": "Buka proyek jarak jauh",
