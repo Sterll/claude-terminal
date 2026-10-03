@@ -790,6 +790,11 @@ class ChatService {
           claude: remote.claude,
           loginPath: remote.loginPath,
           onStderr: options.stderr,
+          // How ssh ended, which the SDK's own error does not always say
+          // (see classifyRemoteChatFailure)
+          onExit: (exit) => {
+            if (this.sessions.get(sessionId) === session) session._remoteExit = exit;
+          },
         });
       }
 
@@ -920,7 +925,7 @@ class ChatService {
         this.closeSession(sessionId);
         console.error(`[ChatService] startSession error (cwd: ${cwd}, perm: ${permissionMode}):`, err.message, err.stack);
       }
-      const humanized = this._humanizeError(err.message, remote ? { host: remote.host, stderr: session._stderr || '' } : null);
+      const humanized = this._humanizeError(err.message, remote ? { host: remote.host, stderr: session._stderr || '', exit: session._remoteExit || null } : null);
       throw humanized === err.message ? err : new Error(humanized);
     }
   }
@@ -1767,9 +1772,10 @@ class ChatService {
         // reported as `connection_lost` so the tab can resume once the host
         // is back, the rest as a sentence about the host.
         const remoteLib = session?.remote ? sshClaudeSpawnLib() : null;
-        const remoteKind = remoteLib ? remoteLib.classifyRemoteChatFailure(err.message, stderrLog) : null;
+        const remoteExit = session?._remoteExit || null;
+        const remoteKind = remoteLib ? remoteLib.classifyRemoteChatFailure(err.message, stderrLog, remoteExit) : null;
         if (remoteKind) {
-          const remoteMsg = this._humanizeError(err.message, { host: session.remote.host, stderr: stderrLog });
+          const remoteMsg = this._humanizeError(err.message, { host: session.remote.host, stderr: stderrLog, exit: remoteExit });
           const remoteType = remoteLib.TRANSIENT_KINDS.has(remoteKind) ? 'connection_lost' : 'generic';
           this._send('chat-error', { sessionId, error: remoteMsg, errorType: remoteType, remote: { kind: remoteKind, profileId: session.remote.profileId } });
           this._emitLifecycle('end', sessionId, { status: 'error', error: remoteMsg });
@@ -1911,7 +1917,7 @@ class ChatService {
     // remote `claude` (127) are about the host, and say so.
     if (remote) {
       const lib = sshClaudeSpawnLib();
-      const kind = lib.classifyRemoteChatFailure(raw, remote.stderr || '');
+      const kind = lib.classifyRemoteChatFailure(raw, remote.stderr || '', remote.exit || null);
       if (kind) return lib.describeSshFailure(kind, remote.host);
     }
 

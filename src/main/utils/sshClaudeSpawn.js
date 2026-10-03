@@ -34,9 +34,11 @@
 
 'use strict';
 
+const fs = require('fs');
 const os = require('os');
+const path = require('path');
 const { spawn } = require('child_process');
-const { q, qArgs, cdAnd, shC, withPath, classifySshFailure } = require('../../shared/remote-shell');
+const { q, qArgs, cdAnd, shC, withPath, classifySshFailure, sshExitStatus, SSH_FAILURE_STATUS } = require('../../shared/remote-shell');
 const sshCommand = require('./sshCommand');
 
 /** Variables the SDK sets for the CLI it spawns, and the only ones a remote CLI receives. */
@@ -133,11 +135,15 @@ function buildRemoteChatScript({ remotePath, claude, args, env = {}, loginPath =
  * @param {string} params.claude
  * @param {string|null} [params.loginPath]
  * @param {(text: string) => void} [params.onStderr]  the session's stderr sink
+ * @param {(exit: {code: number|null, signal: string|null}) => void} [params.onExit]
+ *   how the ssh process ended. The SDK's own error does not always say: once a
+ *   turn has ended in an error result, it reports any later exit as that
+ *   result's text, so a dropped connection would read as the old error.
  * @param {Function} [params.spawnImpl]
  * @param {string} [params.homedir]  cwd of the local ssh process
  * @returns {(options: {command: string, args: string[], cwd?: string, env: object, signal?: AbortSignal}) => import('child_process').ChildProcess}
  */
-function createRemoteSpawn({ launch, remotePath, claude, loginPath = null, onStderr = () => {}, spawnImpl = spawn, homedir = os.homedir() }) {
+function createRemoteSpawn({ launch, remotePath, claude, loginPath = null, onStderr = () => {}, onExit = () => {}, spawnImpl = spawn, homedir = os.homedir() }) {
   if (!launch || !launch.command || !launch.profile) throw chatError('No ssh launch context for the remote session');
   return function spawnClaudeCodeProcess(options) {
     // options.command is a local binary and options.cwd the local home
@@ -161,6 +167,11 @@ function createRemoteSpawn({ launch, remotePath, claude, loginPath = null, onStd
       // pipe on Windows); none of it is sent to the host.
       env: launch.env || process.env,
       ...(options && options.signal ? { signal: options.signal } : {}),
+    });
+    // Registered before the SDK sees the child, so the exit is known by the
+    // time the SDK reports the failure.
+    child.on('exit', (code, signal) => {
+      try { onExit({ code: Number.isInteger(code) ? code : null, signal: signal || null }); } catch { /* diagnostics only */ }
     });
     // The SDK only wires its `stderr` option for its own local spawn.
     if (child.stderr) {
@@ -192,9 +203,13 @@ function compareVersions(a, b) {
  * the SDK's 0.3.N numbering, which a remote `claude --version` never prints.
  * @returns {string|null}
  */
-function bundledCliVersion() {
+function bundledCliVersion({ resolve = require.resolve, readFile = fs.readFileSync } = {}) {
   try {
-    const pkg = require('@anthropic-ai/claude-agent-sdk/package.json');
+    // The SDK's `exports` map does not list `./package.json`, so requiring it
+    // throws ERR_PACKAGE_PATH_NOT_EXPORTED: the manifest is read next to the
+    // entry point instead, which works from app.asar too.
+    const entry = resolve('@anthropic-ai/claude-agent-sdk');
+    const pkg = JSON.parse(readFile(path.join(path.dirname(entry), 'package.json'), 'utf8'));
     return typeof pkg.claudeCodeVersion === 'string' && pkg.claudeCodeVersion ? pkg.claudeCodeVersion : null;
   } catch {
     return null;
@@ -248,22 +263,36 @@ function describeSshFailure(kind, host) {
 }
 
 /**
- * Classify why a remote chat process ended, from the SDK's error message and
- * the stderr the hook collected. Only ssh's own failure (exit 255) and the
- * remote shell's "command not found" (127) are ssh matters; any other exit is
- * the CLI's, and its stderr may well mention a refused or reset connection to
- * the API, which is not the ssh link.
+ * Classify why a remote chat process ended, from how the ssh process exited,
+ * the SDK's error message and the stderr the hook collected. Only ssh's own
+ * failure (exit 255) and the remote shell's "command not found" (127) are ssh
+ * matters; any other exit is the CLI's, and its stderr may well mention a
+ * refused or reset connection to the API, which is not the ssh link.
+ *
+ * The exit status the hook saw decides first. Once a turn has ended in an
+ * error result (a remote CLI that is not logged in, an API error), the SDK
+ * reports every later exit as "Claude Code returned an error result: <that
+ * text>", so a connection lost after it would otherwise read as the old error
+ * and never be offered a resume.
  *
  * @param {string} message  the SDK error message
  * @param {string} stderr
+ * @param {{code: number|null, signal?: string|null}|null} [exit]  from createRemoteSpawn's onExit
  * @returns {string|null}
  */
-function classifyRemoteChatFailure(message, stderr) {
+function classifyRemoteChatFailure(message, stderr, exit = null) {
+  // -1 or 4294967295 on Windows when the server ended the session without a
+  // status, which POSIX reads as 255 (see sshExitStatus)
+  const exitCode = exit && Number.isInteger(exit.code) ? sshExitStatus(exit.code) : null;
+  if (exitCode === SSH_FAILURE_STATUS) return classifySshFailure(SSH_FAILURE_STATUS, stderr);
+  if (exitCode === 127) return 'not-installed';
+  if (exitCode !== null) return null;
   const text = String(message || '');
-  const code = /exited with code (\d+)/.exec(text);
+  const code = /exited with code (-?\d+)/.exec(text);
   if (code) {
-    if (code[1] === '255') return classifySshFailure(255, stderr);
-    if (code[1] === '127') return 'not-installed';
+    const status = sshExitStatus(Number(code[1]));
+    if (status === SSH_FAILURE_STATUS) return classifySshFailure(SSH_FAILURE_STATUS, stderr);
+    if (status === 127) return 'not-installed';
     return null;
   }
   // The pipe broke before an exit code was known: ssh's own diagnostics on

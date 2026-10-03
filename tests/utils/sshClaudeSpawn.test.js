@@ -129,6 +129,15 @@ describe('createRemoteSpawn', () => {
     expect(opts.stdio).toEqual(['pipe', 'pipe', 'pipe']);
   });
 
+  test('reports how the ssh process exited', () => {
+    const c = child();
+    const exits = [];
+    createRemoteSpawn({ launch: LAUNCH, remotePath: '/srv/app', claude: 'claude', spawnImpl: () => c, onExit: (e) => exits.push(e) })({ args: ARGS, env: {} });
+    c.emit('exit', 255, null);
+    c.emit('exit', null, 'SIGTERM');
+    expect(exits).toEqual([{ code: 255, signal: null }, { code: null, signal: 'SIGTERM' }]);
+  });
+
   test("pipes the child's stderr to the session sink", () => {
     const c = child();
     const seen = [];
@@ -201,8 +210,19 @@ describe('remote CLI checks', () => {
   });
 
   test('the bundled version is the CLI numbering, not the SDK package one', () => {
+    // The SDK's exports map hides ./package.json, so a require() of it always
+    // threw and the version warning never fired. The installed SDK must answer.
     const v = bundledCliVersion();
-    expect(v === null || /^2\.\d+\.\d+/.test(v)).toBe(true);
+    expect(v).toMatch(/^2\.\d+\.\d+/);
+  });
+
+  test('the bundled version is read next to the SDK entry point, and a missing manifest is null', () => {
+    const resolve = jest.fn(() => path.join('/sdk', 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'sdk.mjs'));
+    const readFile = jest.fn(() => JSON.stringify({ version: '0.3.9', claudeCodeVersion: '2.1.9' }));
+    expect(bundledCliVersion({ resolve, readFile })).toBe('2.1.9');
+    expect(readFile.mock.calls[0][0]).toBe(path.join('/sdk', 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'package.json'));
+    expect(bundledCliVersion({ resolve, readFile: () => { throw new Error('ENOENT'); } })).toBeNull();
+    expect(bundledCliVersion({ resolve, readFile: () => JSON.stringify({ version: '0.3.9' }) })).toBeNull();
   });
 });
 
@@ -216,6 +236,19 @@ describe('remote failures', () => {
 
   test("any other exit is the CLI's own, even when its stderr mentions a refused connection", () => {
     expect(classifyRemoteChatFailure('Claude Code process exited with code 1', 'API Error: Connection refused')).toBeNull();
+  });
+
+  test('the exit ssh reported wins over an SDK message that replaced it', () => {
+    // After a turn that ended in an error result, the SDK reports any exit
+    // as that result's text; the hook's own record of the exit decides.
+    const replaced = 'Claude Code returned an error result: Not logged in · Please run /login';
+    expect(classifyRemoteChatFailure(replaced, 'Timeout, server h not responding.', { code: 255, signal: null })).toBe('timeout');
+    expect(classifyRemoteChatFailure(replaced, '', { code: 255, signal: null })).toBe('network');
+    expect(classifyRemoteChatFailure(replaced, '', { code: 127, signal: null })).toBe('not-installed');
+    expect(classifyRemoteChatFailure(replaced, 'Connection reset', { code: 1, signal: null })).toBeNull();
+    expect(classifyRemoteChatFailure(replaced, '', null)).toBeNull();
+    // No code (killed by a signal): the message decides, as before
+    expect(classifyRemoteChatFailure('Claude Code process exited with code 255', '', { code: null, signal: 'SIGTERM' })).toBe('network');
   });
 
   test('a broken pipe before any exit code uses ssh diagnostics only', () => {

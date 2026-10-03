@@ -286,6 +286,32 @@ describe('remote sessions', () => {
     expect(error.data.error).toBe('The connection to yanis@build.example.com was lost.');
   });
 
+  test('a connection lost after a turn that failed in-band is still connection_lost', async () => {
+    // Seen live: a remote CLI that is not logged in answers each turn with an
+    // error result, and from then on the SDK reports any exit as that text.
+    // The keepalive timeout of a dropped link then read as "Not logged in".
+    const { pending, child, events, service } = await startRemote();
+    child().stderr.emit('data', Buffer.from('Timeout, server build.example.com not responding.\n'));
+    child().emit('exit', 255, null);
+    expect(service.sessions.get('s-remote')._remoteExit).toEqual({ code: 255, signal: null });
+    pending.fail(new Error('Claude Code returned an error result: Not logged in · Please run /login'));
+    await flush();
+    const error = events.find(e => e.channel === 'chat-error');
+    expect(error.data).toMatchObject({ sessionId: 's-remote', errorType: 'connection_lost', remote: { kind: 'timeout', profileId: 'abcd1234' } });
+    expect(error.data.error).toBe('The connection to yanis@build.example.com timed out.');
+  });
+
+  test('the CLI exiting on its own after an in-band error stays the CLI\'s error', async () => {
+    const { pending, child, events } = await startRemote();
+    child().emit('exit', 1, null);
+    pending.fail(new Error('Claude Code returned an error result: Not logged in · Please run /login'));
+    await flush();
+    const error = events.find(e => e.channel === 'chat-error');
+    expect(error.data.errorType).toBe('generic');
+    expect(error.data).not.toHaveProperty('remote');
+    expect(error.data.error).toContain('Not logged in');
+  });
+
   test('an authentication failure is reported, but not as a connection to wait for', async () => {
     const { pending, child, events } = await startRemote();
     child().stderr.emit('data', Buffer.from('yanis@build.example.com: Permission denied (publickey).\n'));
