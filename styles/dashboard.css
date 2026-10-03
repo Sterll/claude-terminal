@@ -1858,7 +1858,7 @@
 /* Overview card */
 .overview-card {
   background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius);
   padding: 16px;
   border-left: 3px solid var(--accent);
   cursor: pointer;

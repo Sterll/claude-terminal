@@ -65,6 +65,11 @@
   --font-base: 0.875rem;  /* 14px */
   --font-md: 1rem;        /* 16px */
   --font-lg: 1.125rem;    /* 18px */
+
+  /* Monospace stack. Four sites (dashboard.css, settings.css) read this bare,
+     with no fallback, so an undeclared token left them inheriting the body's
+     sans-serif. Same stack the terminal and the code blocks already use. */
+  --font-mono: 'Cascadia Code', 'Consolas', monospace;
 }
 
 body {
