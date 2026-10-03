@@ -63,7 +63,10 @@ describeSh('remoteFs over a real channel', () => {
   let tmp, root, lane, lane2, rfs;
 
   beforeAll(async () => {
-    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-rfs-'));
+    // Canonical from the start: the driver resolves symlinks and short names,
+    // and the temp dir has both on CI (/var -> /private/var on macOS,
+    // RUNNER~1 on Windows).
+    tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ct-rfs-')));
     root = toShPath(tmp);
     fs.writeFileSync(path.join(tmp, 'a b.txt'), 'hello');
     fs.writeFileSync(path.join(tmp, "it's.md"), '# title\nneedle here\n');

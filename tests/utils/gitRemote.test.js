@@ -497,7 +497,9 @@ describeSh('scripts executed by a real sh', () => {
   let uri;
 
   beforeAll(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-git-remote-'));
+    // Canonical from the start: git reports resolved paths, and the temp dir
+    // is behind a symlink on macOS (/var -> /private/var).
+    root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'ct-git-remote-')));
     repo = path.join(root, "my 'repo' $x");
     fs.mkdirSync(repo);
     gitIn(repo, 'init', '-q');

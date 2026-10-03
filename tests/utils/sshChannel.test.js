@@ -226,7 +226,7 @@ describeSh('SshLane against fake-ssh and a real sh', () => {
     if (!probe.ok) return; // this sh's ps cannot list parents (Git for Windows' msys ps)
     const rootFile = toShPath(path.join(tmp, 'root.pid'));
     const leafFile = toShPath(path.join(tmp, 'leaf.pid'));
-    const started = lane.request(`set +m; ( sh -c 'sleep 40 & echo $! > ${leafFile}; wait' ) & echo $! > '${rootFile}'; wait`, { timeoutMs: 20000 });
+    const started = lane.request(`set +m; ( sh -c 'sleep 40 & echo $! > ${leafFile}; wait' ) & echo $! > '${rootFile}'; wait $!`, { timeoutMs: 20000 });
     let rootPid = '';
     for (let i = 0; i < 50 && !(rootPid && fs.existsSync(path.join(tmp, 'leaf.pid'))); i++) {
       await new Promise((r) => setTimeout(r, 100));
@@ -235,6 +235,8 @@ describeSh('SshLane against fake-ssh and a real sh', () => {
     const leafPid = fs.readFileSync(path.join(tmp, 'leaf.pid'), 'utf8').trim();
     const { killScript } = require('../../src/main/utils/sshDriver');
     await sibling.request(killScript(Number(rootPid)));
+    // `wait $!` and not a bare `wait`: a bare wait returns 0 however its
+    // children ended, so it cannot tell a killed tree from a finished one.
     const res = await started;
     expect(res.ok).toBe(false);
     const alive = await sibling.request(`kill -0 ${leafPid} 2>/dev/null`);

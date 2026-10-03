@@ -111,11 +111,17 @@ describeSh('q() round trip through a real /bin/sh -c', () => {
 for (const name of ['fish', 'tcsh']) {
   const shell = findShell(name);
   (shell ? describe : describe.skip)(`q() round trip through ${name} -c`, () => {
+    // csh and tcsh apply history substitution to `!` even inside single
+    // quotes, so a value containing one does not survive their parse. That is
+    // a documented limitation (design/remote-ssh.md, quoting), not something
+    // this loop should hide behind the first failure.
+    const samples = name === 'tcsh' ? SAMPLES.filter((s) => !s.includes('!')) : SAMPLES;
     test('every sample survives', () => {
-      for (const value of SAMPLES) {
+      const broken = samples.filter((value) => {
         const r = spawnSync(shell, ['-c', `printf '%s' ${q(value)}`], { encoding: 'utf8' });
-        expect(r.stdout).toBe(value);
-      }
+        return r.stdout !== value;
+      });
+      expect(broken).toEqual([]);
     });
   });
 }

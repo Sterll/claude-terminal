@@ -1083,6 +1083,12 @@ string.
   POSIX sh, bash, zsh, dash, ksh, **fish** (where a backslash inside single
   quotes is special) and **csh/tcsh** (where a newline inside quotes is not
   allowed). It is used for every level of nesting.
+  Known limitation: csh and tcsh apply history substitution to `!` even inside
+  single quotes, so for a user whose login shell is csh-family, a value
+  containing `!` (a project path, a branch) does not survive the outer parse
+  of the PTY and chat command. Rare enough to leave for now; a fix would emit
+  `\!` outside the quotes for csh-family hosts only, since the handshake knows
+  the login shell.
 - Scripts are single lines (`;` and `&&`), which the channel framing and csh both
   require.
 - The ssh-side remote command for PTYs and chat is a single argv element
