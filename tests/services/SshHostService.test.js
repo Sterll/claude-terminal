@@ -307,10 +307,10 @@ describe('SshHostService profile store', () => {
   });
 
   test('verifyCommand builds the verify argv from the stored profile, never a relaxed check', async () => {
-    const svc = service({ resolveLauncher: async () => ({ command: 'C:\Windows\System32\OpenSSH\ssh.exe', prefixArgs: [] }) });
+    const svc = service({ resolveLauncher: async () => ({ command: 'C:\\Windows\\System32\\OpenSSH\\ssh.exe', prefixArgs: [] }) });
     const created = await svc.saveProfile({ host: 'build.example.com', user: 'yanis', port: 2222 });
     const cmd = await svc.verifyCommand(created.id);
-    expect(cmd.file).toBe('C:\Windows\System32\OpenSSH\ssh.exe');
+    expect(cmd.file).toBe('C:\\Windows\\System32\\OpenSSH\\ssh.exe');
     expect(cmd.args).toEqual(expect.arrayContaining(['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit']));
     expect(cmd.args.join(' ')).not.toMatch(/StrictHostKeyChecking=no|BatchMode=yes|UserKnownHostsFile/);
     expect(cmd.args.slice(-3)).toEqual(['--', 'build.example.com', 'exit']);

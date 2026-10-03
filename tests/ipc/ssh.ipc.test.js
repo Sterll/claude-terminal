@@ -76,7 +76,7 @@ describe('ssh.ipc never takes a destination from the renderer', () => {
   });
 
   test('verify host runs the argv main built, in a local PTY, and returns its id', async () => {
-    const res = await invoke('ssh-verify-host', { profileId: 'abcd1234', command: { file: 'C:\evil.exe', args: ['/c', 'calc'] } });
+    const res = await invoke('ssh-verify-host', { profileId: 'abcd1234', command: { file: 'C:\\evil.exe', args: ['/c', 'calc'] } });
     expect(res).toMatchObject({ success: true, id: 42, destination: 'yanis@build.example.com' });
     const [opts] = mockTerminalService.create.mock.calls[0];
     expect(opts.command).toEqual({ file: '/usr/bin/ssh', args: ['-o', 'StrictHostKeyChecking=ask', '--', 'build.example.com', 'exit'] });
