@@ -519,11 +519,12 @@ async function saveProjectsImmediate() {
     return;
   }
 
-  saveInProgress = false;
   saveRetryCount = 0;
   _diskBaseline = snapshot(data);
-  // Remember our own write, so the watcher does not reload on it.
-  _statSignature().then(sig => { _lastSeenSignature = sig; });
+  // Remember our own write before the watcher can look again, so it does not
+  // reload on it: saveInProgress keeps the watcher out until this is known.
+  _lastSeenSignature = await _statSignature();
+  saveInProgress = false;
 
   // The merge may have brought back data we did not have (tasks added by an
   // MCP session, a worktree project). Adopt it so the UI stops being stale —
@@ -599,8 +600,27 @@ async function _checkExternalWrite() {
   }
   if (_sameSignature(sig, _lastSeenSignature)) return;
 
+  // A reload replaces the projects in memory with the file. loadProjects()
+  // answers an empty or unparseable file by starting fresh, and the next save
+  // would then merge that empty list against the baseline and delete every
+  // project. A file in that state is left alone, and looked at again on the
+  // next poll (its signature is not recorded).
+  if (!(await _diskParses())) return;
+
   _lastSeenSignature = sig;
   await loadProjects();
+}
+
+/** Whether projects.json holds JSON right now: false when absent, empty, unreadable or truncated. */
+async function _diskParses() {
+  try {
+    const raw = await fsp.readFile(projectsFile, 'utf8');
+    if (!raw || !raw.trim()) return false;
+    JSON.parse(raw);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Start watching projects.json for writes made by other processes. */
