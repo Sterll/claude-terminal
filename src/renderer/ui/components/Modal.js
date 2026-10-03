@@ -68,8 +68,12 @@ function createModal({ id, title, content, buttons = [], size = 'medium', onClos
   };
 
   // Backdrop click — use closest to properly detect clicks outside modal-content
+  // A target its own click handler already removed (a button that re-renders
+  // the modal body to switch views) still bubbles here, but has no ancestor
+  // left for closest() to find: that is a click inside the modal, not on the
+  // backdrop.
   modal.onclick = (e) => {
-    if (!e.target.closest('.modal')) {
+    if (e.target.isConnected && !e.target.closest('.modal')) {
       closeModal(modal);
       if (onClose) onClose();
     }
