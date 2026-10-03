@@ -4579,7 +4579,8 @@
       "overviewAutoExpand": "Una raíz remota permanece plegada hasta que su host está conectado, para que un host caído nunca bloquee el árbol.",
       "projectMcpConfig": "Los servidores MCP propios de un proyecto remoto están en su configuración en el host y no se listan aquí.",
       "databaseDetect": "La detección de bases de datos lee los archivos locales del proyecto, así que no está disponible para un proyecto remoto. Añade la conexión a mano.",
-      "mcpProjectTools": "El servidor MCP claude-terminal lee el disco local, así que no puede leer los archivos de un proyecto remoto."
+      "mcpProjectTools": "El servidor MCP claude-terminal lee el disco local, así que no puede leer los archivos de un proyecto remoto.",
+      "costReport": "El coste se lee de las transcripciones de esta máquina. Las sesiones de un proyecto remoto se registran en su host, así que su coste no se muestra aquí."
     },
     "menu": {
       "section": "Host remoto: {host}",

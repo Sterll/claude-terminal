@@ -4579,7 +4579,8 @@
       "overviewAutoExpand": "A remote root stays collapsed until its host is connected, so a host that is down never stalls the tree.",
       "projectMcpConfig": "Project-scoped MCP servers of a remote project live in its settings on the host and are not listed here.",
       "databaseDetect": "Database detection reads the project's local files, so it is not available for a remote project. Add the connection by hand.",
-      "mcpProjectTools": "The claude-terminal MCP server reads local disk, so it cannot read the files of a remote project."
+      "mcpProjectTools": "The claude-terminal MCP server reads local disk, so it cannot read the files of a remote project.",
+      "costReport": "Cost is read from this machine's transcripts. The sessions of a remote project are recorded on its host, so their cost is not shown here."
     },
     "menu": {
       "section": "Remote host: {host}",

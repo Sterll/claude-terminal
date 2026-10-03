@@ -4579,7 +4579,8 @@
       "overviewAutoExpand": "Root jarak jauh tetap tertutup sampai host-nya terhubung, agar host yang mati tidak pernah menghambat pohon.",
       "projectMcpConfig": "Server MCP khusus proyek jarak jauh ada di pengaturannya di host dan tidak ditampilkan di sini.",
       "databaseDetect": "Deteksi basis data membaca file lokal proyek, jadi tidak tersedia untuk proyek jarak jauh. Tambahkan koneksi secara manual.",
-      "mcpProjectTools": "Server MCP claude-terminal membaca disk lokal, jadi tidak dapat membaca file proyek jarak jauh."
+      "mcpProjectTools": "Server MCP claude-terminal membaca disk lokal, jadi tidak dapat membaca file proyek jarak jauh.",
+      "costReport": "Biaya dibaca dari transkrip di mesin ini. Sesi proyek jarak jauh dicatat di host-nya, jadi biayanya tidak ditampilkan di sini."
     },
     "menu": {
       "section": "Host jarak jauh: {host}",

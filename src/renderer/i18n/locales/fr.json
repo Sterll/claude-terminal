@@ -4579,7 +4579,8 @@
       "overviewAutoExpand": "Une racine distante reste repliée tant que son hôte n'est pas connecté, pour qu'un hôte injoignable ne bloque jamais l'arbre.",
       "projectMcpConfig": "Les serveurs MCP propres à un projet distant sont dans ses réglages sur l'hôte et ne sont pas listés ici.",
       "databaseDetect": "La détection de bases de données lit les fichiers locaux du projet : elle n'est pas disponible pour un projet distant. Ajoutez la connexion à la main.",
-      "mcpProjectTools": "Le serveur MCP claude-terminal lit le disque local : il ne peut pas lire les fichiers d'un projet distant."
+      "mcpProjectTools": "Le serveur MCP claude-terminal lit le disque local : il ne peut pas lire les fichiers d'un projet distant.",
+      "costReport": "Le coût est lu dans les transcriptions de cette machine. Les sessions d'un projet distant sont enregistrées sur son hôte, leur coût n'est donc pas affiché ici."
     },
     "menu": {
       "section": "Hôte distant : {host}",

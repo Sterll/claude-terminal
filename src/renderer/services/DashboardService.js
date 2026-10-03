@@ -1947,13 +1947,68 @@ function buildBranchLineHtml(gitInfo = {}, { trailingSep = true } = {}) {
   return parts.join('<span class="dash-sub-sep">·</span>') + tail;
 }
 
+// ── Remote (SSH) projects in the briefing ──
+//
+// The briefing reads three things a remote project keeps elsewhere. Its
+// sessions and TODO count are on the host, and are asked for (with the URI,
+// through the same claude-sessions and scan-todos handlers) only while the
+// host is connected: a read on a host that is not would connect it, which is
+// the user's call, and the page already says it shows last known data. Its
+// cost is priced from this machine's transcripts, which a remote CLI never
+// writes, so it is withheld with the reason (the `costReport` row) rather
+// than shown as $0. Time tracking is keyed by project id and is unaffected.
+
+/** Cost figures are this machine's transcripts: none for a remote project. */
+function _costWithheld(project) {
+  return !can(project, 'costReport').ok;
+}
+
+/** The reason a remote project shows no cost, for a tooltip. */
+function _costWithheldReason(project) {
+  return t(can(project, 'costReport').reasonKey || 'ssh.disabled.costReport');
+}
+
+/**
+ * Whether the briefing may ask the project's host for its sessions and TODOs:
+ * always for a local project, only while the host is connected for a remote one.
+ */
+function _briefMayAskHost(project, data) {
+  if (!isRemoteProject(project)) return true;
+  if (data && data.remoteOffline) return false;
+  const host = _remoteHost(project);
+  return !!host && host.state === 'connected';
+}
+
+/** The project's cost load, or null when its cost is not this machine's to report. */
+function _projectCost(project) {
+  return _costWithheld(project) ? null : Brief.loadProjectCost(project.id).value;
+}
+
+/** The body of the Resume card. */
+function buildResumeBodyHtml(project, data) {
+  if (!_briefMayAskHost(project, data)) {
+    const host = (data && data.remoteOffline && data.remoteOffline.hostLabel)
+      || (_remoteHost(project) || {}).hostLabel
+      || (project.remote && project.remote.hostLabel)
+      || t('ssh.unknownHost');
+    return `<div class="dash-empty-line">${escapeHtml(t('ssh.terminal.historyOnHost', { host }))}</div>`;
+  }
+  return Brief.buildResumeHtml(Brief.loadSessions(project).value ?? null, Brief.loadLatestRecap(project.id).value);
+}
+
 function buildProjectMetricsHtml(project, data) {
-  const cost = Brief.loadProjectCost(project.id).value;
+  const withheld = _costWithheld(project);
+  const cost = _projectCost(project);
   const week = Brief.weekStart();
   const time = Brief.timeSince(getProjectSessions(project.id), getProjectTimes(project.id), week);
   const commits = Brief.commitsSince(data.commitHistory30d, week);
   return Brief.buildMetricsHtml([
-    {
+    withheld ? {
+      key: 'cost',
+      value: '-',
+      label: t('dashboard.brief.metrics.costWeek'),
+      title: _costWithheldReason(project),
+    } : {
       key: 'cost',
       value: cost ? Brief.formatUsd(cost.weekCost) : cost === null ? '-' : '…',
       pending: cost === undefined,
@@ -1976,12 +2031,12 @@ function projectTodoItems(project, data, gitOps) {
     workflowRuns: data.workflowRuns,
     pullRequests: data.pullRequests,
     conflicts: gitOps?.mergeInProgress ? (gitOps.conflicts || []) : [],
-    todoCount: Brief.loadTodoCount(project).value,
+    todoCount: _briefMayAskHost(project, data) ? Brief.loadTodoCount(project).value : null,
   });
 }
 
 function projectActivityDays(project, data) {
-  const cost = Brief.loadProjectCost(project.id).value;
+  const cost = _projectCost(project);
   const commits = Brief.commitsByDay(data.commitHistory30d);
   return Brief.lastDays(Brief.ACTIVITY_DAYS).map(date => ({
     date,
@@ -2021,19 +2076,16 @@ function wireBriefing(container, project, data, options, gitOps, isCurrent) {
     if (!isCurrent() || !brief.isConnected) return;
     replaceSlot(brief, '.dash-metrics', buildProjectMetricsHtml(project, data));
     replaceSlot(brief, '[data-dash="resume"]', Brief.cardHtml('resume', t('dashboard.brief.resume.title'),
-      Brief.buildResumeHtml(Brief.loadSessions(project).value ?? null, Brief.loadLatestRecap(project.id).value), 'dash-resume'));
+      buildResumeBodyHtml(project, data), 'dash-resume'));
     replaceSlot(brief, '[data-dash="todo"]', Brief.cardHtml('todo', t('dashboard.brief.todo.title'),
       Brief.buildTodoHtml(projectTodoItems(project, data, gitOps))));
     replaceSlot(brief, '[data-dash="activity"]', Brief.cardHtml('activity', t('dashboard.brief.activity.title', { days: Brief.ACTIVITY_DAYS }),
       Brief.buildActivityHtml(projectActivityDays(project, data))));
   };
 
-  const loads = [
-    Brief.loadProjectCost(project.id),
-    Brief.loadSessions(project),
-    Brief.loadLatestRecap(project.id),
-    Brief.loadTodoCount(project),
-  ];
+  const loads = [Brief.loadLatestRecap(project.id)];
+  if (!_costWithheld(project)) loads.push(Brief.loadProjectCost(project.id));
+  if (_briefMayAskHost(project, data)) loads.push(Brief.loadSessions(project), Brief.loadTodoCount(project));
   for (const load of loads) {
     if (load.pending) load.ready.then(repaint, () => {});
   }
@@ -2172,7 +2224,7 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
     <div class="dash-brief" data-animate="1">
       ${buildProjectMetricsHtml(project, data)}
       <div class="dash-row">
-        ${Brief.cardHtml('resume', t('dashboard.brief.resume.title'), Brief.buildResumeHtml(Brief.loadSessions(project).value ?? null, Brief.loadLatestRecap(project.id).value), 'dash-resume')}
+        ${Brief.cardHtml('resume', t('dashboard.brief.resume.title'), buildResumeBodyHtml(project, data), 'dash-resume')}
         ${Brief.cardHtml('todo', t('dashboard.brief.todo.title'), Brief.buildTodoHtml(projectTodoItems(project, data, gitOps)))}
       </div>
       ${Brief.cardHtml('activity', t('dashboard.brief.activity.title', { days: Brief.ACTIVITY_DAYS }), Brief.buildActivityHtml(projectActivityDays(project, data)))}
@@ -2634,8 +2686,9 @@ function buildOverviewCardHtml(project, dataMap, timesMap) {
     : '';
 
   const costs = Brief.loadAllProjectsCost().value;
-  const projectCost = costs?.byProject?.[project.id];
-  const costValue = costs === undefined ? '…' : Brief.formatUsd(projectCost?.weekCost || 0);
+  const costWithheld = _costWithheld(project);
+  const projectCost = costWithheld ? null : costs?.byProject?.[project.id];
+  const costValue = costWithheld ? '-' : costs === undefined ? '…' : Brief.formatUsd(projectCost?.weekCost || 0);
   const week = Brief.weekStart();
   const time = Brief.timeSince(getProjectSessions(project.id), timesMap[project.id] || getProjectTimes(project.id), week);
   const spark = Brief.lastDays(7).map(day => projectCost?.byDay?.[day] || 0);
@@ -2654,7 +2707,7 @@ function buildOverviewCardHtml(project, dataMap, timesMap) {
       </div>
       <div class="dash-subline dash-card-sub">${buildBranchLineHtml(gitInfo, { trailingSep: false })}</div>
       <div class="dash-card-stats">
-        <div><div class="dash-card-value${costs === undefined ? ' pending' : ''}">${escapeHtml(costValue)}</div><div class="dash-card-label">${escapeHtml(t('dashboard.brief.metrics.costWeek'))}</div></div>
+        <div${costWithheld ? ` title="${escapeHtml(_costWithheldReason(project))}"` : ''}><div class="dash-card-value${costs === undefined && !costWithheld ? ' pending' : ''}">${escapeHtml(costValue)}</div><div class="dash-card-label">${escapeHtml(t('dashboard.brief.metrics.costWeek'))}</div></div>
         <div><div class="dash-card-value">${escapeHtml(formatDuration(time))}</div><div class="dash-card-label">${escapeHtml(t('dashboard.brief.metrics.timeWeek'))}</div></div>
         ${Brief.sparklineHtml(spark)}
       </div>

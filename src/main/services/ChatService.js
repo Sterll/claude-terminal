@@ -1654,11 +1654,15 @@ class ChatService {
         if (message.type === 'system' && message.subtype === 'init' && message.session_id && session) {
           session.sdkSessionId = message.session_id;
           // The transcript does not record the account; the cost screen needs
-          // to know which one this session ran on from here on.
-          try {
-            require('./CostService').noteSessionAccount(message.session_id, session.accountId || null);
-          } catch (err) {
-            console.warn('[ChatService] could not record session account:', err.message);
+          // to know which one this session ran on from here on. A remote
+          // session's transcript is written on its host, out of the cost
+          // report's reach, and it runs on the host's own login anyway.
+          if (!session.remote) {
+            try {
+              require('./CostService').noteSessionAccount(message.session_id, session.accountId || null);
+            } catch (err) {
+              console.warn('[ChatService] could not record session account:', err.message);
+            }
           }
         }
 

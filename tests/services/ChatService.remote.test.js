@@ -68,6 +68,7 @@ function loadChatService(query, { accountOverlay = null } = {}) {
     './ChromeBridgeService': { getSessionConfig: jest.fn(() => CHROME) },
     './RemoteControlService': { onSessionClosed() {} },
     '../utils/sdkCli': { getSdkCliPath: () => '/fake/claude', getSdkCliVersion: () => null },
+    './CostService': { noteSessionAccount: jest.fn() },
   };
   const env = { CLAUDECODE: 'parent', PATH: '/local/bin', HOME: '/home/local', ANTHROPIC_API_KEY: 'sk-local' };
   const ctxRequire = (name) => {
@@ -118,6 +119,26 @@ function pendingStream() {
 }
 
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(r => setImmediate(r)); };
+
+/** A query stream that yields the CLI's init message, then never anything else. */
+function initStream(cliSessionId) {
+  let sent = false;
+  return {
+    [Symbol.asyncIterator]() {
+      return {
+        next: () => {
+          if (sent) return new Promise(() => {});
+          sent = true;
+          return Promise.resolve({ done: false, value: { type: 'system', subtype: 'init', session_id: cliSessionId } });
+        },
+        return: async () => ({ done: true }),
+      };
+    },
+    initializationResult: jest.fn(() => Promise.resolve({ models: [] })),
+    interrupt: jest.fn(),
+    close: jest.fn(),
+  };
+}
 
 const LAUNCH = {
   profileId: 'abcd1234',
@@ -310,6 +331,29 @@ describe('limits of a remote session', () => {
     await flush();
     expect(events.some(e => e.channel === 'chat-account-limit')).toBe(false);
     expect(events.find(e => e.channel === 'chat-error').data.errorType).toBe('generic');
+  });
+});
+
+describe('the cost report and remote sessions', () => {
+  test('a local session records the account it runs on at init, as before', async () => {
+    const query = jest.fn(() => initStream('cli-local-1'));
+    const { service, mocks } = loadChatService(query);
+    await service.startSession({ cwd: '/work/app', projectId: 'p1', prompt: 'hi', sessionId: 's-cost-local' });
+    await flush();
+    expect(mocks['./CostService'].noteSessionAccount).toHaveBeenCalledWith('cli-local-1', null);
+  });
+
+  test('a remote session records nothing: its transcript is on the host', async () => {
+    const query = jest.fn(({ options }) => {
+      options.spawnClaudeCodeProcess({ command: 'x', args: ['--verbose'], env: {} });
+      return initStream('cli-remote-1');
+    });
+    mockSpawn.mockImplementation(() => fakeChild());
+    const { service, mocks } = loadChatService(query);
+    await service.startSession({ cwd: URI, projectId: 'r1', prompt: 'hi', sessionId: 's-cost-remote', remote: REMOTE });
+    await flush();
+    expect(service.sessions.get('s-cost-remote').sdkSessionId).toBe('cli-remote-1');
+    expect(mocks['./CostService'].noteSessionAccount).not.toHaveBeenCalled();
   });
 });
 

@@ -778,7 +778,12 @@ Specific handlers:
   known data, from memory or `~/.claude-terminal/remote-cache/<projectId>/dashboard.json`,
   with a note, asks the host nothing, and renders again once it connects. A
   host that drops in the middle of a load keeps the previous git answer and
-  figures rather than repainting the project as "not a repository";
+  figures rather than repainting the project as "not a repository". The
+  briefing that opens the page follows the same rule: its sessions and TODO
+  count come from the host (`claude-sessions` and `scan-todos` with the URI)
+  only while it is connected, and otherwise say that the history lives on the
+  host; its time figure is keyed by project id and stays; its cost figure is
+  the `costReport` row of section 8;
 - the Control Tower reads a remote project's branch with `git.currentBranch`
   on its host, only while connected, never from `.git/HEAD`; the Discord
   presence subtitle does not ask a host at all for a remote session.
@@ -1036,6 +1041,7 @@ appear here, and every row must have its reason translated in all six locales.
 | Overview multi-root mixing local and remote | `overviewAutoExpand` | A dead host would stall the tree | Remote roots shown collapsed with a connect affordance; the host chip's tooltip gives the reason while it waits |
 | Project-scoped MCP config panel, remote SQLite | `projectMcpConfig`, `databaseDetect` | Read local files | The MCP panel never joins or reads a remote project's `.claude/settings.local.json` and lists the skipped projects in a note with the reason; database auto-detection refuses a remote project with a toast, and main's `database-detect` refuses a URI. Network database drivers are unaffected |
 | MCP `project_info`, `project_todos`, `project_create` on remote | `mcpProjectTools` | The MCP server reads local disk | Answer "remote project on <host>, not readable from the MCP server"; create refuses |
+| Cost figures of a remote project (dashboard briefing, overview card) | `costReport` | `CostService` prices the transcripts under the local `~/.claude/projects`; a remote CLI writes its own on the host | The cost metric reads "-" with the reason as its tooltip and the activity chart shows commits only, rather than a $0 that would look like a free week. The Cost tab never lists a remote project, since none of its transcripts are local, and a remote chat records no session account for it |
 
 Unaffected: time tracking (keyed by project id), Kanban storage, Workspace,
 Artifacts, Knowledge, network database drivers, tab naming, prompt enhancement,

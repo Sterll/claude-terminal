@@ -4579,7 +4579,8 @@
       "overviewAutoExpand": "远程根目录在其主机连接之前保持折叠，以免无法访问的主机拖慢整个树。",
       "projectMcpConfig": "远程项目的项目级 MCP 服务器保存在主机上的设置中，不会在此列出。",
       "databaseDetect": "数据库检测会读取项目的本地文件，因此远程项目不可用。请手动添加连接。",
-      "mcpProjectTools": "claude-terminal MCP 服务器读取本地磁盘，因此无法读取远程项目的文件。"
+      "mcpProjectTools": "claude-terminal MCP 服务器读取本地磁盘，因此无法读取远程项目的文件。",
+      "costReport": "费用读取自本机的对话记录。远程项目的会话记录保存在其主机上，因此此处不显示其费用。"
     },
     "menu": {
       "section": "远程主机：{host}",

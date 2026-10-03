@@ -22,9 +22,10 @@ jest.mock('../../src/renderer/state', () => ({
 jest.mock('../../src/renderer/ui/components/Modal', () => ({
   showConfirm: jest.fn(), createModal: jest.fn(), showModal: jest.fn(), closeModal: jest.fn(),
 }));
-jest.mock('../../src/project-types/registry', () => ({
-  get: jest.fn(() => ({ getDashboardBadge: () => null, getDashboardStats: () => '' })),
-}));
+jest.mock('../../src/project-types/registry', () => {
+  const type = { getDashboardBadge: () => null, getDashboardStats: () => '' };
+  return { get: jest.fn(() => type), forProject: jest.fn(() => type) };
+});
 jest.mock('../../src/renderer/ui/panels/KanbanPanel', () => ({ render: jest.fn() }));
 jest.mock('../../src/renderer/events', () => ({
   getActiveProvider: () => 'scraping',

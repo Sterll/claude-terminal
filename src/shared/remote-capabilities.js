@@ -110,6 +110,11 @@ const CAPABILITIES = Object.freeze({
   // host, and project_create refuses a remote path.
   mcpProjectTools: row('ssh.disabled.mcpProjectTools',
     'The claude-terminal MCP server reads local disk and cannot read a remote project'),
+  // The cost report and the dashboard's cost figures price the transcripts
+  // under this machine's ~/.claude/projects. A remote project's CLI writes its
+  // transcripts on the host, so a local figure for it would read as $0.
+  costReport: row('ssh.disabled.costReport',
+    "The cost report reads this machine's transcripts; a remote project's sessions are recorded on its host"),
 });
 
 /**

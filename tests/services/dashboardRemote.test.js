@@ -11,6 +11,10 @@
  * - While its host is not connected the dashboard shows the last known data
  *   with a note and asks the host nothing; it renders again by itself once the
  *   host connects.
+ * - The briefing at the top asks the host for sessions and TODOs only while it
+ *   is connected, says where the history lives otherwise, and withholds the
+ *   cost figure (the `costReport` row): this machine's transcripts say nothing
+ *   about a remote project.
  */
 
 jest.mock('../../src/renderer/state', () => ({
@@ -79,7 +83,11 @@ beforeEach(() => {
       stats: jest.fn(async () => ({ lines: 40, files: 2, byExtension: {}, remote: true, rootEntries: ['package.json', 'src'], packageDeps: ['react'] })),
     },
     github: { workflowRuns: jest.fn(), pullRequests: jest.fn(), isAuthenticated: jest.fn(async () => false), onRateLimitUpdate: jest.fn() },
+    claude: { sessions: jest.fn(async () => [{ sessionId: 'rs-1', modified: new Date().toISOString(), aiTitle: 'On the host' }]) },
+    cost: { getReport: jest.fn(async ({ projectId }) => ({ byProject: [{ projectId: projectId || 'l1', byDay: { [require('../../src/renderer/services/dashboard/briefing').dayKey(Date.now())]: 9 } }] })) },
   });
+  window.electron_api.project.scanTodos = jest.fn(async () => [{}, {}, {}]);
+  require('../../src/renderer/services/dashboard/briefing')._resetCache();
   _resetForTests();
   remoteHostsState.set({ profiles: [{ id: 'abcd1234', host: 'build', user: 'yanis' }], loaded: true, statuses: {} });
 });
@@ -175,6 +183,51 @@ describe('dashboard of a remote project', () => {
     await DashboardService.renderDashboard(container, REMOTE, {});
     expect(container.querySelector('.dashboard-remote-type-note')).toBeNull();
     DashboardService.cancelRender(container);
+  });
+
+  test('briefing while the host is away: no session or TODO request, history on the host, no cost', async () => {
+    applyHostStatus({ profileId: 'abcd1234', state: 'reconnecting' });
+    DashboardService.invalidateCache('r1');
+    const container = document.createElement('div');
+    await DashboardService.renderDashboard(container, REMOTE, {});
+    for (let i = 0; i < 5; i++) await flush();
+    expect(window.electron_api.claude.sessions).not.toHaveBeenCalled();
+    expect(window.electron_api.project.scanTodos).not.toHaveBeenCalled();
+    expect(window.electron_api.cost.getReport).not.toHaveBeenCalled();
+    const { t } = require('../../src/renderer/i18n');
+    expect(container.querySelector('[data-dash="resume"]').textContent).toContain(t('ssh.terminal.historyOnHost', { host: 'yanis@build' }));
+    const cost = container.querySelector('.dash-metrics [data-metric="cost"]');
+    expect(cost.textContent).toContain('-');
+    expect(cost.title).toBe(t('ssh.disabled.costReport'));
+    DashboardService.cancelRender(container);
+  });
+
+  test('briefing once connected: sessions and TODOs come from the host by URI, cost stays withheld', async () => {
+    applyHostStatus({ profileId: 'abcd1234', state: 'connected' });
+    DashboardService.invalidateCache('r1');
+    const container = document.createElement('div');
+    await DashboardService.renderDashboard(container, REMOTE, {});
+    for (let i = 0; i < 10; i++) await flush();
+    expect(window.electron_api.claude.sessions).toHaveBeenCalledWith(REMOTE.path);
+    expect(window.electron_api.project.scanTodos).toHaveBeenCalledWith(REMOTE.path);
+    expect(window.electron_api.cost.getReport).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-resume="rs-1"]')).not.toBeNull();
+    expect(container.querySelector('.dash-metrics [data-metric="cost"]').title).toBe(require('../../src/renderer/i18n').t('ssh.disabled.costReport'));
+    // The activity chart shows commits only, not a $0 cost series.
+    expect(container.querySelector('[data-dash="activity"] .tone-accent')).toBeNull();
+    DashboardService.cancelRender(container);
+  });
+
+  test('overview card of a remote project withholds its cost, a local one keeps it', async () => {
+    const container = document.createElement('div');
+    DashboardService.renderOverview(container, [REMOTE, LOCAL], { dataMap: {}, timesMap: {} });
+    for (let i = 0; i < 5; i++) await flush();
+    DashboardService.renderOverview(container, [REMOTE, LOCAL], { dataMap: {}, timesMap: {} });
+    const [remoteCard, localCard] = container.querySelectorAll('.overview-card');
+    expect(remoteCard.querySelector('.dash-card-stats > div').title).toBe(require('../../src/renderer/i18n').t('ssh.disabled.costReport'));
+    expect(remoteCard.querySelector('.dash-card-value').textContent).toBe('-');
+    expect(localCard.querySelector('.dash-card-stats > div').title).toBe('');
+    expect(localCard.querySelector('.dash-card-value').textContent).toMatch(/9/);
   });
 
   test('a local project loads exactly as before', async () => {

@@ -4579,7 +4579,8 @@
       "overviewAutoExpand": "Uma raiz remota fica recolhida até que seu host esteja conectado, para que um host fora do ar nunca trave a árvore.",
       "projectMcpConfig": "Os servidores MCP próprios de um projeto remoto ficam nas configurações dele no host e não são listados aqui.",
       "databaseDetect": "A detecção de bancos de dados lê os arquivos locais do projeto, então não está disponível para um projeto remoto. Adicione a conexão manualmente.",
-      "mcpProjectTools": "O servidor MCP claude-terminal lê o disco local, então não consegue ler os arquivos de um projeto remoto."
+      "mcpProjectTools": "O servidor MCP claude-terminal lê o disco local, então não consegue ler os arquivos de um projeto remoto.",
+      "costReport": "O custo é lido das transcrições desta máquina. As sessões de um projeto remoto ficam registradas no host dele, então o custo delas não aparece aqui."
     },
     "menu": {
       "section": "Host remoto: {host}",

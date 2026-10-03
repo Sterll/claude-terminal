@@ -182,13 +182,14 @@ function todoItems({ gitInfo = {}, workflowRuns, pullRequests, conflicts = [], t
 // ── Builders ────────────────────────────────────────────────────────────────
 
 /**
- * @param {Array<{ key?: string, value: string, label: string, tone?: string, pending?: boolean }>} cards
+ * @param {Array<{ key?: string, value: string, label: string, tone?: string, pending?: boolean, title?: string }>} cards
+ *   `title` is a tooltip, for a figure that is withheld and says why.
  */
 function buildMetricsHtml(cards) {
   return `
     <div class="dash-metrics">
       ${cards.map(c => `
-        <div class="dash-metric${c.tone ? ` tone-${c.tone}` : ''}"${c.key ? ` data-metric="${c.key}"` : ''}>
+        <div class="dash-metric${c.tone ? ` tone-${c.tone}` : ''}"${c.key ? ` data-metric="${c.key}"` : ''}${c.title ? ` title="${escapeHtml(c.title)}"` : ''}>
           <div class="dash-metric-value${c.pending ? ' pending' : ''}">${escapeHtml(c.value)}</div>
           <div class="dash-metric-label">${escapeHtml(c.label)}</div>
         </div>`).join('')}
