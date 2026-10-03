@@ -881,7 +881,12 @@ host key states from a dedicated known_hosts, a user without a key, a network
 drop, an sshd restart, login shells, and the check that nothing is left running
 on the host. It never writes the user's known_hosts and never copies a credential;
 the header of the script lists every variable. Its first run found three bugs
-the fake could not show (design/remote-ssh.md sections 2.3 and 6).
+the fake could not show (design/remote-ssh.md sections 2.3 and 6). It also
+drives the execution side: remote PTYs through node-pty (exit codes, a killed
+sshd session versus `exit 255`, tmux reattach, tcsh and fish), quick actions
+with `$BRANCH` read on the host, and a chat through `ChatService` and the
+Agent SDK over ssh against a `claude` installed on the host but never logged
+in, so the expected end of a chat there is the CLI's own "Not logged in".
 
 ## CI/CD
 

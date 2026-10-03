@@ -20,8 +20,8 @@
  *   CT_REMOTE_LIVE_IFACE  interface the network drop takes down (eth0)
  *   CT_REMOTE_LIVE_DROP_S seconds the network stays down (45)
  *   CT_REMOTE_LIVE_ONLY   comma-separated groups to run (default: all): channel,
- *                         auth, fs, git, sessions, chat, watcher, pty, shells,
- *                         reconnect, leaks.
+ *                         auth, fs, git, sessions, chat, watcher, pty, terminals,
+ *                         quickactions, shells, reconnect, leaks.
  *                         discovery, hostkeys and connect always run
  *   CT_REMOTE_LIVE_REBOOT `1` to also stop and start the host through
  *                         CT_REMOTE_LIVE_ADMIN_REBOOT (a full command line,
@@ -36,7 +36,18 @@
  * `-o UserKnownHostsFile=` through the launcher hook SshHostService exposes
  * for exactly this kind of caller. The product code never redirects it.
  *
- * Nothing is left behind: the remote work directory, any user the harness
+ * The execution groups (terminals, quickactions, chat) use whatever the host
+ * has. With the claude CLI installed for the remote user (the official
+ * installer, never logged in), the chat group drives ChatService and the Agent
+ * SDK's query() over ssh exactly as the app does, up to the CLI's own "Not
+ * logged in" answer. The harness never copies a credential to the host: a
+ * second store refreshing the same OAuth grant would sign the first one out.
+ * Without claude there, those scenarios check the "not installed" path.
+ * terminals installs tcsh and fish on the host for its login shell checks
+ * (needs root and apt) and purges them afterwards.
+ *
+ * Nothing is left behind: the remote work directory, the transcripts the
+ * chat runs wrote, the tmux session of the run, any user or shell the harness
  * created and the temporary home are removed at the end, the network is
  * brought back up, and the run fails if an ssh process of ours survives on
  * either side.
@@ -956,19 +967,32 @@ async function groupSessions() {
 
 async function groupChat() {
   await scenario('chat', 'a chat on a host without claude fails with a clear "not installed"', async () => {
-    if (ctx.caps.claude) skip(`claude is installed on the host (${ctx.caps.claude}); the authentication path needs a logged-out CLI`);
-    const { prepareRemoteChat } = req('src/main/utils/sshClaudeSpawn.js');
-    const uri = remotePathLib.format(ctx.profile.id, `${ctx.base}/repo`);
-    let error = null;
-    try { await prepareRemoteChat({ cwd: uri, projectId: 'p_live_repo' }); } catch (e) { error = e; }
-    check(error, 'the chat start was refused');
-    eq(error.code, 'CLAUDE_NOT_INSTALLED', `code (${error.message})`);
-    check(error.message.includes(DEST_HOST), `the message names the host: ${error.message}`);
-    let mismatch = null;
-    try { await prepareRemoteChat({ cwd: uri, projectId: 'p_live_proj' }); } catch (e) { mismatch = e; }
-    check(mismatch && /does not match/.test(mismatch.message), 'a project id that does not own the path is refused');
-    return error.message;
+    // With claude installed, a profile path that does not exist is the same
+    // thing to the handshake: no binary to run.
+    if (ctx.caps.claude) return withProfile({ remoteClaudePath: `${ctx.base}/no-such-claude` }, notInstalled);
+    return notInstalled();
   });
+}
+
+async function notInstalled() {
+  eq(ctx.caps.claude, '', 'the handshake finds no claude');
+  const { prepareRemoteChat } = req('src/main/utils/sshClaudeSpawn.js');
+  const uri = remotePathLib.format(ctx.profile.id, `${ctx.base}/repo`);
+  let error = null;
+  try { await prepareRemoteChat({ cwd: uri, projectId: 'p_live_repo' }); } catch (e) { error = e; }
+  check(error, 'the chat start was refused');
+  eq(error.code, 'CLAUDE_NOT_INSTALLED', `code (${error.message})`);
+  check(error.message.includes(DEST_HOST), `the message names the host: ${error.message}`);
+  check(error.message.includes('curl -fsSL https://claude.ai/install.sh | bash'), `the message has the install hint: ${error.message}`);
+  // What the renderer gets from the chat-start IPC: an answer, not a throw.
+  loadChat();
+  const res = await ipcHandlers.get('chat-start')({}, { cwd: uri, projectId: 'p_live_repo', prompt: 'hi', permissionMode: 'default' });
+  check(res && res.success === false && res.error === error.message, `chat-start answers the same sentence: ${JSON.stringify(res)}`);
+  check(chatService.sessions.size === 0, 'no session left behind');
+  let mismatch = null;
+  try { await prepareRemoteChat({ cwd: uri, projectId: 'p_live_proj' }); } catch (e) { mismatch = e; }
+  check(mismatch && /does not match/.test(mismatch.message), 'a project id that does not own the path is refused');
+  return error.message;
 }
 
 /** Processes of the remote user, minus the systemd user manager that logind keeps around. */
@@ -1144,7 +1168,7 @@ async function shellSmoke(label) {
     ipcListeners.get('terminal-input')({}, { id, data: 'echo CT_LIVE_SHELL_$SHELL\r' });
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline && !/CT_LIVE_SHELL_\/\S+/.test(ctx.ptyOutput(id))) await wait(200);
-    const m = /CT_LIVE_SHELL_(\/\S+)/.exec(ctx.ptyOutput(id));
+    const m = /CT_LIVE_SHELL_(\/[^\s\x1b]+)/.exec(ctx.ptyOutput(id));
     check(m, `${label}: terminal tab answers: ${JSON.stringify(ctx.ptyOutput(id).slice(-300))}`);
     ipcListeners.get('terminal-input')({}, { id, data: 'exit\r' });
     const until = Date.now() + 15000;
@@ -1312,6 +1336,565 @@ async function groupReconnect() {
   }, { timeoutMs: 300000 });
 }
 
+// ── Execution side: terminals, quick actions, Claude chat ───────────────────
+
+const EXEC_BRANCH = 'feat/qa-branch';
+const EXEC_PROJECT_ID = 'p_live_exec';
+const execDir = () => `${ctx.base}/exec repo`;
+const execUri = () => remotePathLib.format(ctx.profile.id, execDir());
+const stripAnsi = (s) => String(s).replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+
+async function waitUntil(pred, ms, what) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await pred()) return;
+    await wait(150);
+  }
+  throw new Error(`timed out waiting for ${what}`);
+}
+
+/** The exec repository and its project record, once: a repo on a branch with a slash, in a directory with a space. */
+async function ensureExecProject() {
+  if (ctx.execReady) return;
+  const dir = execDir();
+  await runText([
+    `mkdir -p -- ${q(dir)}`,
+    `cd -- ${q(dir)}`,
+    `{ git init -q -b ${q(EXEC_BRANCH)} . 2>/dev/null || { git init -q . && git checkout -q -b ${q(EXEC_BRANCH)}; }; }`,
+    'git config user.name "CT Live"',
+    'git config user.email ct-live@example.invalid',
+    'printf "exec repo\\n" > README.md',
+    'git add README.md',
+    'git commit -q -m init',
+  ].join(' && '), { write: true });
+  const project = {
+    ...remoteProject(EXEC_PROJECT_ID, ctx.profile.id, dir),
+    quickActions: [{ id: 'qa_branch', name: 'Show branch', command: 'echo "QA[$BRANCH][$PROJECT_NAME]" && pwd' }],
+  };
+  ctx.projects = [...(ctx.projects || []).filter((p) => p.id !== EXEC_PROJECT_ID), project];
+  writeProjects(ctx.projects);
+  ctx.execReady = true;
+}
+
+/** Save the main profile with some fields changed, and reconnect so the handshake sees them. */
+async function withProfile(changes, fn) {
+  const before = { ...ctx.profile };
+  ctx.profile = await svc.saveProfile({ ...ctx.profile, ...changes });
+  await reconnectMain();
+  try {
+    return await fn();
+  } finally {
+    ctx.profile = await svc.saveProfile({ ...before });
+    await reconnectMain();
+  }
+}
+
+/** Open a remote tab through the real terminal-create IPC. */
+async function openTab({ runClaude = false, sessionKey = undefined, dir = null, projectId = EXEC_PROJECT_ID } = {}) {
+  const uri = remotePathLib.format(ctx.profile.id, dir || execDir());
+  const res = await ipcHandlers.get('terminal-create')({}, { cwd: uri, projectPath: uri, projectId, runClaude, sessionKey });
+  check(res && res.success, `terminal-create: ${JSON.stringify(res)}`);
+  return res.id;
+}
+const tabOutput = (id) => sentToRenderer.filter((m) => m.channel === 'terminal-data' && m.payload && m.payload.id === id).map((m) => m.payload.data).join('');
+const tabEvent = (channel, id) => sentToRenderer.filter((m) => m.channel === channel && m.payload && m.payload.id === id).pop();
+const typeIn = (id, text) => ipcListeners.get('terminal-input')({}, { id, data: text });
+async function waitTabEnd(id, ms = 20000) {
+  await waitUntil(() => tabEvent('terminal-exit', id) || tabEvent('terminal-disconnected', id), ms, `tab ${id} to end`);
+  return { exit: tabEvent('terminal-exit', id), lost: tabEvent('terminal-disconnected', id) };
+}
+/** Wait for the tab's output to settle (the prompt is up), then type. */
+async function settleThenType(id, text) {
+  let seen = -1;
+  for (let i = 0; i < 60 && (tabOutput(id).length === 0 || tabOutput(id).length !== seen); i++) {
+    seen = tabOutput(id).length;
+    await wait(300);
+  }
+  typeIn(id, text);
+}
+/** Kill the sshd session process that carries process `pid` on the host: a connection dropped from the server side. */
+async function killServerSession(pid) {
+  const { out } = await admin(`pp=$(ps -o ppid= -p ${Number(pid)} | tr -d ' '); ps -o args= -p "$pp"; kill -KILL "$pp"`);
+  return out.trim();
+}
+/** The latest exit or disconnect of a tab after a given point of the renderer log. */
+function tabEndSince(id, since) {
+  return sentToRenderer.slice(since).find((m) => (m.channel === 'terminal-exit' || m.channel === 'terminal-disconnected') && m.payload && m.payload.id === id);
+}
+
+async function groupTerminals() {
+  if (!ctx.openPty) {
+    await scenario('terminals', 'remote terminals', () => skip('node-pty did not load'));
+    return;
+  }
+  await ensureExecProject();
+
+  await scenario('terminals', 'exit status of the remote shell reaches the tab (exit 3)', async () => {
+    const id = await openTab();
+    await settleThenType(id, 'echo "here=$PWD"; exit 3\r');
+    const { exit, lost } = await waitTabEnd(id);
+    check(exit && !lost, `closed as an exit: ${JSON.stringify(lost && lost.payload)}`);
+    eq(exit.payload.exitCode, 3, 'exit code');
+    check(stripAnsi(tabOutput(id)).includes(`here=${execDir()}`), 'shell ran in the project directory (with a space)');
+    return `exit ${exit.payload.exitCode}`;
+  });
+
+  await scenario('terminals', 'a server-side drop is a lost connection, a remote `exit 255` is an exit', async () => {
+    if (!hasAdmin()) skip('needs CT_REMOTE_LIVE_ADMIN to kill the sshd session');
+    // The real drop: the sshd session process of the tab dies under it.
+    const id = await openTab();
+    await settleThenType(id, 'echo "PID=$$"\r');
+    await waitUntil(() => /PID=(\d+)/.test(stripAnsi(tabOutput(id))), 20000, 'the shell pid')
+      .catch((e) => { throw new Error(`${e.message}: ${JSON.stringify(tabOutput(id).slice(-400))}`); });
+    const shellPid = /PID=(\d+)/.exec(stripAnsi(tabOutput(id)))[1];
+    const killed = await killServerSession(shellPid);
+    const dropped = await waitTabEnd(id);
+    check(dropped.lost && !dropped.exit, `a killed sshd session must not close the tab: ${JSON.stringify(dropped.exit && dropped.exit.payload)}`);
+    const dropLine = stripAnsi(tabOutput(id)).trim().split(/\r?\n/).filter(Boolean).pop();
+    const since = sentToRenderer.length;
+    const back = await ipcHandlers.get('terminal-respawn')({}, { id });
+    check(back && back.success, `respawn: ${JSON.stringify(back)}`);
+    await settleThenType(id, 'echo "again-$((2+3))"\r');
+    await waitUntil(() => stripAnsi(tabOutput(id)).includes('again-5'), 20000, 'the respawned shell');
+    // The real `exit 255` of the same tab, now respawned.
+    typeIn(id, 'exit 255\r');
+    await waitUntil(() => tabEndSince(id, since), 20000, 'the exit 255');
+    const second = tabEndSince(id, since);
+    eq(second.channel, 'terminal-exit', 'a remote exit 255 closes the tab');
+    eq(second.payload.exitCode, 255, 'exit code');
+    const exitLine = stripAnsi(tabOutput(id)).trim().split(/\r?\n/).filter(Boolean).pop();
+    return `killed ${killed}; drop said ${JSON.stringify(dropLine)} (${dropped.lost.payload.kind || 'lost'}); exit 255 said ${JSON.stringify(exitLine)}`;
+  });
+
+  await scenario('terminals', 'tmux tab reattaches to the same shell after a drop, and closing the tab ends the session', async () => {
+    if (!hasAdmin()) skip('needs CT_REMOTE_LIVE_ADMIN to kill the sshd session');
+    if (!ctx.caps.tools.includes('tmux')) skip('no tmux on the host');
+    return withProfile({ tmuxSessions: true }, async () => {
+      const key = `live${RUN_ID}`;
+      const session = `ct-${key}`;
+      const mark = crypto.randomBytes(3).toString('hex');
+      const id = await openTab({ sessionKey: key });
+      // Ctrl-U first: see daLeak below.
+      await settleThenType(id, `\x15CT_MARK=${mark}; echo "set-$CT_MARK"\r`);
+      await waitUntil(() => stripAnsi(tabOutput(id)).includes(`set-${mark}`), 20000, 'the mark');
+      const listed = await runText('tmux ls -F "#{session_name}" 2>/dev/null; :');
+      check(listed.split('\n').includes(session), `tmux session ${session} on the host: ${listed.trim()}`);
+      // The tmux client is the sshd session's child; the server is detached (ppid 1).
+      const { out } = await admin(`for p in $(pgrep -u ${q(ctx.caps.user)} -f -- ${q(`new-session -A -s ${session}`)}); do [ "$(ps -o ppid= -p $p | tr -d ' ')" != 1 ] && echo $p; done; :`);
+      const client = out.trim().split('\n').filter(Boolean)[0];
+      check(client, 'tmux client found');
+      const since = sentToRenderer.length;
+      await killServerSession(client);
+      await waitUntil(() => tabEndSince(id, since), 20000, 'the drop');
+      const dropped = tabEndSince(id, since);
+      eq(dropped.channel, 'terminal-disconnected', `the drop is a lost connection (${JSON.stringify(dropped.payload)}, output ${JSON.stringify(tabOutput(id).slice(-300))})`);
+      const back = await ipcHandlers.get('terminal-respawn')({}, { id });
+      check(back && back.success, `respawn: ${JSON.stringify(back)}`);
+      // Windows OpenSSH under ConPTY: ConPTY answers tmux's terminal queries,
+      // and the answer reaches tmux split by more than tmux 3.5's 10 ms
+      // escape-time, so it lands on the prompt as typed text. Recorded, then
+      // cleared with Ctrl-U so the check below reads the shell itself.
+      await settleThenType(id, '');
+      const prompt = await runText(`tmux capture-pane -p -t ${session} 2>/dev/null | grep -v '^$' | tail -n 1; :`);
+      const daLeak = /\d+;\d+(;\d+)*c/.test(prompt);
+      typeIn(id, '\x15echo "got-$CT_MARK"\r');
+      await waitUntil(() => stripAnsi(tabOutput(id)).includes(`got-${mark}`), 20000, 'the same shell after the reattach')
+        .catch(async (e) => {
+          const pane = await runText(`tmux capture-pane -p -t ${session} 2>&1; tmux ls 2>&1; :`);
+          throw new Error(`${e.message}: tab ${JSON.stringify(tabOutput(id).slice(-500))}; pane ${JSON.stringify(pane)}`);
+        });
+      ipcListeners.get('terminal-kill')({}, { id });
+      await waitUntil(async () => !(await runText('tmux ls -F "#{session_name}" 2>/dev/null; :')).split('\n').includes(session), 15000, 'the tmux session to end');
+      return `reattached ${session}, mark ${mark} kept, session ended on close; terminal query reply leaked onto the prompt: ${daLeak ? JSON.stringify(prompt.trim()) : 'no'}`;
+    });
+  }, { timeoutMs: 180000 });
+
+  await scenario('terminals', 'Claude tab: the CLI starts in the project through the login shell and stops at its login screen', async () => {
+    if (!ctx.caps.claude) skip('claude is not installed on the host');
+    const id = await openTab({ runClaude: true });
+    await waitUntil(() => /log ?in|welcome|theme|select/i.test(stripAnsi(tabOutput(id))) || tabEvent('terminal-exit', id), 60000, 'the Claude screen');
+    await wait(1500);
+    check(!tabEvent('terminal-exit', id), `the Claude tab stays open: ${JSON.stringify(stripAnsi(tabOutput(id)).slice(-300))}`);
+    let detail = '';
+    if (hasAdmin()) {
+      const procs = await remoteClaudeProcs();
+      const mine = procs.filter((p) => p.cwd === execDir());
+      check(mine.length === 1, `claude running in the project directory: ${JSON.stringify(procs.map((p) => p.cwd))}`);
+      detail = mine[0].argv.join(' ');
+    }
+    const screen = stripAnsi(tabOutput(id)).replace(/\s+/g, ' ').trim();
+    ipcListeners.get('terminal-kill')({}, { id });
+    if (hasAdmin()) await waitUntil(async () => (await remoteClaudeProcs()).length === 0, 20000, 'claude to end after the tab closed');
+    return `${detail}; screen: ${JSON.stringify(screen.slice(0, 160))}`;
+  }, { timeoutMs: 120000 });
+
+  await scenario('terminals', 'Claude tab with no claude at the profile path ends with 127 (the tab says "not found on <host>")', async () => {
+    return withProfile({ remoteClaudePath: `${ctx.base}/no-such-claude` }, async () => {
+      const id = await openTab({ runClaude: true });
+      const { exit, lost } = await waitTabEnd(id, 30000);
+      check(exit && !lost, `closed as an exit: ${JSON.stringify(lost && lost.payload)}`);
+      eq(exit.payload.exitCode, 127, 'exit code');
+      return stripAnsi(tabOutput(id)).trim().split(/\r?\n/).filter(Boolean).slice(-2).join(' / ');
+    });
+  });
+
+  for (const shell of ['tcsh', 'fish']) {
+    await scenario('terminals', `${shell} login shell: shell tab, Claude tab and the handshake`, async () => {
+      if (!hasAdmin()) skip('needs CT_REMOTE_LIVE_ADMIN');
+      if (!ctx.caps.claude) skip('claude is not installed on the host');
+      const user = ctx.caps.user;
+      const home = ctx.home;
+      await admin(`command -v ${shell} >/dev/null || { DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends ${shell} >/dev/null && apt-get clean; }`, { timeoutMs: 300000 });
+      ctx.installedShells = [...new Set([...(ctx.installedShells || []), shell])];
+      const bin = (await admin(`command -v ${shell}`)).out.trim();
+      // What a user of that shell has: ~/.local/bin on the PATH their shell sets.
+      const rc = shell === 'tcsh'
+        ? { file: `${home}/.cshrc`, body: 'setenv PATH "${HOME}/.local/bin:${PATH}"' }
+        : { file: `${home}/.config/fish/config.fish`, body: 'fish_add_path -g $HOME/.local/bin' };
+      await admin(`mkdir -p ${q(path.posix.dirname(rc.file))} && printf '%s\\n' ${q(rc.body)} > ${q(rc.file)} && chown ${q(user)}: ${q(path.posix.dirname(rc.file))} ${q(rc.file)} && chsh -s ${q(bin)} ${q(user)}`);
+      ctx.shellRcFiles = [...new Set([...(ctx.shellRcFiles || []), rc.file])];
+      try {
+        const smoke = await shellSmoke(shell);
+        eq(ctx.caps.shell, bin, 'handshake shell');
+        check(ctx.caps.claude, `handshake finds claude through the ${shell} PATH (${ctx.caps.path})`);
+        const id = await openTab({ runClaude: true });
+        await waitUntil(() => /log ?in|welcome|theme|select|not found/i.test(stripAnsi(tabOutput(id))) || tabEvent('terminal-exit', id), 60000, 'the Claude screen');
+        await wait(1500);
+        const screen = stripAnsi(tabOutput(id)).replace(/\s+/g, ' ').trim();
+        check(!tabEvent('terminal-exit', id) && !/not found/i.test(screen), `Claude tab under ${shell}: ${JSON.stringify(screen.slice(-300))}`);
+        ipcListeners.get('terminal-kill')({}, { id });
+        await waitUntil(async () => (await remoteClaudeProcs()).length === 0, 20000, 'claude to end after the tab closed');
+        return `${smoke}; claude ${ctx.caps.claude}`;
+      } finally {
+        await admin(`chsh -s /bin/bash ${q(user)}; rm -f ${q(rc.file)}; :`);
+      }
+    }, { timeoutMs: 420000 });
+  }
+
+  await scenario('terminals', 'back to bash, test shells removed', async () => {
+    if (!hasAdmin()) skip('needs CT_REMOTE_LIVE_ADMIN');
+    await removeTestShells();
+    const caps = await reconnectMain();
+    check(caps.shell.endsWith('/bash'), `shell ${caps.shell}`);
+    const { out } = await admin('df -h / | tail -1');
+    return `disk: ${out.trim().replace(/\s+/g, ' ')}`;
+  }, { timeoutMs: 300000 });
+}
+
+/** Put the user back on bash and purge the shells the terminals group installed. */
+async function removeTestShells() {
+  const user = (ctx.caps && ctx.caps.user) || DEST_USER;
+  const shells = ctx.installedShells || [];
+  const rcs = ctx.shellRcFiles || [];
+  await admin([
+    `chsh -s /bin/bash ${q(user)}`,
+    ...rcs.map((f) => `rm -f ${q(f)}`),
+    shells.length ? `DEBIAN_FRONTEND=noninteractive apt-get purge -y -q ${shells.map(q).join(' ')} >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get autoremove -y -q --purge >/dev/null 2>&1; apt-get clean` : ':',
+    ':',
+  ].join('; '), { timeoutMs: 300000 });
+  ctx.installedShells = [];
+  ctx.shellRcFiles = [];
+}
+
+async function groupQuickActions() {
+  await ensureExecProject();
+  const pid = ctx.profile.id;
+  try { req('src/main/ipc/git.ipc.js').registerGitHandlers(); } catch (e) { log('git IPC did not register:', e.message); }
+  const node = req('src/main/workflow-nodes/quickaction.node.js');
+  const runNode = async () => {
+    const sent = [];
+    const out = await node.run({ projectId: EXEC_PROJECT_ID, action: 'Show branch' }, new Map(), null, { sendFn: (channel, payload) => sent.push({ channel, payload }) });
+    return { out, sent };
+  };
+
+  await scenario('quickactions', 'the renderer reads $BRANCH on the host (git-current-branch with the URI)', async () => {
+    const handler = ipcHandlers.get('git-current-branch');
+    check(handler, 'git-current-branch registered');
+    eq(await handler({}, { projectPath: execUri() }), EXEC_BRANCH, 'branch from the host');
+  });
+
+  await scenario('quickactions', 'quickaction node fills $BRANCH, $PROJECT_NAME and $PROJECT_PATH from the host', async () => {
+    const { out, sent } = await runNode();
+    eq(out.command, `echo "QA[${EXEC_BRANCH}][exec repo]" && pwd`, 'command');
+    eq(sent.length, 1, 'handed to a terminal tab');
+    eq(sent[0].channel, 'mcp-terminal:send', 'channel');
+    eq(sent[0].payload.projectId, EXEC_PROJECT_ID, 'project');
+    return out.command;
+  });
+
+  await scenario('quickactions', 'the substituted command runs in a remote tab', async () => {
+    if (!ctx.openPty) skip('node-pty did not load');
+    const { out } = await runNode();
+    const id = await openTab();
+    await settleThenType(id, `${out.command}\r`);
+    await waitUntil(() => stripAnsi(tabOutput(id)).includes(`QA[${EXEC_BRANCH}][exec repo]\r\n${execDir()}`), 20000, 'the quick action output');
+    ipcListeners.get('terminal-kill')({}, { id });
+  });
+
+  await scenario('quickactions', 'host disconnected: $BRANCH is empty and the host is not contacted', async () => {
+    svc.disconnect(pid);
+    const created = [];
+    const createLane = svc.createLane;
+    svc.createLane = (opts) => { created.push(Date.now()); return createLane.call(svc, opts); };
+    try {
+      const { out } = await runNode();
+      eq(out.command, 'echo "QA[][exec repo]" && pwd', 'command while disconnected');
+      eq(created.length, 0, 'lanes opened for the substitution');
+    } finally {
+      svc.createLane = createLane;
+      eq((await svc.connect(pid)).state, 'connected', 'reconnected');
+    }
+  });
+}
+
+// ── Claude chat over ssh ─────────────────────────────────────────────────────
+
+let chatService = null;
+const chatLog = [];
+function loadChat() {
+  if (chatService) return chatService;
+  chatService = req('src/main/services/ChatService.js');
+  req('src/main/ipc/chat.ipc.js').registerChatHandlers();
+  chatService.addEventListener((channel, data) => chatLog.push({ channel, data, at: Date.now() }));
+  return chatService;
+}
+const chatFor = (sid, since = 0) => chatLog.slice(since).filter((e) => e.data && e.data.sessionId === sid);
+const chatInit = (sid, since = 0) => chatFor(sid, since).map((e) => (e.channel === 'chat-message' ? e.data.message : null)).find((m) => m && m.type === 'system' && m.subtype === 'init');
+const chatEnd = (sid, since = 0) => chatFor(sid, since).find((e) => e.channel === 'chat-error' || e.channel === 'chat-done');
+const AUTH_TEXT = /log ?in|\/login|authenticat|api key|unauthori[sz]ed|401|credential|oauth/i;
+
+/** Every text a session showed: assistant text, result errors, chat-error. */
+function chatTexts(sid, since = 0) {
+  const out = [];
+  for (const e of chatFor(sid, since)) {
+    if (e.channel === 'chat-error') out.push(`chat-error[${e.data.errorType}]: ${e.data.error}`);
+    if (e.channel !== 'chat-message') continue;
+    const m = e.data.message;
+    if (m.type === 'assistant' && Array.isArray(m.message && m.message.content)) {
+      for (const b of m.message.content) if (b.type === 'text') out.push(`assistant${m.error ? `[${m.error}]` : ''}: ${b.text}`);
+    }
+    if (m.type === 'result') out.push(`result[${m.subtype}${m.is_error ? ',error' : ''}]: ${m.result || (m.errors || []).join(' ')}`);
+  }
+  return out;
+}
+
+/** The claude processes of the remote user: pid, cwd, argv and environment. */
+async function remoteClaudeProcs() {
+  const user = (ctx.caps && ctx.caps.user) || DEST_USER;
+  const { out } = await admin(`for p in $(pgrep -u ${q(user)}); do case "$(readlink /proc/$p/exe 2>/dev/null)" in */claude/versions/*) ;; *) continue;; esac; printf '@@%s\\t%s\\t%s\\t%s\\n' "$p" "$(readlink /proc/$p/cwd)" "$(tr '\\0' '\\037' < /proc/$p/cmdline)" "$(tr '\\0' '\\037' < /proc/$p/environ)"; done; :`);
+  return out.split('@@').map((l) => l.trim()).filter(Boolean).map((l) => {
+    const [pid, cwd, argv, environ] = l.split('\t');
+    return { pid, cwd, argv: (argv || '').split('\x1f').filter(Boolean), env: (environ || '').split('\x1f').filter(Boolean) };
+  });
+}
+
+/** Close the chats a failed scenario left open, so the next one starts clean. */
+async function closeOpenChats() {
+  const open = ctx.openChats || [];
+  ctx.openChats = [];
+  for (const sid of open) {
+    try { chatService.closeSession(sid); } catch { /* gone */ }
+  }
+  if (open.length && hasAdmin()) {
+    await waitUntil(async () => (await remoteClaudeProcs()).filter((p) => p.cwd === execDir()).length === 0, 30000, 'the closed chats to end on the host');
+  }
+}
+
+async function startChat(extra = {}) {
+  loadChat();
+  if (!extra.sessionId) await closeOpenChats();
+  return ipcHandlers.get('chat-start')({}, { cwd: execUri(), projectId: EXEC_PROJECT_ID, prompt: 'Reply with the single word pong.', permissionMode: 'default', ...extra });
+}
+
+function versionLess(a, b) {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i];
+  return false;
+}
+
+async function groupChatLive() {
+  await ensureExecProject();
+  if (!ctx.caps.claude) {
+    await scenario('chat', 'remote chat with the claude CLI installed', () => skip('claude is not installed on the host'));
+    return;
+  }
+  const lib = req('src/main/utils/sshClaudeSpawn.js');
+
+  await scenario('chat', 'handshake finds the installed claude and its version', async () => {
+    check(ctx.caps.claude.startsWith('/'), `absolute claude path: ${ctx.caps.claude}`);
+    check(/^\d+\.\d+\.\d+/.test(ctx.caps.claudeVersion), `version: ${ctx.caps.claudeVersion}`);
+    return `${ctx.caps.claude} ${ctx.caps.claudeVersion}`;
+  });
+
+  await scenario('chat', 'version check against the real remote claude --version', async () => {
+    const bundled = lib.bundledCliVersion();
+    check(bundled && /^2\.\d+\.\d+$/.test(bundled), `bundled CLI version read from the SDK: ${bundled}`);
+    const real = await lib.prepareRemoteChat({ cwd: execUri(), projectId: EXEC_PROJECT_ID });
+    const remoteV = /(\d+\.\d+\.\d+)/.exec(ctx.caps.claudeVersion)[1];
+    eq(real.warnings.length, versionLess(remoteV, bundled) ? 1 : 0, `warnings for remote ${remoteV} vs bundled ${bundled}`);
+    // An older CLI on the host, as `claude --version` really prints it: a
+    // wrapper that answers the version and runs the real CLI otherwise.
+    const wrapper = `${ctx.base}/old-claude`;
+    const realClaude = ctx.caps.claude;
+    await runText(`printf '%s\\n' '#!/bin/sh' 'case "$1" in --version) echo "2.1.100 (Claude Code)"; exit 0;; esac' ${q(`exec ${realClaude} "$@"`)} > ${q(wrapper)} && chmod +x ${q(wrapper)}`, { write: true });
+    return withProfile({ remoteClaudePath: wrapper }, async () => {
+      eq(ctx.caps.claude, wrapper, 'handshake uses the profile path');
+      eq(ctx.caps.claudeVersion, '2.1.100 (Claude Code)', 'handshake version line');
+      const res = await startChat();
+      check(res.success, `chat-start: ${JSON.stringify(res)}`);
+      ctx.openChats = [...(ctx.openChats || []), res.sessionId];
+      const warnings = res.remote && res.remote.warnings;
+      check(Array.isArray(warnings) && warnings.length === 1, `one warning: ${JSON.stringify(warnings)}`);
+      check(warnings[0].includes('2.1.100') && warnings[0].includes(bundled) && warnings[0].includes(DEST_HOST), `warning names both versions and the host: ${warnings[0]}`);
+      await waitUntil(() => chatInit(res.sessionId) || chatEnd(res.sessionId), 90000, 'the wrapped CLI to answer');
+      check(chatInit(res.sessionId), `the wrapped CLI runs: ${chatTexts(res.sessionId).join(' | ')}`);
+      loadChat().closeSession(res.sessionId);
+      return `remote ${remoteV} vs bundled ${bundled}: ${real.warnings.length} warning; wrapper: ${warnings[0]}`;
+    });
+  }, { timeoutMs: 180000 });
+
+  await scenario('chat', 'stream-json both ways over a non-tty ssh, clean authentication error, nothing leaked', async () => {
+    const sshBefore = localSshPids();
+    const t0 = Date.now();
+    const res = await startChat();
+    check(res.success, `chat-start: ${JSON.stringify(res)}`);
+    const sid = res.sessionId;
+    ctx.openChats = [...(ctx.openChats || []), sid];
+    await waitUntil(() => chatInit(sid) || chatEnd(sid), 90000, 'the init message or an end');
+    const init = chatInit(sid);
+    check(init, `system init over ssh (texts: ${chatTexts(sid).join(' | ')}; stderr: ${(chatService.sessions.get(sid) || {})._stderr || ''})`);
+    const initMs = Date.now() - t0;
+    eq(init.cwd, execDir(), 'the CLI reports the remote project directory');
+    // While the process is alive: its argv and environment on the host.
+    let procNote = '';
+    if (hasAdmin()) {
+      const procs = await remoteClaudeProcs();
+      const mine = procs.filter((p) => p.cwd === execDir());
+      check(mine.length === 1, `one remote claude in the project: ${JSON.stringify(procs.map((p) => p.cwd))}`);
+      const p = mine[0];
+      const argvText = p.argv.join(' ');
+      check(argvText.includes('stream-json'), `stream-json flags: ${argvText}`);
+      check(!/[A-Za-z]:\\|\\\\|Users[\\/]|AppData|\.exe\b/i.test(argvText), `no local path in the argv: ${argvText}`);
+      check(!/TOKEN|API_KEY|SECRET|PASSWORD/i.test(argvText), `no secret in the argv: ${argvText}`);
+      const envNames = p.env.map((kv) => kv.split('=')[0]);
+      const leaked = p.env.filter((kv) => /[A-Za-z]:\\|AppData|Users\\/i.test(kv) || /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR|CLAUDE_SECURESTORAGE|USERPROFILE|APPDATA|LOCALAPPDATA)/.test(kv));
+      eq(leaked.length, 0, `local or secret values in the remote environment: ${leaked.join(' | ')}`);
+      const forwarded = envNames.filter((n) => /^CLAUDE_(CODE_ENTRYPOINT|AGENT_SDK)/.test(n));
+      check(forwarded.every((n) => lib.ENV_ALLOWLIST.includes(n)), `forwarded names allowlisted: ${forwarded.join(',')}`);
+      eq(p.env.find((kv) => kv.startsWith('HOME=')), `HOME=${ctx.home}`, 'HOME is the remote one');
+      procNote = `; argv ${p.argv.slice(1).join(' ').slice(0, 200)}; forwarded ${forwarded.join(',')}`;
+    }
+    await waitUntil(() => chatTexts(sid).some((t) => AUTH_TEXT.test(t)) || chatEnd(sid), 90000, 'the authentication error');
+    await wait(1500);
+    const texts = chatTexts(sid);
+    check(texts.some((t) => AUTH_TEXT.test(t)), `an authentication error is surfaced: ${texts.join(' | ')}`);
+    const crashed = chatFor(sid).find((e) => e.channel === 'chat-error' && e.data.errorType === 'connection_lost');
+    check(!crashed, `not reported as a lost connection: ${crashed && crashed.data.error}`);
+    chatService.closeSession(sid);
+    await waitUntil(() => [...localSshPids()].filter((p) => !sshBefore.has(p)).length === 0, 15000, 'the chat ssh to end locally');
+    if (hasAdmin()) await waitUntil(async () => (await remoteClaudeProcs()).filter((p) => p.cwd === execDir()).length === 0, 20000, 'the remote claude to end');
+    ctx.chatSdkSession = init.session_id;
+    return `init after ${initMs} ms (model ${init.model}, version ${init.claude_code_version || '?'}); ${texts.filter((t) => AUTH_TEXT.test(t))[0]}${procNote}`;
+  }, { timeoutMs: 240000 });
+
+  await scenario('chat', 'interrupt during a turn, then a second turn on the same process', async () => {
+    const res = await startChat();
+    check(res.success, `chat-start: ${JSON.stringify(res)}`);
+    const sid = res.sessionId;
+    ctx.openChats = [...(ctx.openChats || []), sid];
+    await waitUntil(() => chatTexts(sid).some((t) => AUTH_TEXT.test(t)) || chatEnd(sid), 90000, 'the first answer');
+    const before = chatLog.length;
+    chatService.sendMessage(sid, 'Count slowly to one hundred.');
+    // The interrupt is a control request over ssh's stdin, acknowledged on its stdout.
+    const t0 = Date.now();
+    await Promise.race([
+      chatService.sessions.get(sid).queryStream.interrupt(),
+      wait(15000).then(() => { throw new Error('the interrupt was not acknowledged within 15 s'); }),
+    ]);
+    const ackMs = Date.now() - t0;
+    await wait(3000);
+    const after = chatFor(sid, before);
+    const lost = after.find((e) => e.channel === 'chat-error' && e.data.errorType === 'connection_lost');
+    check(!lost, `interrupt is not a lost connection: ${lost && lost.data.error}`);
+    // The process is still there and answers another turn.
+    const second = chatLog.length;
+    chatService.sendMessage(sid, 'Second message.');
+    await waitUntil(() => chatTexts(sid, second).some((t) => AUTH_TEXT.test(t)) || chatEnd(sid, second), 60000, 'an answer to the second turn');
+    const secondTexts = chatTexts(sid, second);
+    check(secondTexts.some((t) => AUTH_TEXT.test(t)), `second turn answered: ${secondTexts.join(' | ')}`);
+    const procs = hasAdmin() ? (await remoteClaudeProcs()).filter((p) => p.cwd === execDir()).length : -1;
+    chatService.closeSession(sid);
+    if (hasAdmin()) await waitUntil(async () => (await remoteClaudeProcs()).filter((p) => p.cwd === execDir()).length === 0, 20000, 'the remote claude to end');
+    return `interrupt acknowledged in ${ackMs} ms; after it: ${after.map((e) => (e.channel === 'chat-message' ? `${e.data.message.type}${e.data.message.subtype ? `/${e.data.message.subtype}` : ''}` : e.channel)).join(',').slice(0, 300)}; remote claude while open: ${procs}`;
+  }, { timeoutMs: 200000 });
+
+  await scenario('chat', 'network drop mid-session: connection_lost, then resume with the CLI session id', async () => {
+    if (!hasAdmin()) skip('needs CT_REMOTE_LIVE_ADMIN');
+    const res = await startChat();
+    check(res.success, `chat-start: ${JSON.stringify(res)}`);
+    const sid = res.sessionId;
+    ctx.openChats = [...(ctx.openChats || []), sid];
+    await waitUntil(() => chatTexts(sid).some((t) => AUTH_TEXT.test(t)) || chatEnd(sid), 90000, 'the first answer');
+    check(chatInit(sid), 'init');
+    const sdkSession = chatInit(sid).session_id;
+    const dropS = Math.max(DROP_S, 75); // longer than ssh's 3 x 15 s keepalive
+    const { out: gw } = await admin(`ip -4 route show default | awk '{ print $3; exit }'`);
+    ctx.gateway = /^\d{1,3}(\.\d{1,3}){3}$/.test(gw.trim()) ? gw.trim() : '';
+    const t0 = Date.now();
+    await admin(`nohup sh -c ${q(`ip link set ${IFACE} down; sleep ${dropS}; ip link set ${IFACE} up; ${ctx.gateway ? `ip route replace default via ${ctx.gateway} dev ${IFACE}` : ':'}`)} >/dev/null 2>&1 </dev/null &`);
+    ctx.networkDown = true;
+    // A message typed while the link is down goes into ssh's buffer.
+    chatService.sendMessage(sid, 'Are you there?');
+    await waitUntil(() => chatEnd(sid), (dropS + 60) * 1000, 'the session to end');
+    const end = chatEnd(sid);
+    const lostMs = Date.now() - t0;
+    eq(end.channel, 'chat-error', 'ended with an error');
+    eq(end.data.errorType, 'connection_lost', `error type (${end.data.error})`);
+    check(end.data.remote && end.data.remote.profileId === ctx.profile.id, 'names the profile');
+    check(end.data.error.includes(DEST_HOST), `message names the host: ${end.data.error}`);
+    // The renderer waits for the host to read connected, then restarts with
+    // the CLI session id (remoteSession.js, resumeAfterConnectionLoss).
+    await waitUntil(() => Date.now() - t0 > dropS * 1000 && svc.getStatus(ctx.profile.id).state === 'connected', (dropS + 150) * 1000, 'the host to reconnect');
+    ctx.networkDown = false;
+    const backMs = Date.now() - t0;
+    const since = chatLog.length;
+    // No turn was running when the link went: the renderer resumes with an
+    // empty prompt, and the CLI says nothing until the next message.
+    const resumed = await startChat({ prompt: '', resumeSessionId: sdkSession, sessionId: sid });
+    check(resumed.success, `resume: ${JSON.stringify(resumed)}`);
+    chatService.sendMessage(sid, 'Back again?');
+    await waitUntil(() => chatInit(sid, since) || chatEnd(sid, since), 90000, 'the resumed session to answer');
+    const resumedInit = chatInit(sid, since);
+    const resumedErr = chatFor(sid, since).find((e) => e.channel === 'chat-error');
+    check(resumedInit || (resumedErr && resumedErr.data.errorType !== 'connection_lost'), `resume after the network came back: ${JSON.stringify(resumedErr && resumedErr.data)}`);
+    chatService.closeSession(sid);
+    return `lost after ${Math.round(lostMs / 1000)} s (${end.data.remote.kind}: ${end.data.error}); host back after ${Math.round(backMs / 1000)} s; resume ${resumedInit ? `init, session ${resumedInit.session_id === sdkSession ? 'same id' : resumedInit.session_id}` : `error ${resumedErr.data.error}`}`;
+  }, { timeoutMs: 480000 });
+
+  await scenario('chat', 'remote session history after the real runs', async () => {
+    const claude = req('src/main/ipc/claude.ipc.js');
+    const sessionDirs = req('src/shared/session-dirs.js');
+    const dir = sessionDirs.getRemoteSessionsDir(execDir(), ctx.caps);
+    const onHost = (await runText(`ls -1 -- ${q(dir)} 2>/dev/null; ls -1d "$HOME"/.claude/projects/* 2>/dev/null; :`)).trim();
+    const listing = await claude.getRemoteSessionsListing(execUri());
+    check(!listing.disconnected && !listing.error, `listing: ${JSON.stringify(listing).slice(0, 300)}`);
+    const ids = listing.sessions.map((s) => s.sessionId);
+    // The CLI writes the transcript even when the turn failed to authenticate.
+    if (ctx.chatSdkSession) {
+      check(onHost.includes(`${ctx.chatSdkSession}.jsonl`), `the chat's transcript is on the host: ${onHost}`);
+      check(ids.includes(ctx.chatSdkSession), `the chat's transcript is listed: ${ids.join(',')}`);
+      const listed = listing.sessions.find((x) => x.sessionId === ctx.chatSdkSession);
+      eq(listed.cwd, execUri(), 'resumed where it lives');
+      const history = await claude.loadSessionHistory(execUri(), ctx.chatSdkSession, 20);
+      const text = JSON.stringify(history);
+      check(text.includes('pong'), `history has the prompt: ${text.slice(0, 300)}`);
+      check(text.includes('Not logged in'), `history has the authentication error: ${text.slice(0, 300)}`);
+    }
+    return `dir ${dir}; on host: ${onHost.replace(/\n/g, ', ') || '(nothing)'}; listed ${ids.length}`;
+  });
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 let cleanedUp = false;
@@ -1324,9 +1907,18 @@ async function cleanup() {
   if (ctx.restoreShell) {
     try { await ctx.restoreShell(); } catch (e) { log('cleanup: login shell:', e.message); }
   }
+  if ((ctx.installedShells || []).length || (ctx.shellRcFiles || []).length) {
+    try { await removeTestShells(); } catch (e) { log('cleanup: test shells:', e.message); }
+  }
+  if (chatService) {
+    for (const id of [...chatService.sessions.keys()]) {
+      try { chatService.closeSession(id); } catch { /* best effort */ }
+    }
+  }
   try {
     if (ctx.base && svc.getStatus(ctx.profile.id).state === 'connected') {
-      await run(`rm -rf -- ${q(ctx.base)}`, { write: true, timeoutMs: 60000 });
+      // The transcripts the chat runs wrote, under the CLI's encoding of the work directory.
+      await run(`rm -rf -- ${q(ctx.base)} "$HOME"/.claude/projects/*-ct-live-${RUN_ID}-*; tmux kill-session -t ct-live${RUN_ID} 2>/dev/null; :`, { write: true, timeoutMs: 60000 });
     }
   } catch (e) { log('cleanup: remote work directory:', e.message); }
   for (const user of ctx.extraUsers) {
@@ -1350,6 +1942,9 @@ async function main() {
     await groupChat();
     await groupWatcher();
     await groupPty();
+    await groupTerminals();
+    await groupQuickActions();
+    await groupChatLive();
     await groupShells();
     await groupReconnect();
     if (groupEnabled('leaks') && hasAdmin()) {

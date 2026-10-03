@@ -481,7 +481,13 @@ given (main resolves `project.remote`; the renderer sends nothing host-related):
   no tmux, tmux is left out entirely. Closing the tab (not quitting the app)
   runs `tmux kill-session` on the channel, failing fast rather than connecting
   a host for it. Claude tabs never use tmux: they resume instead. Opt-in,
-  because it changes how scrollback behaves;
+  because it changes how scrollback behaves. Known issue from Windows: ConPTY
+  answers tmux's terminal queries itself, and through Windows OpenSSH that
+  answer reaches tmux split by more than tmux 3.5's 10 ms `escape-time`, so on
+  attach it can land on the prompt as typed text (`61;6;7;21;22;23;24;28;32;42c`).
+  `set -sg escape-time 100` in the host's `~/.tmux.conf` avoids it (measured:
+  50 ms still leaks through a ProxyJump, 100 ms does not). The app does not set
+  it, since it is a server-wide option of the user's own tmux;
 - no local `existsSync` on the cwd, no `accountEnv` overlay (the remote host has
   its own `claude /login`); the ssh process starts in the local home directory;
 - ConPTY and Unix PTY resizes already propagate to ssh as window-change events.
@@ -619,7 +625,9 @@ sessions; the stdio `claude-terminal` server registered in the local
 (remote exit 127, or nothing resolved) gives "Claude Code is not installed on
 <host>" with the install command; a version older than the bundled CLI gives a
 warning (not a block) naming both versions. The bundled version is the SDK
-manifest's `claudeCodeVersion` (the CLI's own 2.1.N numbering), not
+manifest's `claudeCodeVersion` (the CLI's own 2.1.N numbering), read from the
+`package.json` next to the resolved entry point because the SDK's `exports`
+map does not list it (a `require()` of it threw, so the warning never fired), not
 `getSdkCliVersion()`, which is the platform package's 0.3.N numbering a remote
 `claude --version` never prints; the comparison is on the full version, since
 CLI releases move the patch number. `profile.remoteClaudePath` overrides
@@ -643,6 +651,22 @@ Implementation notes (slice 4):
   link; a broken pipe before any exit code uses ssh's diagnostics on stderr
   only. `auth` and host key failures are reported as sentences but not as
   `connection_lost`: nothing is waited for, the badge says what to do.
+- The exit status comes from the spawn hook (`onExit`), not from the SDK's
+  message. Once a turn has ended in an error result, the SDK reports any later
+  exit as "Claude Code returned an error result: <that text>": against a real
+  host whose CLI was not logged in, a keepalive timeout read as "Not logged in"
+  and was never offered a resume.
+- Windows OpenSSH exits with -1 when the server ended the session without an
+  exit status (its sshd session killed, the host going down). POSIX reads that
+  as 255; Windows keeps it, and Node reports it as 4294967295 (node-pty as -1).
+  `remote-shell.sshExitStatus` maps both to 255 before any comparison, in the
+  channel lanes, one-shot execs, terminals and chats alike. Before it, a tab
+  whose sshd session was killed closed instead of offering to reconnect, and a
+  lane that died that way before its ready marker marked the host unsupported.
+- A remote CLI that is not logged in answers each turn with an
+  `authentication_failed` assistant message ("Not logged in · Please run
+  /login") and stays up. The tab words it for the host: log in from a Claude
+  terminal tab of the project, which runs there, not from a local terminal.
 - The hook's script also exports the login `PATH` the handshake captured on
   the host (`withPath`), so `claude` and the tools it runs resolve as in the
   user's terminal. That is the host's PATH, not the local one: the env
@@ -1212,7 +1236,18 @@ three levels.
    through a ProxyJump found the dash cancellation, lane pool and keepalive
    bugs described in 2.3 and 6; it also confirmed what `classifyPtyExit`
    relies on: a PTY session that ends, `exit 255` included, finishes on
-   "Connection to <host> closed.".
+   "Connection to <host> closed.". The execution groups then cover remote
+   PTYs (exit codes, a killed sshd session against a real `exit 255`, tmux
+   reattach after a drop, Claude tabs under bash, tcsh and fish, a missing
+   `claude` ending in 127), quick actions and the `quickaction` node with
+   `$BRANCH` read on the host, and chats driven through `ChatService` and the
+   SDK's `query()` over a non-TTY ssh against a `claude` installed on the host
+   but never logged in: the `init` message, the env allowlist and argv as `ps`
+   sees them, interrupts, the version warning, a network drop ending in
+   `connection_lost` and a resume with the CLI session id, and the transcript
+   the CLI writes even for a turn that failed to authenticate. Their first run
+   found the bundled-version lookup, the SDK's replaced exit error and
+   Windows' -1 exit status described in 5.1 and 5.2.
 
 The Playwright smoke test stays as it is: it never configures a host, so it
 guards that the new UI renders and that nothing connects at startup.
