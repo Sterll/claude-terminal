@@ -402,6 +402,8 @@ class SshHostService extends EventEmitter {
         retryTimer: null,
         pingTimer: null,
         waiters: new Set(),
+        laneWaiters: [],
+        reserved: new Set(),
         profile: null,
         launcher: null,
       };
@@ -437,6 +439,7 @@ class SshHostService extends EventEmitter {
     try { this.broadcast('ssh-status-changed', status); } catch (e) { console.warn('[SshHostService] Broadcast failed:', e.message); }
     this.emit('status', status);
     for (const waiter of [...host.waiters]) waiter(state);
+    if (state !== 'connected') this._releaseLaneWaiters(host);
   }
 
   /**
@@ -620,7 +623,9 @@ class SshHostService extends EventEmitter {
     host.pingTimer = null;
     const lanes = host.lanes;
     host.lanes = [];
+    host.reserved.clear();
     for (const lane of lanes) lane.close('reconnect');
+    this._releaseLaneWaiters(host);
   }
 
   _startPing(host) {
@@ -630,12 +635,22 @@ class SshHostService extends EventEmitter {
     if (host.pingTimer.unref) host.pingTimer.unref();
   }
 
+  /**
+   * The app-level keepalive: a no-op on an idle lane, and a reconnect when it
+   * does not answer in time. Any idle lane will do, not only the first one: a
+   * single request stuck on a dead link used to keep lane 0 busy and skip
+   * every ping, so an outage shorter than ServerAlive's 45 s went unnoticed
+   * while writes queued on the dead link instead of failing fast. Only when
+   * every lane is busy is the round skipped; ServerAlive covers that case.
+   */
   async _ping(host) {
     if (host.state !== 'connected') return;
-    const lane = host.lanes.find((l) => l.isOpen);
-    if (!lane || lane.load > 0) return; // a busy lane is talking already; ServerAlive covers a dead link
+    const lane = this._idleLane(host);
+    if (!lane) return;
     const generation = host.generation;
     const res = await lane.request(':', { timeoutMs: this.pingTimeoutMs });
+    // The lane may be what a waiting request needs now.
+    this._dispatchLanes(host);
     if (generation !== host.generation || host.state !== 'connected') return;
     if (res.reason === 'timeout') this._scheduleRetry(host, 'timeout');
   }
@@ -719,29 +734,95 @@ class SshHostService extends EventEmitter {
     }
   }
 
-  /** An open lane with nothing queued, or null. Synchronous on purpose, see exec(). */
+  /** An open lane with nothing queued and not promised to a waiter, or null. Synchronous on purpose, see exec(). */
   _idleLane(host) {
-    return host.lanes.find((l) => l.isOpen && l.load === 0) || null;
+    return host.lanes.find((l) => l.isOpen && l.load === 0 && !host.reserved.has(l)) || null;
   }
 
-  async _pickLane(host) {
-    const idle = this._idleLane(host);
-    if (idle) return idle;
-    if (host.lanes.length + host.opening < this.maxLanes) {
-      const lane = await this._openExtraLane(host);
-      if (lane) return lane;
+  /**
+   * A lane for one request: an idle one at once, otherwise the first lane
+   * that becomes idle or finishes opening, in arrival order.
+   *
+   * Requests wait at the host rather than in the queue of a busy lane. Lanes
+   * open lazily and take a full handshake to do so, so pinning a request to
+   * the least busy lane at the moment it arrived meant that a burst (the
+   * dashboard's git calls) all queued behind lane 0 while lanes 1 and 2 were
+   * still opening, and that a status poll could sit behind a slow fetch
+   * while another lane went idle. The lane handed over is reserved until the
+   * caller has queued its request on it, so two waiters never get the same one.
+   *
+   * Resolves null at the deadline, on abort, when the host leaves
+   * `connected`, or when no lane is open or opening any more.
+   */
+  _acquireLane(host, deadline, signal) {
+    if (host.laneWaiters.length === 0) {
+      const idle = this._idleLane(host);
+      if (idle) {
+        // The caller queues on it after an await: reserved until then, so a
+        // request arriving in the same tick does not see it idle too.
+        host.reserved.add(idle);
+        return Promise.resolve(idle);
+      }
     }
-    const stillOpen = host.lanes.filter((l) => l.isOpen);
-    if (stillOpen.length) return stillOpen.reduce((a, b) => (b.load < a.load ? b : a));
-    return null;
+    if (host.lanes.length + host.opening < this.maxLanes) {
+      this._openExtraLane(host).finally(() => this._dispatchLanes(host));
+    }
+    if (!host.lanes.some((l) => l.isOpen) && host.opening === 0) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const waiter = {
+        resolve: (lane) => {
+          clearTimeout(waiter.timer);
+          if (signal) signal.removeEventListener('abort', waiter.onAbort);
+          resolve(lane);
+        },
+      };
+      const drop = () => {
+        const at = host.laneWaiters.indexOf(waiter);
+        if (at !== -1) host.laneWaiters.splice(at, 1);
+        waiter.resolve(null);
+      };
+      waiter.onAbort = drop;
+      waiter.timer = setTimeout(drop, Math.max(0, deadline - this.now()));
+      if (signal) signal.addEventListener('abort', drop, { once: true });
+      host.laneWaiters.push(waiter);
+      this._dispatchLanes(host);
+    });
   }
 
-  /** Send the process-group kill for a stuck request on a lane other than the stuck one. */
+  /** Hand idle lanes to waiting requests, oldest first; release them all when no lane is left. */
+  _dispatchLanes(host) {
+    while (host.laneWaiters.length > 0) {
+      const idle = host.state === 'connected' ? this._idleLane(host) : null;
+      if (!idle) break;
+      const waiter = host.laneWaiters.shift();
+      host.reserved.add(idle);
+      waiter.resolve(idle);
+    }
+    const stranded = host.state !== 'connected' || (!host.lanes.some((l) => l.isOpen) && host.opening === 0);
+    if (stranded) this._releaseLaneWaiters(host);
+  }
+
+  /** Every waiting request goes back to exec()'s loop, which decides what the host state means for it. */
+  _releaseLaneWaiters(host) {
+    const waiters = host.laneWaiters;
+    host.laneWaiters = [];
+    for (const waiter of waiters) waiter.resolve(null);
+  }
+
+  /** Send the kill for a stuck request on a lane other than the stuck one, an idle one if there is or can be one. */
   async _runKill(host, stuckLane, script) {
-    let sibling = host.lanes.filter((l) => l !== stuckLane && l.isOpen).sort((a, b) => a.load - b.load)[0];
-    if (!sibling) sibling = await this._openExtraLane(host);
-    if (!sibling) return;
-    await sibling.request(script, { timeoutMs: 5000 });
+    let sibling = host.lanes.filter((l) => l !== stuckLane && l.isOpen && !host.reserved.has(l)).sort((a, b) => a.load - b.load)[0];
+    let opened = false;
+    if ((!sibling || sibling.load > 0) && host.lanes.length + host.opening < this.maxLanes) {
+      const lane = await this._openExtraLane(host);
+      if (lane) { sibling = lane; opened = true; }
+    }
+    if (!sibling || !sibling.isOpen) return;
+    // Queued before the new lane is offered to anyone, so the kill goes first.
+    const killed = sibling.request(script, { timeoutMs: 5000 });
+    if (opened) this._dispatchLanes(host);
+    await killed;
+    this._dispatchLanes(host);
   }
 
   /**
@@ -777,16 +858,18 @@ class SshHostService extends EventEmitter {
         continue;
       }
 
-      // The idle check and the request are made in the same tick, so a burst
-      // of requests spreads over the pool instead of every one of them
-      // seeing lane 0 idle before the first has been queued on it.
-      const lane = this._idleLane(host) || await this._pickLane(host);
+      // An idle lane is taken and the request queued on it in the same tick,
+      // so a burst spreads over the pool instead of every request seeing
+      // lane 0 idle before the first has been queued on it.
+      const lane = await this._acquireLane(host, deadline, signal);
       if (!lane) {
-        if (host.state === 'connected') this._scheduleRetry(host, 'network');
+        if (host.state === 'connected' && !host.lanes.some((l) => l.isOpen) && host.opening === 0) this._scheduleRetry(host, 'network');
         continue;
       }
+      host.reserved.delete(lane);
       if (!lane.killer) lane.setKiller((killScript) => this._runKill(host, lane, killScript));
       const res = await lane.request(script, { timeoutMs: Math.max(1, deadline - this.now()), maxBuffer, signal, input });
+      this._dispatchLanes(host);
       // A lane that died under a read is not the read's fault: wait for the
       // connection and run it again. A write is never replayed.
       if (res.reason === 'disconnected' && !isWrite) continue;
@@ -957,6 +1040,61 @@ class SshHostService extends EventEmitter {
     return Boolean(res && res.ok);
   }
 
+  // ── ssh_config aliases ────────────────────────────────────────────────────
+
+  /**
+   * What OpenSSH makes of a profile's ssh_config alias: `ssh -G -- <alias>`
+   * prints the effective configuration without connecting. Shown by the
+   * profile editor so the user sees which user, host and port the alias
+   * stands for (design/remote-ssh.md section 3.1).
+   *
+   * @param {string} profileId
+   * @param {{ timeoutMs?: number }} [options]
+   * @returns {Promise<{ user: string|null, hostname: string|null, port: number|null, proxyJump: string|null, display: string } | null>}
+   *   null for a profile without an alias, or when ssh could not tell
+   */
+  async resolveAlias(profileId, { timeoutMs = 5000 } = {}) {
+    const store = await this.loadStore();
+    const profile = store.profiles.find((p) => p.id === profileId);
+    if (!profile) throw serviceError('REMOTE_PROFILE_UNKNOWN', 'No SSH host profile with this id is configured on this machine');
+    if (!profile.sshConfigAlias) return null;
+    const alias = sshCommand.assertHost(profile.sshConfigAlias, 'sshConfigAlias');
+    const launcher = await this._launcher(store);
+    if (!launcher) return null;
+    const text = await new Promise((resolve) => {
+      let child;
+      try {
+        child = this.spawnImpl(launcher.command, [...(launcher.prefixArgs || []), '-G', '--', alias], {
+          stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, env: launcher.env || this.env,
+        });
+      } catch {
+        resolve(null);
+        return;
+      }
+      let out = '';
+      const timer = setTimeout(() => { try { child.kill(); } catch { /* gone */ } resolve(null); }, timeoutMs);
+      child.stdout.on('data', (chunk) => { out = (out + chunk.toString('utf8')).slice(0, 256 * 1024); });
+      child.stderr.on('data', () => { /* a bad config is reported as "could not tell" */ });
+      child.on('error', () => { clearTimeout(timer); resolve(null); });
+      child.on('close', (code) => { clearTimeout(timer); resolve(code === 0 ? out : null); });
+    });
+    if (!text) return null;
+    const values = {};
+    for (const line of text.split(/\r?\n/)) {
+      const space = line.indexOf(' ');
+      if (space <= 0) continue;
+      const key = line.slice(0, space).toLowerCase();
+      if (!(key in values)) values[key] = line.slice(space + 1).trim();
+    }
+    const port = /^\d+$/.test(values.port || '') ? Number(values.port) : null;
+    const hostname = values.hostname || null;
+    const user = values.user || null;
+    const proxyJump = values.proxyjump && values.proxyjump !== 'none' ? values.proxyjump : null;
+    if (!hostname) return null;
+    const display = `${user ? `${user}@` : ''}${hostname}${port && port !== 22 ? `:${port}` : ''}`;
+    return { user, hostname, port, proxyJump, display };
+  }
+
   // ── Profile test ──────────────────────────────────────────────────────────
 
   /**
@@ -988,7 +1126,14 @@ class SshHostService extends EventEmitter {
       if (!res.ok) return { ok: false, state: 'unsupported', detail: { code: 'handshake-failed', reason: res.reason || null } };
       const capabilities = parseHandshake(res.stdout.toString('utf8'));
       if (!capabilities.loginShellSupported) return { ok: false, state: 'unsupported', detail: { code: 'login-shell', shell: capabilities.shell }, capabilities };
-      return { ok: true, state: 'connected', capabilities, destination: sshCommand.displayDestination(profile) };
+      let destination = sshCommand.displayDestination(profile);
+      if (profile.sshConfigAlias) {
+        // The alias alone says nothing about where it leads; OpenSSH's own
+        // reading of the config does.
+        const resolved = await this.resolveAlias(profileId).catch(() => null);
+        if (resolved) destination = `${profile.sshConfigAlias} (${resolved.display})`;
+      }
+      return { ok: true, state: 'connected', capabilities, destination };
     } finally {
       lane.close('test-done');
     }

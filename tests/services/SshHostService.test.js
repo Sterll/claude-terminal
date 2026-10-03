@@ -307,6 +307,113 @@ describe('SshHostService connection state machine (fake timers)', () => {
     service.disposeAll();
   });
 
+  test('a burst waits for the first free lane instead of piling onto lane 0 while the others open', async () => {
+    // Every request takes 1 s, every extra lane 1 s to open (a handshake
+    // through a jump host). Pinning each request to the least busy lane at
+    // arrival put seven of nine behind lane 0: 7 s instead of about 4.
+    const handler = (script) => new Promise((resolve) => setTimeout(() => resolve({ ok: true, code: 0, stdout: Buffer.from(script), stderr: Buffer.alloc(0) }), 1000));
+    const { service, createLane, lanes } = makeService({ handler });
+    await service.connect(PROFILE_ID);
+    const original = createLane.getMockImplementation();
+    createLane.mockImplementation((opts) => {
+      const lane = original(opts);
+      const open = lane.open.bind(lane);
+      lane.open = () => new Promise((resolve) => setTimeout(resolve, 1000)).then(open);
+      return lane;
+    });
+    let done = 0;
+    const burst = Array.from({ length: 9 }, (_, i) => service.exec(PROFILE_ID, `r${i}`, { timeoutMs: 30000 }).then((r) => { done++; return r; }));
+    await jest.advanceTimersByTimeAsync(4000);
+    expect(done).toBe(9);
+    const results = await Promise.all(burst);
+    expect(results.map((r) => r.stdout.toString())).toEqual(Array.from({ length: 9 }, (_, i) => `r${i}`));
+    expect(lanes).toHaveLength(3);
+    // Spread over the pool, lane 0 serving no more than its share.
+    const served = lanes.map((l) => l.requests.filter((r) => /^r\d$/.test(r.script)).length);
+    expect(served[0]).toBeLessThanOrEqual(4);
+    expect(served[1]).toBeGreaterThanOrEqual(2);
+    expect(served[2]).toBeGreaterThanOrEqual(2);
+    service.disposeAll();
+  });
+
+  test('a waiting request takes whichever lane frees first, never queueing behind a slow one', async () => {
+    let releaseSlow;
+    const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
+    const ok = (text) => ({ ok: true, code: 0, stdout: Buffer.from(text), stderr: Buffer.alloc(0) });
+    const handler = (script) => (script === 'slow' ? slowGate.then(() => ok('slow')) : new Promise((resolve) => setTimeout(() => resolve(ok(script)), 100)));
+    const { service, lanes } = makeService({ handler, maxLanes: 2 });
+    await service.connect(PROFILE_ID);
+    const slow = service.exec(PROFILE_ID, 'slow', { timeoutMs: 60000 });
+    const first = service.exec(PROFILE_ID, 'fast1', { timeoutMs: 60000 });
+    await jest.advanceTimersByTimeAsync(0);
+    // Both lanes busy now; this one waits at the host, not in lane 0's queue.
+    const second = service.exec(PROFILE_ID, 'fast2', { timeoutMs: 60000 });
+    await jest.advanceTimersByTimeAsync(250);
+    expect((await second).stdout.toString()).toBe('fast2');
+    expect((await first).stdout.toString()).toBe('fast1');
+    expect(lanes[0].requests.map((r) => r.script)).toEqual(expect.not.arrayContaining(['fast2']));
+    releaseSlow();
+    expect((await slow).stdout.toString()).toBe('slow');
+    service.disposeAll();
+  });
+
+  test('a request waiting for a lane is released when the host drops, and reads wait for the reconnect', async () => {
+    let releaseSlow;
+    const slowGate = new Promise((resolve) => { releaseSlow = resolve; });
+    const handler = (script) => (script === 'slow' ? slowGate : Promise.resolve({ ok: true, code: 0, stdout: Buffer.from(script), stderr: Buffer.alloc(0) }));
+    const { service, lanes } = makeService({ handler, maxLanes: 1 });
+    await service.connect(PROFILE_ID);
+    const slow = service.exec(PROFILE_ID, 'slow', { timeoutMs: 60000, write: true });
+    await jest.advanceTimersByTimeAsync(0);
+    const write = service.exec(PROFILE_ID, 'w', { timeoutMs: 60000, write: true });
+    const read = service.exec(PROFILE_ID, 'r', { timeoutMs: 60000 });
+    await jest.advanceTimersByTimeAsync(0);
+    lanes[0].die();
+    releaseSlow({ ok: false, reason: 'disconnected', code: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) });
+    expect((await write).reason).toBe('disconnected');
+    await jest.advanceTimersByTimeAsync(1000);
+    expect((await read).stdout.toString()).toBe('r');
+    await slow;
+    service.disposeAll();
+  });
+
+  test('the keepalive pings an idle lane when lane 0 is stuck, and a missed ping reconnects', async () => {
+    // A link that went dead: nothing answers any more, every request runs into its own timeout.
+    let dead = false;
+    const ok = (text) => ({ ok: true, code: 0, stdout: Buffer.from(text), stderr: Buffer.alloc(0) });
+    const handler = (script, opts) => {
+      if (script === 'stuck' || dead) return new Promise((resolve) => setTimeout(() => resolve({ ok: false, reason: 'timeout', code: null, stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) }), opts.timeoutMs));
+      return Promise.resolve(ok(script));
+    };
+    const { service, lanes, broadcast } = makeService({ handler, pingIntervalMs: 20000, pingTimeoutMs: 10000 });
+    await service.connect(PROFILE_ID);
+    const stuck = service.exec(PROFILE_ID, 'stuck', { timeoutMs: 120000 });
+    await jest.advanceTimersByTimeAsync(0);
+    expect((await service.exec(PROFILE_ID, 'fast')).ok).toBe(true); // opens lane 1, which is idle again
+    dead = true;
+    await jest.advanceTimersByTimeAsync(20000);
+    expect(lanes[1].requests.some((r) => r.script === ':')).toBe(true);
+    await jest.advanceTimersByTimeAsync(10000);
+    expect(states(broadcast)).toContain('reconnecting');
+    // The write that comes now fails fast instead of queueing on the dead link.
+    expect((await service.exec(PROFILE_ID, 'touch x', { write: true })).reason).toBe('disconnected');
+    service.disposeAll();
+    await jest.advanceTimersByTimeAsync(120000);
+    await stuck;
+  });
+
+  test('a request waiting while the ping holds the only free lane runs when the ping answers', async () => {
+    const ok = (text) => ({ ok: true, code: 0, stdout: Buffer.from(text), stderr: Buffer.alloc(0) });
+    const handler = (script) => (script === ':' ? new Promise((resolve) => setTimeout(() => resolve(ok('')), 3000)) : Promise.resolve(ok(script)));
+    const { service } = makeService({ handler, maxLanes: 1, pingIntervalMs: 20000, pingTimeoutMs: 10000 });
+    await service.connect(PROFILE_ID);
+    await jest.advanceTimersByTimeAsync(20000); // the ping is on the only lane now
+    const res = service.exec(PROFILE_ID, 'after-ping', { timeoutMs: 8000 });
+    await jest.advanceTimersByTimeAsync(3000);
+    expect((await res).stdout.toString()).toBe('after-ping');
+    service.disposeAll();
+  });
+
   test('probe: unknown for a host never reached, dead for one that is not connected, never connects', async () => {
     const { service, createLane } = makeService({ modes: ['ok'] });
     expect(await service.probe(PROFILE_ID)).toBe('unknown');
@@ -548,5 +655,40 @@ describe('SshHostService terminal PTY launch', () => {
     const profile = await svc.saveProfile({ host: 'build.example.com' });
     expect(await svc.killTmuxSession(profile.id, 'ct-tab_r1_1')).toBe(false);
     expect(svc.getStatus(profile.id).state).toBe('idle');
+  });
+});
+
+describe('SshHostService ssh_config alias resolution', () => {
+  function fakeSsh(stdout, code = 0) {
+    return jest.fn(() => {
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.kill = jest.fn();
+      setImmediate(() => {
+        child.stdout.emit('data', Buffer.from(stdout));
+        child.emit('close', code);
+      });
+      return child;
+    });
+  }
+  const G_OUTPUT = 'host build-box\nuser yanis\nhostname 10.0.0.7\nport 2222\nproxyjump admin@bastion:22\nbatchmode no\n';
+
+  test('reads user, host name, port and jump from `ssh -G -- <alias>`', async () => {
+    const spawnImpl = fakeSsh(G_OUTPUT);
+    const { service } = makeService({ spawnImpl, profiles: [{ id: PROFILE_ID, label: 'Box', sshConfigAlias: 'build-box' }] });
+    const resolved = await service.resolveAlias(PROFILE_ID);
+    expect(resolved).toEqual({ user: 'yanis', hostname: '10.0.0.7', port: 2222, proxyJump: 'admin@bastion:22', display: 'yanis@10.0.0.7:2222' });
+    const [command, args] = spawnImpl.mock.calls[0];
+    expect(command).toBe('ssh');
+    expect(args.slice(-3)).toEqual(['-G', '--', 'build-box']);
+  });
+
+  test('a profile without an alias, or an ssh that fails, resolves to null', async () => {
+    const plain = makeService({ spawnImpl: fakeSsh(G_OUTPUT) });
+    expect(await plain.service.resolveAlias(PROFILE_ID)).toBeNull();
+    expect(plain.service.spawnImpl).not.toHaveBeenCalled();
+    const broken = makeService({ spawnImpl: fakeSsh('', 255), profiles: [{ id: PROFILE_ID, label: 'Box', sshConfigAlias: 'nope' }] });
+    expect(await broken.service.resolveAlias(PROFILE_ID)).toBeNull();
   });
 });
