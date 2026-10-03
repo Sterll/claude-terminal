@@ -459,6 +459,10 @@ function saveProjects() {
   }
 
   saveDebounceTimer = setTimeout(() => {
+    // Fired: no longer pending. Left set, it read as "a save of ours is on
+    // its way" forever, and _checkExternalWrite() ignored every write by
+    // another process (MCP tools, a second window) after the first save.
+    saveDebounceTimer = null;
     if (saveInProgress) {
       // Another save is running, queue for after it finishes
       pendingSave = true;
@@ -533,6 +537,27 @@ async function saveProjectsImmediate() {
     pendingSave = false;
     setTimeout(saveProjectsImmediate, 50);
   }
+}
+
+/**
+ * Write the projects now instead of after the debounce, and resolve once it is
+ * on disk. For a caller that hands a just-added project to the main process
+ * at once: main resolves a remote project's URI against projects.json, so a
+ * request sent inside the debounce window was refused as "not inside a
+ * registered remote project".
+ * @param {{timeoutMs?: number}} [opts] - how long to wait for a save already running
+ * @returns {Promise<void>}
+ */
+async function flushProjectsSave({ timeoutMs = 5000 } = {}) {
+  if (saveDebounceTimer) {
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = null;
+  }
+  const deadline = Date.now() + timeoutMs;
+  while (saveInProgress && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  await saveProjectsImmediate();
 }
 
 // ── External write detection ────────────────────────────────────────────────
@@ -1977,6 +2002,7 @@ module.exports = {
   loadProjects,
   saveProjects,
   saveProjectsImmediate,
+  flushProjectsSave,
   startExternalWatch,
   stopExternalWatch,
   createFolder,
