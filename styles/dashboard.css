@@ -2037,14 +2037,17 @@
   animation: spin 0.6s linear infinite;
 }
 
-/* Button disabled state */
+/* Button disabled state. .is-disabled is a button greyed by a remote-capabilities
+   row: still focusable so its tooltip (the reason) shows, and a click explains itself. */
 .btn-secondary:disabled,
+.btn-secondary.is-disabled,
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-.btn-secondary:disabled:hover {
+.btn-secondary:disabled:hover,
+.btn-secondary.is-disabled:hover {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
 }
