@@ -230,6 +230,33 @@ describe('dashboard of a remote project', () => {
     expect(localCard.querySelector('.dash-card-value').textContent).toMatch(/9/);
   });
 
+  test('the header shows where a remote project lives, and Open folder says why it cannot', async () => {
+    // It used to print the raw ssh-remote://<profile id>/... URI, copy that,
+    // and offer an Open folder button that only answered with a toast.
+    applyHostStatus({ profileId: 'abcd1234', state: 'reconnecting' });
+    DashboardService.invalidateCache('r1');
+    const container = document.createElement('div');
+    await DashboardService.renderDashboard(container, REMOTE, {});
+    expect(container.querySelector('.dash-path code').textContent).toBe('yanis@build:/home/yanis/api');
+    const openFolder = container.querySelector('#dash-btn-open-folder');
+    expect(openFolder.getAttribute('aria-disabled')).toBe('true');
+    expect(openFolder.classList.contains('is-disabled')).toBe(true);
+    expect(openFolder.title).toBeTruthy();
+    DashboardService.cancelRender(container);
+
+    DashboardService.invalidateCache('l1');
+    const local = document.createElement('div');
+    fsp.readdir = jest.fn(async () => ['package.json']);
+    await DashboardService.renderDashboard(local, LOCAL, {});
+    await flush();
+    expect(local.querySelector('.dash-path code').textContent).toBe(LOCAL.path);
+    const localOpen = local.querySelector('#dash-btn-open-folder');
+    expect(localOpen.hasAttribute('aria-disabled')).toBe(false);
+    expect(localOpen.className).toBe('btn-secondary');
+    expect(localOpen.hasAttribute('title')).toBe(false);
+    DashboardService.cancelRender(local);
+  });
+
   test('a local project loads exactly as before', async () => {
     DashboardService.invalidateCache('l1');
     const container = document.createElement('div');

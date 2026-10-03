@@ -2099,6 +2099,15 @@ function buildRemoteOfflineNoteHtml(project, offline) {
 }
 
 /**
+ * The path the dashboard header shows and copies: the project path for a local
+ * project, `user@host:/remote/path` for a remote one.
+ */
+function _projectPathLabel(project) {
+  if (!isRemoteProject(project)) return project.path;
+  return require('../ui/components/RemoteHostBadge').projectLocation(project) || project.path;
+}
+
+/**
  * A remote project whose record names another type than general (synced from
  * another machine, or edited by hand): its type dashboard is hidden
  * (registry.forProject), and this says why rather than leaving the type's
@@ -2158,6 +2167,11 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   const hasMergeConflict = gitOps.mergeInProgress && gitOps.conflicts.length > 0;
   const projectTimes = getProjectTimes(project.id);
   const typeStatsHtml = typeHandler.getDashboardStats({ fivemStatus, projectIndex: projectsState.get().projects.findIndex(p => p.id === project.id), project, t }) || '';
+  // A remote project's path is an ssh-remote:// URI naming a profile id: show
+  // and copy where it lives (user@host:/path) instead. Its folder has no local
+  // window to open, so that button says why rather than looking available.
+  const pathLabel = _projectPathLabel(project);
+  const openFolderCap = can(project, 'openInExplorer');
 
   // Build HTML
   container.innerHTML = `
@@ -2186,13 +2200,13 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
         <div class="dash-subline">
           ${buildBranchLineHtml(gitInfo)}
           <button class="dash-path btn-copy-path" title="${t('dashboard.copyPath')}">
-            <code>${escapeHtml(project.path)}</code>
+            <code>${escapeHtml(pathLabel)}</code>
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
           </button>
         </div>
       </div>
       <div class="dashboard-project-actions">
-        <button class="btn-secondary" id="dash-btn-open-folder">
+        <button class="btn-secondary${openFolderCap.ok ? '' : ' is-disabled'}" id="dash-btn-open-folder"${openFolderCap.ok ? '' : ` aria-disabled="true" title="${escapeHtml(t(openFolderCap.reasonKey))}"`}>
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7l2 2h5v12zm0-12h-5l-2-2H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z"/></svg>
           ${t('dashboard.openFolder')}
         </button>
@@ -2377,8 +2391,8 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   });
 
   container.querySelector('.btn-copy-path')?.addEventListener('click', () => {
-    copyText(project.path);
-    if (onCopyPath) onCopyPath(project.path);
+    copyText(pathLabel);
+    if (onCopyPath) onCopyPath(pathLabel);
   });
 
   // View tab switcher
