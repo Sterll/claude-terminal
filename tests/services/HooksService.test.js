@@ -606,3 +606,58 @@ describe('install/remove/verify lifecycle', () => {
     expect(settings.other).toBe('data');
   });
 });
+
+// ==================== pruneDeadHooks ====================
+
+describe('pruneDeadHooks', () => {
+  const GONE_HANDLER = 'C:/Users/u/AppData/Local/Programs/claude-terminal/Claude Terminal/resources/hooks/claude-terminal-hook-handler.js';
+  const deadEntry = key => ({ hooks: [{ type: 'command', command: `node "${GONE_HANDLER}" ${key}` }] });
+  const liveEntry = key => ({ matcher: '', hooks: [{ type: 'command', command: `node "${HANDLER_PATH}" ${key}` }] });
+  const otherToolEntry = { hooks: [{ type: 'command', command: '"C:/missing/gk.exe" ai hook run' }] };
+
+  test('removes our entries whose handler no longer exists, keeps everything else', () => {
+    writeSettings({
+      model: 'opus',
+      hooks: {
+        Stop: [deadEntry('Stop'), otherToolEntry],
+        PreToolUse: [liveEntry('PreToolUse')],
+        // A key an older version installed and the current one no longer defines
+        LegacyHook: [deadEntry('LegacyHook')]
+      }
+    });
+
+    const result = HooksService.pruneDeadHooks();
+    expect(result).toEqual({ success: true, pruned: 2 });
+
+    const settings = readSettings();
+    expect(settings.model).toBe('opus');
+    expect(settings.hooks.Stop).toEqual([otherToolEntry]);
+    expect(settings.hooks.PreToolUse).toEqual([liveEntry('PreToolUse')]);
+    expect(settings.hooks.LegacyHook).toBeUndefined();
+  });
+
+  test('a dead launcher entry is pruned too', () => {
+    const launcher = 'C:/old/home/.claude-terminal/hooks/claude-terminal-hook-handler.cmd';
+    writeSettings({ hooks: { Stop: [{ hooks: [{ type: 'command', command: `"${launcher}" Stop` }] }] } });
+
+    expect(HooksService.pruneDeadHooks().pruned).toBe(1);
+    expect(readSettings().hooks).toBeUndefined();
+  });
+
+  test('does not write when nothing is dead', () => {
+    writeSettings({ hooks: { PreToolUse: [liveEntry('PreToolUse')] } });
+    const fs = require('fs');
+    fs.writeFileSync.mockClear();
+
+    expect(HooksService.pruneDeadHooks()).toEqual({ success: true, pruned: 0 });
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  test('refuses to touch a malformed settings.json', () => {
+    mockVirtualFs.set(SETTINGS_PATH, '{ not json');
+
+    const result = HooksService.pruneDeadHooks();
+    expect(result.success).toBe(false);
+    expect(mockVirtualFs.get(SETTINGS_PATH)).toBe('{ not json');
+  });
+});

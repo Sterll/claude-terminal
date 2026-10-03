@@ -150,6 +150,11 @@ function bootstrapApp() {
         const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
         if (settings.hooksEnabled) {
           hookEventServer.start(mainWindow);
+        } else {
+          // Enabled hooks are repaired by the renderer's verify; disabled ones
+          // are never looked at again, so drop any left pointing at a removed install.
+          const pruneResult = require('./src/main/services/HooksService').pruneDeadHooks();
+          if (pruneResult.pruned > 0) console.log(`[Hooks] Pruned ${pruneResult.pruned} hooks pointing at a removed install`);
         }
       }
     } catch (e) {
