@@ -3300,14 +3300,38 @@ If there are no useful discoveries, return exactly: []`;
  * We capture the session_id from the SDK's system:init message and clean up
  * after the step completes so workflow runs don't pollute "Resume conversation".
  */
+/**
+ * Where the CLI keeps a session: its transcript, and the directory beside it
+ * holding the subagent transcripts and spilled tool results.
+ *
+ * Encoded with the CLI's own rule (every non-alphanumeric character becomes a
+ * dash). The hand-rolled version this replaced only mapped `:`, `\` and `/`,
+ * so a project path with a dot or a space never matched and the session was
+ * never deleted.
+ *
+ * @param {string} cwd
+ * @param {string} sessionId
+ * @returns {{ file: string, dir: string }}
+ */
+function _workflowSessionPaths(cwd, sessionId) {
+  const { encodeProjectPath } = require('../../shared/session-dirs');
+  const base = path.join(require('os').homedir(), '.claude', 'projects', encodeProjectPath(cwd));
+  return { file: path.join(base, `${sessionId}.jsonl`), dir: path.join(base, sessionId) };
+}
+
 function _deleteWorkflowSession(cwd, sessionId) {
   try {
-    const os = require('os');
-    const encoded = cwd.replace(/:/g, '-').replace(/\\/g, '-').replace(/\//g, '-');
-    const sessionFile = require('path').join(os.homedir(), '.claude', 'projects', encoded, `${sessionId}.jsonl`);
-    if (require('fs').existsSync(sessionFile)) {
-      require('fs').unlinkSync(sessionFile);
+    const { file, dir } = _workflowSessionPaths(cwd, sessionId);
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
       console.log(`[ChatService] Deleted workflow session file: ${sessionId}.jsonl`);
+    }
+    // Subagent transcripts and tool results of a session nobody can resume:
+    // left behind, the cost scan would count the subagents a second time.
+    // A recursive delete: only ever on a plain session id, never on something
+    // that could name a parent directory.
+    if (/^[A-Za-z0-9-]+$/.test(String(sessionId)) && fs.existsSync(dir)) {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   } catch (e) {
     console.warn(`[ChatService] Could not delete workflow session file: ${e.message}`);
