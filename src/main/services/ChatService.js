@@ -2413,16 +2413,33 @@ class ChatService {
   /**
    * Run a single prompt through the SDK (no streaming input, no session to manage).
    * Used by WorkflowRunner for Claude/agent steps — the stream terminates on its own.
-   * @param {Object} opts - { cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, onMessage, signal }
+   * @param {Object} opts - { cwd, prompt, model, effort, maxTurns, accountId, permissionMode, outputFormat, skills, onMessage, signal }
    * @returns {Promise<{ output: string, success: boolean, ... }>}
    */
-  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
+  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, accountId = null, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
     // A workflow step runs the local CLI. A remote project's path does not
     // exist here, and falling back to the home directory would run the step
     // somewhere the user never asked for.
     if (isRemotePath(cwd)) throw new Error('Remote projects are not supported by workflow Claude steps yet');
     const sdk = await loadSDK();
     const runtime = resolveRuntime();
+
+    // Same overlay a chat session gets, so the step authenticates as the
+    // account its automation names. No account means the machine-wide login.
+    //
+    // Stricter than the chat about a dead id: a chat falls back to the
+    // machine-wide login, but an unattended run that does so spends someone
+    // else's quota with nobody watching. Failing says which account to fix.
+    if (accountId) {
+      const { accounts } = await AccountManager.listAccounts({ includeCredentials: false });
+      const account = accounts.find(a => a.id === accountId);
+      if (!account) throw new Error(`Claude account "${accountId}" no longer exists. Pick another account for this step.`);
+      const overlay = await AccountManager.accountEnv(accountId);
+      if (!overlay && !(await AccountManager.ownsLiveStore(accountId))) {
+        throw new Error(`No usable credentials for Claude account "${account.name}". Capture it again from the accounts menu.`);
+      }
+      if (overlay) runtime.env = { ...runtime.env, ...overlay };
+    }
 
     const abortController = new AbortController();
     if (signal) {

@@ -89,6 +89,10 @@ async function runAgentStep(config, vars, signal, chatService, onMessage) {
   // than let the fallback below run the step in the home directory.
   require('../../shared/remote-capabilities').assertLocalPaths('workflowNodes', cwd);
 
+  // Same rule as claude.node.js: resolved before the home fallback.
+  const accountId = require('../workflow-nodes/_projects')
+    .resolveRunAccount(config.account, { projectRef: config.projectId || '', cwd, vars });
+
   // Validate cwd exists on disk — fallback to home dir to avoid ENOENT
   if (!cwd || !fs.existsSync(cwd)) {
     console.warn(`[WorkflowRunner] Claude step cwd invalid or missing: "${cwd}", falling back to ${home}`);
@@ -98,7 +102,7 @@ async function runAgentStep(config, vars, signal, chatService, onMessage) {
   if (signal?.aborted) throw new Error('Cancelled');
 
   // Build options
-  const opts = { cwd, prompt, model, effort, maxTurns, signal, onMessage };
+  const opts = { cwd, prompt, model, effort, maxTurns, accountId, signal, onMessage };
 
   // Skill mode
   if (mode === 'skill' && config.skillId) {

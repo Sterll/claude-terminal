@@ -41,6 +41,7 @@ function loadAll() {
     require('./time-config.field'),
     require('./project-config.field'),
     require('./subworkflow-picker.field'),
+    require('./account-picker.field'),
   ];
   for (const def of files) {
     if (def && def.type) {

@@ -80,6 +80,61 @@ function findProjectRecord(ref, vars) {
   return projects.find(p => _samePath(p.path, resolvedPath)) || null;
 }
 
+/**
+ * The project a directory belongs to: the one whose path is that directory or
+ * contains it, the deepest when projects are nested. A Claude step can run in
+ * a subfolder (an explicit cwd), and it still belongs to the project above it.
+ *
+ * @param {string} dir  absolute local path
+ * @returns {Object|null}
+ */
+function findProjectForPath(dir) {
+  if (!dir) return null;
+  let target;
+  try { target = path.resolve(String(dir)).toLowerCase(); } catch { return null; }
+  let best = null;
+  let bestLen = -1;
+  for (const p of loadProjects()) {
+    if (!p.path) continue;
+    let root;
+    try { root = path.resolve(String(p.path)).toLowerCase(); } catch { continue; }
+    const inside = target === root || target.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+    if (inside && root.length > bestLen) { best = p; bestLen = root.length; }
+  }
+  return best;
+}
+
+/**
+ * The account a Claude step authenticates as, from its `account` property.
+ *
+ *   ''               the default account: null, i.e. the machine-wide login,
+ *                    which is what an unbound chat uses and what setDefault()
+ *                    keeps the default account in;
+ *   PROJECT_ACCOUNT  the target project's binding, or the default when the
+ *                    project has none (or is remote, where a binding means
+ *                    nothing) — the same answer that project's chat gets.
+ *                    The target is the project the step actually runs in,
+ *                    found from its directory, then the node's project picker;
+ *   anything else    that account id, verbatim. Whether it still exists is
+ *                    for ChatService to check, which is where the store is.
+ *
+ * @param {string} account
+ * @param {{ projectRef?: string, cwd?: string, vars?: Map|Object }} target
+ * @returns {string|null}
+ */
+function resolveRunAccount(account, { projectRef = '', cwd = '', vars } = {}) {
+  const value = typeof account === 'string' ? account.trim() : '';
+  if (!value) return null;
+  const { PROJECT_ACCOUNT } = require('../../shared/simple-task');
+  if (value !== PROJECT_ACCOUNT) return value;
+
+  const record = findProjectForPath(cwd) || (projectRef ? findProjectRecord(projectRef, vars) : null);
+  if (!record) return null;
+  const { isRemoteProject } = require('../../shared/remote-capabilities');
+  if (isRemoteProject(record)) return null;
+  return record.accountId || null;
+}
+
 /** Display name for a project record, falling back to its folder name. */
 function projectLabel(project) {
   return project?.name || path.basename(project?.path || '') || project?.id || '';
@@ -119,4 +174,7 @@ function assertLocalTargets(...refs) {
   }
 }
 
-module.exports = { projectsFile, loadProjects, findProjectRecord, projectLabel, assertLocalTargets };
+module.exports = {
+  projectsFile, loadProjects, findProjectRecord, findProjectForPath, resolveRunAccount,
+  projectLabel, assertLocalTargets,
+};

@@ -115,6 +115,54 @@ function projectLabel(id) {
   return match ? `${match.name} (${id})` : id;
 }
 
+// -- Account resolution -------------------------------------------------------
+
+/**
+ * The captured Claude accounts, read from the index AccountManager writes.
+ * Only ids and names: credentials never leave the app. A missing or unreadable
+ * index is "no accounts", which leaves "default" and "project" available.
+ */
+function loadAccounts() {
+  const dataDir = process.env.CT_DATA_DIR || path.join(require('os').homedir(), '.claude-terminal');
+  try {
+    const index = JSON.parse(require('fs').readFileSync(path.join(dataDir, 'accounts', 'index.json'), 'utf8'));
+    const accounts = Array.isArray(index.accounts) ? index.accounts : [];
+    return { accounts: accounts.map(a => ({ id: a.id, name: a.name })), defaultId: index.defaultId || null };
+  } catch {
+    return { accounts: [], defaultId: null };
+  }
+}
+
+/**
+ * Resolve "default" / "project" / an account name or id to the stored value.
+ * @returns {{ value: string }|{ error: string }}
+ */
+function resolveAccount(value) {
+  const raw = String(value ?? '').trim();
+  const lower = raw.toLowerCase();
+  if (!raw || lower === 'default') return { value: '' };
+  if (lower === 'project' || raw === simpleTask.PROJECT_ACCOUNT) return { value: simpleTask.PROJECT_ACCOUNT };
+
+  const { accounts } = loadAccounts();
+  const match = accounts.find(a => a.id === raw) || accounts.find(a => (a.name || '').toLowerCase() === lower);
+  if (!match) {
+    const names = accounts.map(a => a.name).filter(Boolean).join(', ');
+    return { error: `Account "${raw}" not found. Use "default", "project"${names ? ` or one of: ${names}` : ''}.` };
+  }
+  return { value: match.id };
+}
+
+function accountLabel(value) {
+  const { accounts, defaultId } = loadAccounts();
+  if (value === simpleTask.PROJECT_ACCOUNT) return "the project's account (default when unbound)";
+  if (!value) {
+    const def = accounts.find(a => a.id === defaultId);
+    return def ? `default account (${def.name})` : 'default account';
+  }
+  const match = accounts.find(a => a.id === value);
+  return match ? `${match.name} (${value})` : `${value} (deleted, runs will fail)`;
+}
+
 // -- Describing ---------------------------------------------------------------
 
 /** Plain-English mirror of describeSchedule(), which returns i18n keys. */
@@ -198,6 +246,11 @@ function buildSimple(args, base) {
   if (has('cwd')) simple.cwd = String(args.cwd);
   if (has('model')) simple.model = String(args.model);
   if (has('effort')) simple.effort = String(args.effort);
+  if (has('account')) {
+    const resolved = resolveAccount(args.account);
+    if (resolved.error) return { error: resolved.error };
+    simple.account = resolved.value;
+  }
 
   if (has('project')) {
     const raw = String(args.project).trim().toLowerCase();
@@ -281,6 +334,7 @@ function summarize(wf, { history = null } = {}) {
   if (s.useContext) lines.push('  Context:  resumes the conversation that fired it');
   if (s.cwd) lines.push(`  Cwd:      ${s.cwd}`);
   if (s.model || s.effort) lines.push(`  Model:    ${s.model || 'app default'}${s.effort ? ` (effort: ${s.effort})` : ''}`);
+  lines.push(`  Account:  ${accountLabel(s.account)}`);
 
   const channels = [s.notify.desktop ? 'desktop' : null, s.notify.discord ? 'discord' : null].filter(Boolean);
   lines.push(`  Notify:   ${channels.length ? channels.join(' + ') : 'off'}${s.notify.includeResult && channels.length ? ' (includes the result)' : ''}`);
@@ -306,6 +360,13 @@ const SIMPLE_FIELDS = {
   cwd: { type: 'string', description: 'Working directory override. Defaults to the project path.' },
   model: { type: 'string', description: 'Model override, e.g. "claude-opus-5". Empty = the app default.' },
   effort: { type: 'string', description: 'Reasoning effort override: low | medium | high | xhigh | max.' },
+  account: {
+    type: 'string',
+    description:
+      'Claude account the run authenticates as: "default" (the default account, the initial value), '
+      + '"project" (the account the target project is bound to, or the default when it has none), '
+      + 'or an account name or ID.',
+  },
 
   when: {
     type: 'string',

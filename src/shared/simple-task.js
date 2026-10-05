@@ -102,6 +102,19 @@ const ANY_PROJECT = '__any__';
  */
 const TRIGGER_PROJECT = '__trigger__';
 
+/**
+ * Sentinel for `simple.account`, and for the Claude node's `account` property:
+ * authenticate as whichever account the target project is bound to.
+ *
+ * The other two shapes need no sentinel. '' is the default account, which is
+ * what every run used before the choice existed, so tasks saved earlier keep
+ * behaving as they did; anything else is an account id. Resolved at run time
+ * rather than at save time, so "run where it fired" picks up the binding of
+ * the project that actually fired, and re-binding a project moves its
+ * automations with it.
+ */
+const PROJECT_ACCOUNT = '__project__';
+
 const DEFAULT_SIMPLE = {
   prompt:    '',
   projectId: '',
@@ -110,6 +123,9 @@ const DEFAULT_SIMPLE = {
   // on users who never asked for one; the advanced disclosure exposes it.
   model:     '',
   effort:    '',
+  // Which Claude account the run authenticates as: '' = the default account,
+  // PROJECT_ACCOUNT = the target project's binding, anything else an account id.
+  account:   '',
   // Named `when` because it now holds either a clock schedule or an event.
   // Tasks saved before events existed carry `schedule`; normalizeSimple migrates.
   when:      { ...DEFAULT_SCHEDULE },
@@ -366,6 +382,7 @@ function normalizeSimple(raw) {
     cwd:       typeof src.cwd === 'string' ? src.cwd : '',
     model:     typeof src.model  === 'string' ? src.model  : DEFAULT_SIMPLE.model,
     effort:    typeof src.effort === 'string' ? src.effort : DEFAULT_SIMPLE.effort,
+    account:   typeof src.account === 'string' ? src.account : DEFAULT_SIMPLE.account,
     when: {
       kind,
       time:    /^\d{1,2}:\d{2}$/.test(rawWhen.time || '') ? rawWhen.time : DEFAULT_SCHEDULE.time,
@@ -497,6 +514,7 @@ function buildSimpleGraph(simple, name) {
       agentId: '', skillId: '',
       model: s.model,
       effort: s.effort,
+      account: s.account,
       outputSchema: null,
       // Both are written: `cwd` is what claude.node.js executes in, `projectId`
       // is what the advanced editor's project picker reads back. The sentinel
@@ -689,6 +707,7 @@ module.exports = {
   SCHEDULE_KINDS,
   ANY_PROJECT,
   TRIGGER_PROJECT,
+  PROJECT_ACCOUNT,
   EVENT_KINDS,
   EVENT_KIND_NAMES,
   WHEN_KINDS,

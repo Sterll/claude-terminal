@@ -67,10 +67,13 @@ module.exports = {
     { name: 'result', type: 'any'    },
   ],
 
-  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', outputSchema: null, cwd: '', maxTurns: 30, resumeFrom: '' },
+  // `account`: '' = default account, '__project__' = the target project's
+  // binding, anything else an account id (see resolveRunAccount).
+  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', account: '', outputSchema: null, cwd: '', maxTurns: 30, resumeFrom: '' },
 
   fields: [
     { type: 'claude-config', key: 'mode', label: 'wfn.claude.label' },
+    { type: 'account-picker', key: 'account', label: 'automation.form.account' },
     // The claude-config custom field already exposes `cwd`; it does NOT expose
     // maxTurns, so surface it here (backward-compatible, defaults to 30).
     { type: 'number', key: 'maxTurns', label: 'Max turns',
@@ -129,7 +132,12 @@ module.exports = {
       || '';
     // A remote (SSH) project's URI never exists locally, so the fallback below
     // would quietly run the step in the home directory instead.
-    require('./_projects').assertLocalTargets(cwd);
+    const { assertLocalTargets, resolveRunAccount } = require('./_projects');
+    assertLocalTargets(cwd);
+    // Resolved from the directory the step was aimed at, before the home
+    // fallback below: a missing project folder must not make the step look
+    // like it belongs to no project, or to whatever project holds $HOME.
+    const accountId = resolveRunAccount(config.account, { projectRef: config.projectId || '', cwd, vars });
     if (!cwd || !fs.existsSync(cwd)) {
       console.warn(`[claude.node] cwd invalid or missing: "${cwd}", falling back to ${home}`);
       cwd = home;
@@ -147,7 +155,7 @@ module.exports = {
 
     if (signal?.aborted) throw new Error('Cancelled');
 
-    const opts = { cwd, prompt, model, effort, maxTurns, signal };
+    const opts = { cwd, prompt, model, effort, maxTurns, accountId, signal };
 
     // Continue an existing Claude conversation instead of starting cold — how
     // an automation inherits the context of the session that triggered it.

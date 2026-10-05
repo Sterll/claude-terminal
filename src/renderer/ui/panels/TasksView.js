@@ -19,6 +19,7 @@ const { can } = require('../../../shared/remote-capabilities');
 const { showContextMenu } = require('../components/ContextMenu');
 const { upgradeSelectsToDropdowns } = require('./WorkflowHelpers');
 const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options');
+const { accountChoices, hasAccountChoice } = require('../../utils/accountChoices');
 const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
   normalizeSimple, compileTask, describeSchedule, nextRunForTask,
@@ -704,9 +705,17 @@ function openTaskModal(deps, existing, preset = null) {
           </label>
         </div>
 
-        <details class="auto-advanced"${simple.model !== DEFAULT_SIMPLE.model || simple.effort !== DEFAULT_SIMPLE.effort ? ' open' : ''}>
+        <details class="auto-advanced"${simple.model !== DEFAULT_SIMPLE.model || simple.effort !== DEFAULT_SIMPLE.effort || simple.account !== DEFAULT_SIMPLE.account ? ' open' : ''}>
           <summary class="auto-advanced-summary">${escapeHtml(t('automation.form.advanced'))}</summary>
           <div class="auto-advanced-body">
+            ${hasAccountChoice(simple.account) ? `
+            <div class="auto-field auto-field--inline">
+              <span class="auto-field-label">${escapeHtml(t('automation.form.account'))}</span>
+              <select class="auto-input" data-dropdown id="auto-account">
+                ${accountChoices(simple.account).map(o =>
+                  `<option value="${escapeHtml(o.value)}"${simple.account === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
+              </select>
+            </div>` : ''}
             <div class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.model'))}</span>
               <select class="auto-input" data-dropdown id="auto-model">
@@ -957,6 +966,8 @@ function openTaskModal(deps, existing, preset = null) {
         cwd: project?.path || '',
         model:  $('#auto-model').value,
         effort: $('#auto-effort').value,
+        // Absent when no account is captured: keep whatever was stored.
+        account: $('#auto-account') ? $('#auto-account').value : simple.account,
         notify: {
           desktop:       $('#auto-notify-desktop').checked,
           includeResult: $('#auto-notify-result').checked,
