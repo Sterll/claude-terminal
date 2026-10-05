@@ -2388,6 +2388,25 @@
       "listPrice": "金额为所用 token 的 API 标价。订阅不会按此计费：它衡量的是工作消耗了多少套餐限额。",
       "estimated": "{cost} 发生在 {date}（开始跟踪账户）之前，按当时登录的账户归属。",
       "unpriced": "以下模型没有已知价格：{models}"
+    },
+    "views": {
+      "overview": "概览",
+      "automations": "自动化"
+    },
+    "automations": {
+      "subtitle": "每个自动化的成本，按 API 标价计算。",
+      "empty": "此期间没有运行任何自动化。从此版本起开始记录成本。",
+      "runs": "运行次数",
+      "perRun": "每次运行",
+      "byAutomation": "按自动化",
+      "deleted": "已删除",
+      "note": "自动化运行计入此处，不计入概览：其对话在结束后会被删除，因此每次运行都在删除前计价。",
+      "columns": {
+        "automation": "自动化",
+        "runs": "次数",
+        "perRun": "每次",
+        "lastRun": "最近一次"
+      }
     }
   },
   "connectivity": {
@@ -3275,7 +3294,8 @@
       "deletedLabel": "已删除",
       "stopTitle": "停止运行",
       "workflowDeleted": "已删除的工作流",
-      "rerun": "重新运行"
+      "rerun": "重新运行",
+      "skippedUsage": "未运行：{bucket}用量 {percent}%，上限 {threshold}%"
     },
     "editor": {
       "unsavedChanges": "未保存的更改",
@@ -3384,7 +3404,8 @@
         "failed": "失败",
         "running": "运行中",
         "pending": "待定",
-        "cancelled": "取消"
+        "cancelled": "取消",
+        "skipped": "已跳过"
       },
       "triggerDesc": {
         "cron": "安排在固定时间",
@@ -4149,7 +4170,8 @@
     "usageRefresh": "刷新用量",
     "limitedUntil": "{time} 后可再次使用",
     "allLimited": "所有已保存的账号都已达到上限。",
-    "allLimitedUntil": "所有已保存的账号都已达到上限。最早的一个将在 {time} 后恢复可用。"
+    "allLimitedUntil": "所有已保存的账号都已达到上限。最早的一个将在 {time} 后恢复可用。",
+    "removeBlockedAutomations": "仍有 {count} 个自动化在使用：{automations}。请先为它们选择其他账户。"
   },
   "usage": {
     "staleRetry": "使用情况数据可能已过时 - 上次刷新失败。下次尝试时间 {time}；点击可立即重试。 {error}",
@@ -4174,7 +4196,8 @@
       "runNow": "立即运行",
       "more": "更多操作",
       "watches": "监视 {projects}",
-      "withContext": "与谈话"
+      "withContext": "与谈话",
+      "maxUsage": "不超过 {percent}%"
     },
     "empty": {
       "title": "自动执行重复任务",
@@ -4247,7 +4270,10 @@
       "triggerProject": "触发它的项目",
       "contextLabel": "对话",
       "useContext": "继续触发它的对话",
-      "useContextHint": "Claude恢复该对话的副本（您自己的会话保持不变）并被告知更改了哪些文件。使用此选项，以便当多个 Claude 会话共享仓库时，自动提交仅涉及该对话的工作。"
+      "useContextHint": "Claude恢复该对话的副本（您自己的会话保持不变）并被告知更改了哪些文件。使用此选项，以便当多个 Claude 会话共享仓库时，自动提交仅涉及该对话的工作。",
+      "maxUsage": "用量上限",
+      "maxUsageOff": "始终运行",
+      "maxUsageHint": "当账户的会话（5 小时）或每周用量达到此水平时，跳过自动运行。手动运行始终可用。"
     },
     "menu": {
       "edit": "编辑",

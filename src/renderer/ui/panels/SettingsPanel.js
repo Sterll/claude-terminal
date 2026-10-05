@@ -2940,6 +2940,13 @@ class SettingsPanel extends BasePanel {
         if (!ok) return;
         try {
           const r = await this.api.accounts.remove(id);
+          if (r?.code === 'ACCOUNT_USED_BY_AUTOMATIONS') {
+            showError(t('accounts.removeBlockedAutomations', {
+              count: r.automations.length,
+              automations: r.automations.join(', ')
+            }), 8000);
+            return;
+          }
           if (!r?.success) {
             showError(r?.error || t('accounts.removeError'), 5000);
             return;

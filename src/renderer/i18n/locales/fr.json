@@ -2388,6 +2388,25 @@
       "listPrice": "Les montants sont les prix publics de l'API pour les tokens utilisés. Un abonnement ne les facture pas : ils mesurent la part de la limite du forfait consommée.",
       "estimated": "{cost} datent d'avant le {date}, début du suivi des comptes, et sont attribués au compte connecté à cette date.",
       "unpriced": "Aucun prix connu pour : {models}"
+    },
+    "views": {
+      "overview": "Vue d’ensemble",
+      "automations": "Automatisations"
+    },
+    "automations": {
+      "subtitle": "Ce que coûte chaque automatisation, au tarif public de l’API.",
+      "empty": "Aucune automatisation n’a tourné sur cette période. Les coûts sont enregistrés à partir de cette version.",
+      "runs": "Exécutions",
+      "perRun": "Par exécution",
+      "byAutomation": "Par automatisation",
+      "deleted": "supprimée",
+      "note": "Les exécutions d’automatisations sont comptées ici et pas dans la vue d’ensemble : leur conversation est supprimée à la fin, chaque exécution est donc chiffrée juste avant.",
+      "columns": {
+        "automation": "Automatisation",
+        "runs": "Exécutions",
+        "perRun": "Par exécution",
+        "lastRun": "Dernière"
+      }
     }
   },
   "connectivity": {
@@ -3275,7 +3294,8 @@
       "deletedLabel": "Supprimé",
       "stopTitle": "Arrêter le run",
       "workflowDeleted": "Workflow supprimé",
-      "rerun": "Relancer"
+      "rerun": "Relancer",
+      "skippedUsage": "Non lancé : usage {bucket} à {percent} %, limite {threshold} %"
     },
     "editor": {
       "unsavedChanges": "Modifications non sauvegardées",
@@ -3384,7 +3404,8 @@
         "failed": "Échec",
         "running": "En cours",
         "pending": "En attente",
-        "cancelled": "Annulé"
+        "cancelled": "Annulé",
+        "skipped": "Ignoré"
       },
       "triggerDesc": {
         "cron": "Planifié à heures fixes",
@@ -4149,7 +4170,8 @@
     "usageRefresh": "Actualiser la consommation",
     "limitedUntil": "Disponible à nouveau dans {time}",
     "allLimited": "Tous les comptes enregistrés ont atteint une limite.",
-    "allLimitedUntil": "Tous les comptes enregistrés ont atteint une limite. Le premier redevient disponible dans {time}."
+    "allLimitedUntil": "Tous les comptes enregistrés ont atteint une limite. Le premier redevient disponible dans {time}.",
+    "removeBlockedAutomations": "Encore utilisé par {count} automatisation(s) : {automations}. Choisissez-leur un autre compte d’abord."
   },
   "usage": {
     "staleRetry": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. Prochaine tentative à {time} ; cliquez pour réessayer maintenant. {error}",
@@ -4174,7 +4196,8 @@
       "runNow": "Lancer maintenant",
       "more": "Plus d'actions",
       "watches": "Surveille {projects}",
-      "withContext": "Avec la conversation"
+      "withContext": "Avec la conversation",
+      "maxUsage": "Jusqu’à {percent} %"
     },
     "empty": {
       "title": "Automatisez une tâche récurrente",
@@ -4247,7 +4270,10 @@
       "triggerProject": "Le projet qui a déclenché",
       "contextLabel": "Conversation",
       "useContext": "Continuer la conversation qui a déclenché",
-      "useContextHint": "Claude reprend une copie de cette conversation — votre session n'est pas modifiée — et reçoit la liste des fichiers qu'elle a changés. Utile pour qu'un auto-commit ne touche que le travail de cette conversation quand plusieurs sessions Claude partagent un dépôt."
+      "useContextHint": "Claude reprend une copie de cette conversation — votre session n'est pas modifiée — et reçoit la liste des fichiers qu'elle a changés. Utile pour qu'un auto-commit ne touche que le travail de cette conversation quand plusieurs sessions Claude partagent un dépôt.",
+      "maxUsage": "Limite d’usage",
+      "maxUsageOff": "Toujours lancer",
+      "maxUsageHint": "Ne lance pas les exécutions automatiques tant que l’usage de session (5 h) ou hebdomadaire du compte atteint ce seuil. Le lancement manuel marche toujours."
     },
     "menu": {
       "edit": "Modifier",

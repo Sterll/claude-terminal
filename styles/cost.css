@@ -59,6 +59,56 @@
   height: 14px;
 }
 
+/* Overview / Automations switch */
+.cost-view-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin-left: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+}
+
+.cost-view-tab {
+  padding: 4px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.cost-view-tab:hover { color: var(--text-primary); }
+
+.cost-view-tab.active {
+  background: var(--accent-dim);
+  color: var(--accent-hover);
+}
+
+/* Automations table: the accounts each automation spent, and deleted ones */
+.cost-auto-accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.cost-auto-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cost-auto-deleted {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* Filters */
 .cost-filters {
   display: flex;

@@ -72,7 +72,7 @@ function buildJsonSchema(fields) {
   return { type: 'object', properties, required, additionalProperties: false };
 }
 
-async function runAgentStep(config, vars, signal, chatService, onMessage) {
+async function runAgentStep(config, vars, signal, chatService, automation, onMessage) {
   const mode     = config.mode || 'prompt';
   const prompt   = resolveVars(config.prompt || '', vars);
   const ctx      = vars.get('ctx') || {};
@@ -102,7 +102,7 @@ async function runAgentStep(config, vars, signal, chatService, onMessage) {
   if (signal?.aborted) throw new Error('Cancelled');
 
   // Build options
-  const opts = { cwd, prompt, model, effort, maxTurns, accountId, signal, onMessage };
+  const opts = { cwd, prompt, model, effort, maxTurns, accountId, automation, signal, onMessage };
 
   // Skill mode
   if (mode === 'skill' && config.skillId) {
@@ -303,6 +303,31 @@ class WorkflowRunner {
    * @param {Object} [ctx]    - optional context vars (project path, etc.)
    * @returns {Promise<{ success: boolean, output: any, error?: string, duration: number }>}
    */
+  /**
+   * What a Claude step needs to account for itself against the run: which
+   * workflow and run to price its tokens under, and where to record the
+   * account it ran on so the run history can show it. Null outside a run (a
+   * node tested from the editor belongs to no automation).
+   *
+   * @param {string} runId
+   * @returns {{ workflowId: string, workflowName: string, runId: string, noteAccount: Function }|null}
+   */
+  _automationCtx(runId) {
+    const run = this._run;
+    const workflow = this._workflow;
+    if (!run || !workflow) return null;
+    return {
+      workflowId: workflow.id,
+      workflowName: workflow.name || '',
+      runId,
+      noteAccount: (accountId) => {
+        if (!accountId) return;
+        const accounts = Array.isArray(run.accounts) ? run.accounts : [];
+        if (!accounts.includes(accountId)) run.accounts = [...accounts, accountId];
+      },
+    };
+  }
+
   async testStep(step, ctx = {}) {
     const vars = new Map([
       ['ctx', { project: ctx.project || '', date: new Date().toISOString(), trigger: 'test' }],
@@ -342,6 +367,10 @@ class WorkflowRunner {
     ]);
 
     const stepOutputs = {};
+    // Claude steps report the account they ran on and price what they spent
+    // against this run; see _automationCtx().
+    this._run      = run;
+    this._workflow = workflow;
     this._stepStatuses = new Map(); // Track final step statuses for persistence
     this._runDegraded  = false;     // set when a catch path is taken / retry exhausted
     this._timedOut     = false;     // distinguishes global timeout from user cancel
@@ -1493,6 +1522,7 @@ class WorkflowRunner {
         sendFn:          (channel, data) => this._send(channel, data),
         waitCallbacks:   this._waitCallbacks,
         runId,
+        automation:      this._automationCtx(runId),
       };
       return nodeDef.run(config, vars, signal, ctx);
     }
@@ -1501,7 +1531,7 @@ class WorkflowRunner {
     // ── Built-in universal steps (legacy fallback) ────────────────────────────
 
     if (type === 'agent' || type === 'claude') {
-      return runAgentStep(step, vars, signal, this._chatService, (msg) => {
+      return runAgentStep(step, vars, signal, this._chatService, this._automationCtx(runId), (msg) => {
         this._send('workflow-agent-message', { runId, stepId: step.id, message: msg });
       });
     }

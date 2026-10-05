@@ -14,6 +14,7 @@ const nodeRegistry = require('../../services/NodeRegistry');
 const fieldRegistry = require('../../workflow-fields/_registry');
 const TasksView = require('./TasksView');
 const { isSimpleTask } = require('../../../shared/simple-task');
+const { accountLabel } = require('../../utils/accountChoices');
 
 const {
   // Constants
@@ -260,11 +261,12 @@ function registerLiveListeners() {
     scheduleRender();
   });
 
-  api.onRunEnd(({ runId, status, duration }) => {
+  api.onRunEnd(({ runId, status, duration, accounts }) => {
     const run = state.runs.find(r => r.id === runId);
     if (run) {
       run.status = status;
       run.duration = duration;
+      if (Array.isArray(accounts) && accounts.length) run.accounts = accounts;
     }
     // Clear all agent logs for this run's steps
     for (const step of (run?.steps || [])) _agentLogs.delete(step.id);
@@ -907,6 +909,7 @@ function buildRunCardHtml(run) {
     running: `\u27F3 ${t('workflow.helpers.status.running')}`,
     cancelled: `\u2013 ${t('workflow.helpers.status.cancelled')}`,
     pending: `\u2026 ${t('workflow.helpers.status.pending')}`,
+    skipped: `\u2013 ${t('workflow.helpers.status.skipped')}`,
   };
   const statusLabel_ = statusLabels[run.status] || run.status;
 
@@ -939,11 +942,23 @@ function buildRunCardHtml(run) {
             </button>` : ''}
           </div>
         </div>
-        <div class="wf-run-card-meta">${fmtTime(run.startedAt)} \xB7 ${fmtDuration(run.duration)} \xB7 ${escapeHtml(run.trigger)}</div>
+        <div class="wf-run-card-meta">${fmtTime(run.startedAt)} \xB7 ${fmtDuration(run.duration)} \xB7 ${escapeHtml(run.trigger)}${runAccountsHtml(run)}</div>
         <div class="wf-run-card-pipeline">${pipelineHtml}</div>
       </div>
     </div>
   `;
+}
+
+/**
+ * The accounts a run's Claude steps spent, as dots and names. Empty for runs
+ * recorded before runs kept them, and for runs with no Claude step.
+ */
+function runAccountsHtml(run) {
+  const ids = Array.isArray(run.accounts) ? run.accounts : [];
+  return ids.map(id => {
+    const { name, color } = accountLabel(id);
+    return ` \xB7 <span class="wf-run-account" title="${escapeHtml(t('automation.form.account'))}"><span class="wf-run-account-dot" style="background:${color}"></span>${escapeHtml(name)}</span>`;
+  }).join('');
 }
 
 /* ─── Run history ──────────────────────────────────────────────────────────── */
@@ -1098,7 +1113,13 @@ function renderRunDetailInCol(col, run) {
           ${svgTimer()} ${fmtDuration(run.duration)}
           <span style="margin:0 5px;opacity:.25">\xB7</span>
           <span class="wf-run-trigger-tag" style="font-size:10px">${escapeHtml(run.trigger)}</span>
+          ${runAccountsHtml(run)}
         </div>
+        ${run.skip?.reason === 'usage' ? `<div class="wf-run-skip-reason">${escapeHtml(t('workflow.runMeta.skippedUsage', {
+          bucket: t(run.skip.bucket === 'session' ? 'ui.session' : 'ui.weekly'),
+          percent: Math.round(run.skip.utilization),
+          threshold: run.skip.threshold,
+        }))}</div>` : ''}
         <div class="wf-run-detail-timeline">${buildTimelineHtml(steps)}</div>
       </div>
       <div class="wf-run-detail-steps">${stepsHtml}</div>

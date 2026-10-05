@@ -24,6 +24,28 @@ function registerCostHandlers() {
     return CostService.getReport({ from, to, accountId, projectId });
   });
 
+  // Per automation. Names are taken from the current definitions where the
+  // automation still exists, so a rename shows up; a deleted one keeps the
+  // name it ran under and is flagged.
+  ipcMain.handle('cost-get-automations', async (_event, range = {}) => {
+    const from = Number.isFinite(range?.from) ? range.from : 0;
+    const to = Number.isFinite(range?.to) ? range.to : Infinity;
+    const accountId = typeof range?.accountId === 'string' ? range.accountId : null;
+    const report = CostService.getAutomationReport({ from, to, accountId });
+    let workflows = [];
+    try {
+      workflows = await require('../services/WorkflowStorage').loadWorkflows();
+    } catch { /* names stay as recorded */ }
+    const byId = new Map((Array.isArray(workflows) ? workflows : []).map(wf => [wf.id, wf]));
+    for (const a of report.automations) {
+      const wf = byId.get(a.workflowId);
+      a.deleted = !wf;
+      if (wf?.name) a.name = wf.name;
+      a.simple = wf?.mode === 'simple';
+    }
+    return report;
+  });
+
   ipcMain.handle('cost-get-quota', (_event, args = {}) => {
     if (typeof args?.accountId !== 'string') return null;
     return CostService.getQuotaEstimate({

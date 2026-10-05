@@ -8,6 +8,10 @@
  * plan's limit the tokens drew. The "one percent" card turns that into the
  * question users actually ask, by setting the cost since the weekly reset
  * against the weekly percentage the usage API reports.
+ *
+ * Automations have a view of their own. Their conversations are deleted once
+ * they finish, so the transcripts the overview is built from never hold them;
+ * each step is priced just before that deletion instead, per automation.
  */
 
 const { t, getCurrentLanguage } = require('../../i18n');
@@ -24,7 +28,9 @@ const PALETTE = ['var(--accent)', 'var(--info)', 'var(--purple)', 'var(--success
 let _container = null;
 let _period = 'thisWeek';
 let _accountFilter = 'all';
+let _view = 'overview';  // 'overview' | 'automations'
 let _report = null;
+let _autoReport = null;
 let _quota = [];
 let _loading = false;
 let _loadError = null;
@@ -134,13 +140,18 @@ function _daysBetween(from, to) {
 // ── Accounts ────────────────────────────────────────────────────────────────
 
 function _accountInfo(id) {
-  const accounts = _report?.accounts || [];
+  const accounts = _activeReport()?.accounts || [];
   const index = accounts.findIndex(a => a.id === id);
   if (index === -1) {
     return { id, name: t('cost.unknownAccount'), color: 'var(--text-muted)' };
   }
   const account = accounts[index];
   return { id, name: account.name, color: account.color || PALETTE[index % PALETTE.length] };
+}
+
+/** The report the current view draws from. */
+function _activeReport() {
+  return _view === 'automations' ? _autoReport : _report;
 }
 
 // ── Panel API ───────────────────────────────────────────────────────────────
@@ -167,21 +178,29 @@ async function _load() {
   _render();
 
   const range = periodRange(_period);
+  const query = {
+    from: range.from ?? undefined,
+    to: range.to ?? undefined,
+    accountId: _accountFilter === 'all' ? undefined : _accountFilter,
+  };
+  const view = _view;
   try {
-    const report = await api.cost.getReport({
-      from: range.from ?? undefined,
-      to: range.to ?? undefined,
-      accountId: _accountFilter === 'all' ? undefined : _accountFilter,
-    });
-    if (seq !== _requestSeq) return;
-    _report = report;
+    if (view === 'automations') {
+      const report = await api.cost.getAutomations(query);
+      if (seq !== _requestSeq) return;
+      _autoReport = report;
+    } else {
+      const report = await api.cost.getReport(query);
+      if (seq !== _requestSeq) return;
+      _report = report;
+    }
   } catch (err) {
     if (seq !== _requestSeq) return;
     _loadError = err?.message || String(err);
   }
   _loading = false;
   _render();
-  _loadQuota(seq);
+  if (view === 'overview') _loadQuota(seq);
 }
 
 /**
@@ -244,12 +263,15 @@ function _render() {
 }
 
 function _renderHeader() {
+  const views = ['overview', 'automations'].map(v => `
+    <button class="cost-view-tab ${v === _view ? 'active' : ''}" data-view="${v}" role="tab" aria-selected="${v === _view}">${escapeHtml(t(`cost.views.${v}`))}</button>`).join('');
   return `
     <div class="cost-header">
       <div>
         <h2>${escapeHtml(t('cost.title'))}</h2>
-        <p class="cost-subtitle">${escapeHtml(t('cost.subtitle'))}</p>
+        <p class="cost-subtitle">${escapeHtml(t(_view === 'automations' ? 'cost.automations.subtitle' : 'cost.subtitle'))}</p>
       </div>
+      <div class="cost-view-tabs" role="tablist">${views}</div>
       <button class="cost-btn" data-action="refresh" ${_loading ? 'disabled' : ''}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
         ${escapeHtml(t('cost.refresh'))}
@@ -261,7 +283,7 @@ function _renderFilters() {
   const periods = PERIODS.map(p => `
     <button class="cost-chip ${p === _period ? 'active' : ''}" data-period="${p}">${escapeHtml(t(`cost.period.${p}`))}</button>`).join('');
 
-  const accounts = _report?.accounts || [];
+  const accounts = _activeReport()?.accounts || [];
   let accountChips = '';
   if (accounts.length) {
     const chips = [{ id: 'all', name: t('cost.allAccounts') }, ...accounts.map(a => ({ id: a.id, name: a.name }))];
@@ -285,6 +307,7 @@ function _renderBody() {
   if (_loadError) {
     return `<div class="cost-error">${escapeHtml(t('cost.loadError'))}: ${escapeHtml(_loadError)}</div>`;
   }
+  if (_view === 'automations') return _renderAutomationsBody();
   if (!_report) {
     return `<div class="cost-empty">${escapeHtml(t('cost.loading'))}</div>`;
   }
@@ -525,8 +548,126 @@ function _renderNotes() {
   return `<div class="cost-notes">${notes.map(n => `<p>${escapeHtml(n)}</p>`).join('')}</div>`;
 }
 
+// ── Automations view ────────────────────────────────────────────────────────
+
+function _renderAutomationsBody() {
+  if (!_autoReport) {
+    return `<div class="cost-empty">${escapeHtml(t('cost.loading'))}</div>`;
+  }
+  if (!_autoReport.totals.steps) {
+    return `<div class="cost-empty">${escapeHtml(t('cost.automations.empty'))}</div>`;
+  }
+  return `
+    ${_renderAutomationMetrics()}
+    ${_renderAutomationDaily()}
+    ${_renderAutomationTable()}
+    ${_renderAutomationNotes()}`;
+}
+
+function _renderAutomationMetrics() {
+  const { totals } = _autoReport;
+  const cards = [
+    { label: t('cost.metrics.total'), value: _money(totals.cost) },
+    { label: t('cost.automations.runs'), value: _compact(totals.runs) },
+    { label: t('cost.automations.perRun'), value: _money(totals.runs ? totals.cost / totals.runs : 0) },
+    { label: t('cost.metrics.tokens'), value: _compact(totals.tokens) },
+  ];
+  return `
+    <div class="cost-metrics">
+      ${cards.map(c => `
+        <div class="cost-metric">
+          <div class="cost-metric-value">${escapeHtml(c.value)}</div>
+          <div class="cost-metric-label">${escapeHtml(c.label)}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+function _renderAutomationDaily() {
+  const range = periodRange(_period);
+  const byDate = new Map(_autoReport.byDay.map(d => [d.date, d]));
+  const dates = range.from !== null
+    ? _daysBetween(range.from, range.to ?? Date.now())
+    : _autoReport.byDay.map(d => d.date);
+  const max = Math.max(...dates.map(d => byDate.get(d)?.cost || 0), 0.01);
+  const dense = dates.length > 14;
+  const bars = dates.map((date, i) => {
+    const day = byDate.get(date);
+    const showLabel = !dense || i % Math.ceil(dates.length / 10) === 0;
+    const title = `${_dayLabel(date)} · ${_money(day?.cost || 0)}`;
+    return `
+      <div class="cost-day" title="${escapeHtml(title)}">
+        <div class="cost-day-value">${!dense && day ? escapeHtml(_money(day.cost)) : ''}</div>
+        <div class="cost-day-bar">${day ? `<div class="cost-day-seg" style="height:${(day.cost / max) * 100}%;background:var(--accent)"></div>` : ''}</div>
+        <div class="cost-day-label">${showLabel ? escapeHtml(_dayLabel(date)) : ''}</div>
+      </div>`;
+  }).join('');
+  return `
+    <section class="cost-card">
+      <h3>${escapeHtml(t('cost.sections.daily'))}</h3>
+      <div class="cost-days ${dense ? 'dense' : ''}">${bars}</div>
+    </section>`;
+}
+
+function _renderAutomationTable() {
+  const total = _autoReport.totals.cost;
+  const rows = _autoReport.automations.map(a => {
+    const share = _percent(a.cost, total);
+    const accounts = Object.entries(a.byAccount)
+      .sort((x, y) => y[1] - x[1])
+      .map(([id]) => {
+        const info = _accountInfo(id);
+        return `<span class="cost-auto-account"><span class="cost-dot" style="background:${info.color}"></span>${escapeHtml(info.name)}</span>`;
+      }).join('');
+    return `
+      <tr>
+        <td>
+          <div class="cost-project-name">${escapeHtml(a.name)}${a.deleted ? ` <span class="cost-auto-deleted">${escapeHtml(t('cost.automations.deleted'))}</span>` : ''}</div>
+          <div class="cost-auto-accounts">${accounts}</div>
+        </td>
+        <td class="num">${escapeHtml(_compact(a.runs))}</td>
+        <td class="num">${escapeHtml(_money(a.cost))}</td>
+        <td class="num muted">${escapeHtml(_money(a.avgPerRun))}</td>
+        <td class="share">${_bar(share, 'var(--accent)')}<span>${share}%</span></td>
+        <td class="num muted">${escapeHtml(_shortDate(a.lastRunAt))}</td>
+      </tr>`;
+  }).join('');
+  return `
+    <section class="cost-card">
+      <h3>${escapeHtml(t('cost.automations.byAutomation'))}</h3>
+      <table class="cost-table">
+        <thead><tr>
+          <th>${escapeHtml(t('cost.automations.columns.automation'))}</th>
+          <th class="num">${escapeHtml(t('cost.automations.columns.runs'))}</th>
+          <th class="num">${escapeHtml(t('cost.columns.cost'))}</th>
+          <th class="num">${escapeHtml(t('cost.automations.columns.perRun'))}</th>
+          <th>${escapeHtml(t('cost.columns.share'))}</th>
+          <th class="num">${escapeHtml(t('cost.automations.columns.lastRun'))}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </section>`;
+}
+
+function _renderAutomationNotes() {
+  const notes = [t('cost.note.listPrice'), t('cost.automations.note')];
+  if (_autoReport.unpricedModels?.length) {
+    notes.push(t('cost.note.unpriced', { models: _autoReport.unpricedModels.join(', ') }));
+  }
+  return `<div class="cost-notes">${notes.map(n => `<p>${escapeHtml(n)}</p>`).join('')}</div>`;
+}
+
 function _bindEvents() {
   if (!_container) return;
+  _container.querySelectorAll('[data-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (_view === btn.dataset.view) return;
+      _view = btn.dataset.view;
+      // An account filter picked in one view may not exist in the other.
+      const accounts = _activeReport()?.accounts;
+      if (accounts && _accountFilter !== 'all' && !accounts.some(a => a.id === _accountFilter)) _accountFilter = 'all';
+      _load();
+    });
+  });
   _container.querySelector('[data-action="refresh"]')?.addEventListener('click', () => _load());
   _container.querySelectorAll('[data-period]').forEach(btn => {
     btn.addEventListener('click', () => {

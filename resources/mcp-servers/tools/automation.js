@@ -251,6 +251,13 @@ function buildSimple(args, base) {
     if (resolved.error) return { error: resolved.error };
     simple.account = resolved.value;
   }
+  if (has('max_usage')) {
+    const n = Number(args.max_usage);
+    if (!simpleTask.USAGE_THRESHOLDS.includes(n)) {
+      return { error: `max_usage must be one of ${simpleTask.USAGE_THRESHOLDS.join(', ')} (0 = always run).` };
+    }
+    simple.maxUsage = n;
+  }
 
   if (has('project')) {
     const raw = String(args.project).trim().toLowerCase();
@@ -335,6 +342,7 @@ function summarize(wf, { history = null } = {}) {
   if (s.cwd) lines.push(`  Cwd:      ${s.cwd}`);
   if (s.model || s.effort) lines.push(`  Model:    ${s.model || 'app default'}${s.effort ? ` (effort: ${s.effort})` : ''}`);
   lines.push(`  Account:  ${accountLabel(s.account)}`);
+  if (s.maxUsage) lines.push(`  Gate:     skipped while session or weekly usage is at or above ${s.maxUsage}%`);
 
   const channels = [s.notify.desktop ? 'desktop' : null, s.notify.discord ? 'discord' : null].filter(Boolean);
   lines.push(`  Notify:   ${channels.length ? channels.join(' + ') : 'off'}${s.notify.includeResult && channels.length ? ' (includes the result)' : ''}`);
@@ -366,6 +374,12 @@ const SIMPLE_FIELDS = {
       'Claude account the run authenticates as: "default" (the default account, the initial value), '
       + '"project" (the account the target project is bound to, or the default when it has none), '
       + 'or an account name or ID.',
+  },
+  max_usage: {
+    type: 'number',
+    description:
+      'Skip automatic runs while that account\'s session (5-hour) or weekly usage is at or above this percentage: '
+      + '0 (always run, the default), 50, 60, 70, 75, 80, 85, 90 or 95. A manual run is never skipped.',
   },
 
   when: {

@@ -109,13 +109,14 @@ describe('runSinglePrompt', () => {
   const SOURCE = fs.readFileSync(path.join(SERVICES_DIR, 'ChatService.js'), 'utf8');
 
   /** ChatService with the SDK and AccountManager mocked; returns the options handed to query(). */
-  function load(accountManager) {
+  function load(accountManager, { messages = [{ type: 'result', result: 'done' }], costService = { recordAutomationRun: jest.fn(async () => null) } } = {}) {
     const module = { exports: {} };
-    const query = jest.fn(() => ({ async *[Symbol.asyncIterator]() { yield { type: 'result', result: 'done' }; } }));
+    const query = jest.fn(() => ({ async *[Symbol.asyncIterator]() { for (const m of messages) yield m; } }));
     const mocks = {
       electron: { app: { isPackaged: false, getAppPath: () => '/mock/app' }, BrowserWindow: { getAllWindows: () => [] } },
       './ModelCatalogService': { setFetcher() {}, setCliVersion() {} },
       './AccountManager': accountManager,
+      './CostService': costService,
       './ChromeBridgeService': { getSessionConfig: () => null },
       './RemoteControlService': { onSessionClosed() {} },
       '../utils/sdkCli': { getSdkCliPath: () => '/fake/claude', getSdkCliVersion: () => null },
@@ -140,6 +141,48 @@ describe('runSinglePrompt', () => {
   }
 
   const accounts = [{ id: 'acc-work', name: 'Work' }];
+
+  test('an automation step reports its account, is priced, then its session is deleted', async () => {
+    const { encodeProjectPath } = require('../../src/shared/session-dirs');
+    const sessionId = 'aaaa-1111';
+    const base = path.join(home, '.claude', 'projects', encodeProjectPath(boundDir));
+    fs.mkdirSync(path.join(base, sessionId, 'subagents'), { recursive: true });
+    fs.writeFileSync(path.join(base, `${sessionId}.jsonl`), '{}\n');
+    fs.writeFileSync(path.join(base, sessionId, 'subagents', 'agent-1.jsonl'), '{}\n');
+
+    const am = { listAccounts: jest.fn(async () => ({ accounts, liveId: 'acc-live' })), accountEnv: jest.fn(), ownsLiveStore: jest.fn() };
+    const costService = { recordAutomationRun: jest.fn(async () => null) };
+    const { service } = load(am, {
+      messages: [{ type: 'system', subtype: 'init', session_id: sessionId }, { type: 'result', result: 'done' }],
+      costService,
+    });
+    const noteAccount = jest.fn();
+    await service.runSinglePrompt({
+      cwd: boundDir, prompt: 'x',
+      automation: { workflowId: 'wf-1', workflowName: 'Recap', runId: 'run-1', noteAccount },
+    });
+
+    // No account named: the run spent whichever account holds the machine-wide login.
+    expect(noteAccount).toHaveBeenCalledWith('acc-live');
+    expect(costService.recordAutomationRun).toHaveBeenCalledWith(expect.objectContaining({
+      workflowId: 'wf-1', runId: 'run-1', accountId: 'acc-live',
+      files: [path.join(base, `${sessionId}.jsonl`), path.join(base, sessionId, 'subagents', 'agent-1.jsonl')],
+    }));
+    expect(fs.existsSync(path.join(base, `${sessionId}.jsonl`))).toBe(false);
+    expect(fs.existsSync(path.join(base, sessionId))).toBe(false);
+  });
+
+  test('a node tested from the editor belongs to no automation: nothing is priced', async () => {
+    const am = { listAccounts: jest.fn(), accountEnv: jest.fn(), ownsLiveStore: jest.fn() };
+    const costService = { recordAutomationRun: jest.fn() };
+    const { service } = load(am, {
+      messages: [{ type: 'system', subtype: 'init', session_id: 'bbbb-2222' }, { type: 'result', result: 'done' }],
+      costService,
+    });
+    await service.runSinglePrompt({ cwd: boundDir, prompt: 'x' });
+    expect(costService.recordAutomationRun).not.toHaveBeenCalled();
+    expect(am.listAccounts).not.toHaveBeenCalled();
+  });
 
   test('no account: the machine-wide login, AccountManager untouched', async () => {
     const am = { listAccounts: jest.fn(), accountEnv: jest.fn(), ownsLiveStore: jest.fn() };

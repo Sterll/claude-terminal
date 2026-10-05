@@ -115,6 +115,50 @@ const TRIGGER_PROJECT = '__trigger__';
  */
 const PROJECT_ACCOUNT = '__project__';
 
+/**
+ * The usage ceilings offered for `maxUsage`, in percent. 0 is "always run".
+ * A fixed list rather than a free number: below 50 the gate would skip most
+ * runs of a normal week, and steps of 5 are finer than the API's own rounding
+ * makes meaningful.
+ */
+const USAGE_THRESHOLDS = [0, 50, 60, 70, 75, 80, 85, 90, 95];
+
+/**
+ * Every Claude step of a workflow, as its configuration: the graph's Claude
+ * nodes when there is a graph, the legacy step list otherwise. What the run
+ * gates and the account checks look at, so both see the same steps the runner
+ * will execute.
+ *
+ * @param {Object} workflow
+ * @returns {Array<Object>}
+ */
+function claudeStepsOf(workflow) {
+  if (Array.isArray(workflow?.graph?.nodes)) {
+    return workflow.graph.nodes
+      .filter(n => n?.type === 'workflow/claude')
+      .map(n => ({ ...(n.properties || {}), _nodeId: n.id }));
+  }
+  return (workflow?.steps || []).filter(s => s && (s.type === 'claude' || s.type === 'agent'));
+}
+
+/**
+ * The account ids a workflow names explicitly. The default account and the
+ * project's account are not ids, so they are left out: deleting an account
+ * cannot break a step that does not name it.
+ *
+ * @param {Object} workflow
+ * @returns {string[]}
+ */
+function accountsUsedBy(workflow) {
+  const ids = new Set();
+  const add = (value) => {
+    if (typeof value === 'string' && value && value !== PROJECT_ACCOUNT) ids.add(value);
+  };
+  for (const step of claudeStepsOf(workflow)) add(step.account);
+  if (workflow?.mode === 'simple') add(workflow.simple?.account);
+  return [...ids];
+}
+
 const DEFAULT_SIMPLE = {
   prompt:    '',
   projectId: '',
@@ -126,6 +170,9 @@ const DEFAULT_SIMPLE = {
   // Which Claude account the run authenticates as: '' = the default account,
   // PROJECT_ACCOUNT = the target project's binding, anything else an account id.
   account:   '',
+  // Skip the run when that account's session or weekly usage is at or above
+  // this percentage. 0 = always run.
+  maxUsage:  0,
   // Named `when` because it now holds either a clock schedule or an event.
   // Tasks saved before events existed carry `schedule`; normalizeSimple migrates.
   when:      { ...DEFAULT_SCHEDULE },
@@ -383,6 +430,7 @@ function normalizeSimple(raw) {
     model:     typeof src.model  === 'string' ? src.model  : DEFAULT_SIMPLE.model,
     effort:    typeof src.effort === 'string' ? src.effort : DEFAULT_SIMPLE.effort,
     account:   typeof src.account === 'string' ? src.account : DEFAULT_SIMPLE.account,
+    maxUsage:  clampInt(src.maxUsage, 0, 100, DEFAULT_SIMPLE.maxUsage),
     when: {
       kind,
       time:    /^\d{1,2}:\d{2}$/.test(rawWhen.time || '') ? rawWhen.time : DEFAULT_SCHEDULE.time,
@@ -515,6 +563,7 @@ function buildSimpleGraph(simple, name) {
       model: s.model,
       effort: s.effort,
       account: s.account,
+      maxUsage: s.maxUsage,
       outputSchema: null,
       // Both are written: `cwd` is what claude.node.js executes in, `projectId`
       // is what the advanced editor's project picker reads back. The sentinel
@@ -708,6 +757,9 @@ module.exports = {
   ANY_PROJECT,
   TRIGGER_PROJECT,
   PROJECT_ACCOUNT,
+  USAGE_THRESHOLDS,
+  claudeStepsOf,
+  accountsUsedBy,
   EVENT_KINDS,
   EVENT_KIND_NAMES,
   WHEN_KINDS,

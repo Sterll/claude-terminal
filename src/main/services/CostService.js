@@ -604,6 +604,14 @@ function spendSeries(ctx, accountId, from) {
     const cost = recordCost(rec);
     if (cost) points.push([rec.t, cost]);
   }
+  // Automation steps are spend of this machine too, and their transcripts are
+  // gone by now: without them every unattended run would be counted as
+  // somebody else's share of the percentage.
+  for (const run of readAutomationRuns()) {
+    if (run.at < from || (run.accountId || UNKNOWN_ACCOUNT) !== accountId) continue;
+    const cost = automationRunCost(run).cost;
+    if (cost) points.push([run.at, cost]);
+  }
   points.sort((a, b) => a[0] - b[0]);
   const times = new Float64Array(points.length);
   const cumulative = new Float64Array(points.length + 1);
@@ -702,6 +710,191 @@ async function getQuotaEstimate({ accountId, utilization, resetsAt } = {}) {
   return result;
 }
 
+// ── Automations ─────────────────────────────────────────────────────────────
+//
+// An automation step runs in a throwaway Claude session whose transcript is
+// deleted as soon as the step ends, so the scan above never sees it (or sees
+// it mid-run and forgets it on the next pass). Its usage is therefore read
+// out of the transcript just before the deletion and kept here, one line per
+// step, tagged with the automation, the run and the account it ran on.
+//
+// An append-only JSON Lines file rather than a JSON document: nothing is ever
+// rewritten, so a torn last line costs that one step and nothing else, and a
+// file that cannot be read can never be replaced by an empty one.
+
+function automationRunsFile() {
+  return path.join(dataDir(), 'cost', 'automation-runs.jsonl');
+}
+
+/**
+ * Price one automation step from its transcripts and record it.
+ *
+ * `since` is when the step started. A step that resumes a conversation runs
+ * in a fork, which carries a copy of that conversation's history with the
+ * original timestamps: those turns were already spent (and counted) by the
+ * chat they came from, so anything older than the step is left out.
+ *
+ * @param {Object} args
+ * @param {string[]} args.files       the step's transcript and its subagents'
+ * @param {number}   [args.since]     epoch ms, when the step started
+ * @param {string}   args.workflowId
+ * @param {string}   [args.workflowName]
+ * @param {string}   [args.runId]
+ * @param {string|null} [args.accountId]  the account the step authenticated as
+ * @param {number}   [args.at]        epoch ms, when it finished
+ * @returns {Promise<Object|null>} the record written, or null when there was nothing to price
+ */
+async function recordAutomationRun({ files = [], since = 0, workflowId, workflowName = '', runId = null, accountId = null, at = Date.now() } = {}) {
+  if (!workflowId) return null;
+  const messages = new Map();
+  for (const file of files) {
+    let text;
+    try {
+      text = await fs.promises.readFile(file, 'utf8');
+    } catch {
+      continue;
+    }
+    for (const line of text.split('\n')) {
+      const rec = parseLine(line);
+      if (rec && rec.t >= since) mergeRecord(messages, rec);
+    }
+  }
+  if (!messages.size) return null;
+
+  // One bucket per model and speed: the price is a property of both.
+  const buckets = new Map();
+  for (const rec of messages.values()) {
+    const key = `${rec.m}\u0000${rec.f ? 1 : 0}`;
+    if (!buckets.has(key)) buckets.set(key, { m: rec.m, f: rec.f, i: 0, o: 0, w5: 0, w1: 0, r: 0, n: 0 });
+    const b = buckets.get(key);
+    b.i += rec.i; b.o += rec.o; b.w5 += rec.w5; b.w1 += rec.w1; b.r += rec.r; b.n += 1;
+  }
+  const record = { v: 1, at, workflowId, workflowName, runId, accountId: accountId || null, buckets: [...buckets.values()] };
+  const file = automationRunsFile();
+  try {
+    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+    await fs.promises.appendFile(file, JSON.stringify(record) + '\n');
+  } catch (err) {
+    console.warn('[CostService] could not record automation run:', err.message);
+    return null;
+  }
+  return record;
+}
+
+/**
+ * Every recorded automation step. A line that does not parse is skipped:
+ * the last one may have been cut short by a crash mid-append.
+ * @returns {Array<Object>}
+ */
+function readAutomationRuns() {
+  let text;
+  try {
+    text = fs.readFileSync(automationRunsFile(), 'utf8');
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      const run = JSON.parse(line);
+      if (run && run.workflowId && Number.isFinite(run.at) && Array.isArray(run.buckets)) out.push(run);
+    } catch {
+      // A torn line: that step is lost, the others are not.
+    }
+  }
+  return out;
+}
+
+/**
+ * @param {Object} run  a recorded step
+ * @returns {{ cost: number, tokens: number, unpriced: string[] }}
+ */
+function automationRunCost(run) {
+  let cost = 0;
+  let tokens = 0;
+  const unpriced = [];
+  for (const b of run.buckets) {
+    const value = costOf(b.m, { input: b.i, output: b.o, cacheWrite5m: b.w5, cacheWrite1h: b.w1, cacheRead: b.r }, { fast: !!b.f });
+    if (value === null) unpriced.push(b.m);
+    cost += value || 0;
+    tokens += (b.i || 0) + (b.o || 0) + (b.w5 || 0) + (b.w1 || 0) + (b.r || 0);
+  }
+  return { cost, tokens, unpriced };
+}
+
+/**
+ * What the automations cost in [from, to), per automation.
+ *
+ * Names are the ones recorded with each step; the caller swaps in current
+ * names, since an automation can be renamed after it ran.
+ *
+ * @param {{ from?: number, to?: number, accountId?: string|null }} [range]
+ * @returns {Object}
+ */
+function getAutomationReport({ from = 0, to = Infinity, accountId: onlyAccount = null } = {}) {
+  const accounts = readAccounts();
+  const known = new Set(accounts.map(a => a.id));
+  const totals = { cost: 0, tokens: 0, runs: 0, steps: 0 };
+  const byAutomation = new Map();
+  const daysAgg = new Map();
+  const unpriced = new Set();
+  const runIds = new Set();
+
+  for (const run of readAutomationRuns()) {
+    if (run.at < from || run.at >= to) continue;
+    const accountId = run.accountId && known.has(run.accountId) ? run.accountId : UNKNOWN_ACCOUNT;
+    if (onlyAccount && accountId !== onlyAccount) continue;
+    const { cost, tokens, unpriced: missing } = automationRunCost(run);
+    missing.forEach(m => unpriced.add(m));
+
+    totals.cost += cost;
+    totals.tokens += tokens;
+    totals.steps += 1;
+    // A run with several Claude steps is one run, not several.
+    const runKey = run.runId || `${run.workflowId}:${run.at}`;
+    if (!runIds.has(runKey)) { runIds.add(runKey); totals.runs += 1; }
+
+    if (!byAutomation.has(run.workflowId)) {
+      byAutomation.set(run.workflowId, {
+        workflowId: run.workflowId, name: run.workflowName || run.workflowId,
+        cost: 0, tokens: 0, runs: new Set(), lastRunAt: 0, byAccount: {}, byModel: {},
+      });
+    }
+    const agg = byAutomation.get(run.workflowId);
+    agg.cost += cost;
+    agg.tokens += tokens;
+    agg.runs.add(runKey);
+    if (run.at >= agg.lastRunAt) {
+      agg.lastRunAt = run.at;
+      if (run.workflowName) agg.name = run.workflowName;
+    }
+    agg.byAccount[accountId] = (agg.byAccount[accountId] || 0) + cost;
+    for (const b of run.buckets) {
+      const model = normalizeModelId(b.m);
+      agg.byModel[model] = (agg.byModel[model] || 0)
+        + (costOf(b.m, { input: b.i, output: b.o, cacheWrite5m: b.w5, cacheWrite1h: b.w1, cacheRead: b.r }, { fast: !!b.f }) || 0);
+    }
+
+    const day = localDay(run.at);
+    if (!daysAgg.has(day)) daysAgg.set(day, { date: day, cost: 0 });
+    daysAgg.get(day).cost += cost;
+  }
+
+  const automations = [...byAutomation.values()]
+    .map(a => ({ ...a, runs: a.runs.size, avgPerRun: a.runs.size ? a.cost / a.runs.size : 0 }))
+    .sort((a, b) => b.cost - a.cost);
+  return {
+    generatedAt: Date.now(),
+    range: { from: Number.isFinite(from) ? from : null, to: Number.isFinite(to) ? to : null },
+    totals,
+    accounts,
+    automations,
+    byDay: [...daysAgg.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    unpricedModels: [...unpriced],
+  };
+}
+
 /** Test hook: forget everything held in memory. */
 function _reset() {
   _files.clear();
@@ -715,6 +908,8 @@ function _reset() {
 module.exports = {
   getReport,
   getQuotaEstimate,
+  getAutomationReport,
+  recordAutomationRun,
   scan,
   noteLiveAccount,
   noteSessionAccount,

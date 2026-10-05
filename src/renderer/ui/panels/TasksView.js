@@ -19,12 +19,12 @@ const { can } = require('../../../shared/remote-capabilities');
 const { showContextMenu } = require('../components/ContextMenu');
 const { upgradeSelectsToDropdowns } = require('./WorkflowHelpers');
 const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../../shared/model-options');
-const { accountChoices, hasAccountChoice } = require('../../utils/accountChoices');
+const { accountChoices, hasAccountChoice, accountBadge } = require('../../utils/accountChoices');
 const {
   TASK_PRESETS, MAX_MONTH_DAY, DEFAULT_SIMPLE,
   normalizeSimple, compileTask, describeSchedule, nextRunForTask,
   isSimpleTask, validateTask, scheduleToCron, splitTime, isEventKind, EVENT_KINDS,
-  ANY_PROJECT, TRIGGER_PROJECT,
+  ANY_PROJECT, TRIGGER_PROJECT, USAGE_THRESHOLDS,
 } = require('../../../shared/simple-task');
 
 const { nextRunAt } = require('../../../shared/cron');
@@ -125,6 +125,7 @@ function taskCardHtml(wf, runs) {
   const next     = formatNextRun(nextRunForTask(wf));
   const proj     = projectName(simple.projectId);
   const watches  = watchLabel(simple);
+  const account  = accountBadge(simple.account, simple.projectId === TRIGGER_PROJECT ? '' : simple.projectId);
   const isRunning = lastRun?.status === 'running';
 
   const statusClass = lastRun ? `auto-card-status--${escapeHtml(lastRun.status)}` : '';
@@ -141,6 +142,9 @@ function taskCardHtml(wf, runs) {
           <span class="auto-chip auto-chip--schedule">${icon('clock', 11)} ${escapeHtml(scheduleLabel(simple))}</span>
           ${watches ? `<span class="auto-chip">${escapeHtml(watches)}</span>` : ''}
           ${proj ? `<span class="auto-chip">${escapeHtml(proj)}</span>` : ''}
+          ${account ? `<span class="auto-chip auto-chip--account${account.missing ? ' auto-chip--danger' : ''}" title="${escapeHtml(account.title)}">
+               <span class="auto-account-dot" style="background:${account.color}"></span>${escapeHtml(account.name)}</span>` : ''}
+          ${simple.maxUsage ? `<span class="auto-chip" title="${escapeHtml(t('automation.form.maxUsageHint'))}">${escapeHtml(t('automation.card.maxUsage', { percent: simple.maxUsage }))}</span>` : ''}
           ${simple.useContext ? `<span class="auto-chip">${escapeHtml(t('automation.card.withContext'))}</span>` : ''}
           ${wf.enabled && next
             ? `<span class="auto-chip auto-chip--next">${escapeHtml(next)}</span>`
@@ -705,7 +709,7 @@ function openTaskModal(deps, existing, preset = null) {
           </label>
         </div>
 
-        <details class="auto-advanced"${simple.model !== DEFAULT_SIMPLE.model || simple.effort !== DEFAULT_SIMPLE.effort || simple.account !== DEFAULT_SIMPLE.account ? ' open' : ''}>
+        <details class="auto-advanced"${simple.model !== DEFAULT_SIMPLE.model || simple.effort !== DEFAULT_SIMPLE.effort || simple.account !== DEFAULT_SIMPLE.account || simple.maxUsage !== DEFAULT_SIMPLE.maxUsage ? ' open' : ''}>
           <summary class="auto-advanced-summary">${escapeHtml(t('automation.form.advanced'))}</summary>
           <div class="auto-advanced-body">
             ${hasAccountChoice(simple.account) ? `
@@ -716,6 +720,13 @@ function openTaskModal(deps, existing, preset = null) {
                   `<option value="${escapeHtml(o.value)}"${simple.account === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}
               </select>
             </div>` : ''}
+            <div class="auto-field auto-field--inline">
+              <span class="auto-field-label" title="${escapeHtml(t('automation.form.maxUsageHint'))}">${escapeHtml(t('automation.form.maxUsage'))}</span>
+              <select class="auto-input" data-dropdown id="auto-max-usage" title="${escapeHtml(t('automation.form.maxUsageHint'))}">
+                ${USAGE_THRESHOLDS.map(n =>
+                  `<option value="${n}"${simple.maxUsage === n ? ' selected' : ''}>${escapeHtml(n ? `${n}%` : t('automation.form.maxUsageOff'))}</option>`).join('')}
+              </select>
+            </div>
             <div class="auto-field auto-field--inline">
               <span class="auto-field-label">${escapeHtml(t('automation.form.model'))}</span>
               <select class="auto-input" data-dropdown id="auto-model">
@@ -968,6 +979,7 @@ function openTaskModal(deps, existing, preset = null) {
         effort: $('#auto-effort').value,
         // Absent when no account is captured: keep whatever was stored.
         account: $('#auto-account') ? $('#auto-account').value : simple.account,
+        maxUsage: parseInt($('#auto-max-usage').value, 10) || 0,
         notify: {
           desktop:       $('#auto-notify-desktop').checked,
           includeResult: $('#auto-notify-result').checked,

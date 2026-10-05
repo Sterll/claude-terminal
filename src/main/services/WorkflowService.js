@@ -483,7 +483,125 @@ class WorkflowService {
       // parallel — fall through to execute
     }
 
+    const gate = await this._usageGate(workflow, opts);
+    if (gate) return this._recordSkippedRun(workflow, opts, gate);
+
     return this._startRun(workflow, opts);
+  }
+
+  // ─── Usage gate ──────────────────────────────────────────────────────────────
+
+  /**
+   * Whether a Claude step's `maxUsage` should hold this run back.
+   *
+   * Checked before the run starts, not inside the step, so a gated automation
+   * does nothing at all: no earlier shell or git step runs on its behalf only
+   * for the Claude step to bail out halfway.
+   *
+   * Only automatic runs are gated. Pressing "Run now", or asking for a run
+   * through the MCP tools, is a person deciding to spend the quota.
+   *
+   * A reading that cannot be had (no token, API down) lets the run through: a
+   * gate that fails closed would silently stop every automation the first
+   * time the usage endpoint hiccups.
+   *
+   * @param {Object} workflow
+   * @param {Object} opts  the trigger options
+   * @returns {Promise<Object|null>} what blocked it, or null to run
+   */
+  async _usageGate(workflow, opts = {}) {
+    const source = opts.source || 'manual';
+    if (source === 'manual' || source === 'mcp') return null;
+    const { claudeStepsOf } = require('../../shared/simple-task');
+    const steps = claudeStepsOf(workflow).filter(s => Number(s.maxUsage) > 0);
+    if (!steps.length) return null;
+
+    const { resolveVars, resolveProjectPath } = require('../workflow-nodes/_registry');
+    const { resolveRunAccount } = require('../workflow-nodes/_projects');
+    const projectPath = opts.projectPath || this._resolveProjectPath(workflow) || '';
+    const vars = new Map([['ctx', { project: projectPath }], ['trigger', opts.triggerData || {}]]);
+
+    for (const step of steps) {
+      // The same target the Claude node will resolve once the run starts.
+      const rawCwd = resolveVars(step.cwd || '', vars);
+      const cwd = (typeof rawCwd === 'string' && !rawCwd.startsWith('$') ? rawCwd : '')
+        || resolveProjectPath(step.projectId || '', vars)
+        || projectPath;
+      const accountId = resolveRunAccount(step.account, { projectRef: step.projectId || '', cwd, vars });
+      const peak = await this._usagePeak(accountId);
+      const threshold = Number(step.maxUsage);
+      if (peak && peak.utilization >= threshold) return { ...peak, threshold, accountId };
+    }
+    return null;
+  }
+
+  /**
+   * The higher of an account's session and weekly usage, from figures at most
+   * five minutes old. Windows past their reset are ignored: their figure
+   * describes a window that has already closed.
+   *
+   * @param {string|null} accountId  null = the machine-wide login
+   * @returns {Promise<{ bucket: string, utilization: number, resetsAt: string|null }|null>}
+   */
+  async _usagePeak(accountId) {
+    try {
+      const usage = await require('./UsageService').usageForAccount(accountId || null);
+      const now = Date.now();
+      let top = null;
+      for (const b of usage?.data?.buckets || []) {
+        if ((b.type !== 'session' && b.type !== 'weekly') || typeof b.utilization !== 'number') continue;
+        if (b.resetsAt && Date.parse(b.resetsAt) <= now) continue;
+        if (!top || b.utilization > top.utilization) {
+          top = { bucket: b.type, utilization: b.utilization, resetsAt: b.resetsAt || null };
+        }
+      }
+      return top;
+    } catch (err) {
+      console.warn('[WorkflowService] usage unavailable, not gating the run:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Record a run the usage gate held back, so the history says why the
+   * automation did not run instead of showing nothing at all.
+   */
+  async _recordSkippedRun(workflow, opts, gate) {
+    let accountId = gate.accountId;
+    if (!accountId) {
+      try {
+        accountId = (await require('./AccountManager').listAccounts({ includeCredentials: false })).liveId || null;
+      } catch { /* shown as the machine-wide login */ }
+    }
+    const now = new Date().toISOString();
+    const reason = `Skipped: ${gate.bucket} usage at ${Math.round(gate.utilization)}% (limit ${gate.threshold}%)`;
+    const run = {
+      id:           `run_${crypto.randomUUID().slice(0, 12)}`,
+      workflowId:   workflow.id,
+      workflowName: workflow.name,
+      status:       RUN_STATUS.SKIPPED,
+      trigger:      opts.source || 'manual',
+      triggerData:  opts.triggerData || {},
+      startedAt:    now,
+      finishedAt:   now,
+      duration:     '0s',
+      steps:        this._buildRunSteps(workflow, RUN_STATUS.SKIPPED),
+      skip: {
+        reason:      'usage',
+        bucket:      gate.bucket,
+        utilization: gate.utilization,
+        threshold:   gate.threshold,
+        resetsAt:    gate.resetsAt,
+      },
+      ...(accountId ? { accounts: [accountId] } : {}),
+    };
+    await storage.appendRun(run);
+    this._send('workflow-run-start', { run });
+    this._send('workflow-run-end', {
+      runId: run.id, workflowId: workflow.id, status: run.status,
+      duration: run.duration, error: reason, accounts: run.accounts || [],
+    });
+    return { success: false, skipped: true, runId: run.id, error: reason };
   }
 
   /**
@@ -608,6 +726,24 @@ class WorkflowService {
 
   // ─── Core run logic ──────────────────────────────────────────────────────────
 
+  /** Step list from graph or legacy steps, sorted by execution order (BFS). */
+  _buildRunSteps(workflow, status) {
+    if (workflow.graph && workflow.graph.nodes) {
+      return this._bfsNodeOrder(workflow.graph).map(n => ({
+        id:     `node_${n.id}`,
+        type:   n.type.replace('workflow/', ''),
+        status,
+        duration: null,
+      }));
+    }
+    return (workflow.steps || []).map(s => ({
+      id:     s.id,
+      type:   s.type,
+      status,
+      duration: null,
+    }));
+  }
+
   async _startRun(workflow, opts = {}, inProgress = new Set()) {
     const runId      = `run_${crypto.randomUUID().slice(0, 12)}`;
     const startedAt  = new Date().toISOString();
@@ -619,24 +755,7 @@ class WorkflowService {
     const contextVars = await this._buildContext(workflow, projectPath);
     contextVars.projectPath = projectPath; // Pass to runner for ctx.project
 
-    // Build step list from graph or legacy steps — sorted by execution order (BFS)
-    let runSteps;
-    if (workflow.graph && workflow.graph.nodes) {
-      const ordered = this._bfsNodeOrder(workflow.graph);
-      runSteps = ordered.map(n => ({
-        id:     `node_${n.id}`,
-        type:   n.type.replace('workflow/', ''),
-        status: RUN_STATUS.PENDING,
-        duration: null,
-      }));
-    } else {
-      runSteps = (workflow.steps || []).map(s => ({
-        id:     s.id,
-        type:   s.type,
-        status: RUN_STATUS.PENDING,
-        duration: null,
-      }));
-    }
+    const runSteps = this._buildRunSteps(workflow, RUN_STATUS.PENDING);
 
     const run = {
       id:          runId,
@@ -783,6 +902,8 @@ class WorkflowService {
       duration: `${duration}s`,
       finishedAt: new Date().toISOString(),
       steps: finalSteps,
+      // The accounts its Claude steps ran on, as they reported them.
+      ...(Array.isArray(run.accounts) && run.accounts.length ? { accounts: run.accounts } : {}),
     };
     await storage.updateRun(run.id, patch);
 
@@ -813,6 +934,7 @@ class WorkflowService {
       status,
       duration:   patch.duration,
       error:      result.error,
+      accounts:   patch.accounts || [],
     });
 
     // Notify on_workflow triggers (timeout counts as a non-success completion)

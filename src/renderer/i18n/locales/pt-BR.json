@@ -2388,6 +2388,25 @@
       "listPrice": "Os valores são preços de tabela da API para os tokens usados. Uma assinatura não os cobra: eles medem quanto do limite do plano o trabalho consumiu.",
       "estimated": "{cost} é anterior a {date}, quando o rastreamento de contas começou, e é atribuído à conta conectada nessa data.",
       "unpriced": "Nenhum preço conhecido para: {models}"
+    },
+    "views": {
+      "overview": "Visão geral",
+      "automations": "Automações"
+    },
+    "automations": {
+      "subtitle": "Quanto custa cada automação, pelo preço de tabela da API.",
+      "empty": "Nenhuma automação rodou neste período. Os custos são registrados a partir desta versão.",
+      "runs": "Execuções",
+      "perRun": "Por execução",
+      "byAutomation": "Por automação",
+      "deleted": "excluída",
+      "note": "As execuções de automações são contadas aqui e não na visão geral: a conversa delas é excluída ao terminar, então cada execução é precificada logo antes.",
+      "columns": {
+        "automation": "Automação",
+        "runs": "Execuções",
+        "perRun": "Por execução",
+        "lastRun": "Última"
+      }
     }
   },
   "connectivity": {
@@ -3275,7 +3294,8 @@
       "deletedLabel": "Excluído",
       "stopTitle": "Parar execução",
       "workflowDeleted": "Workflow excluído",
-      "rerun": "Executar novamente"
+      "rerun": "Executar novamente",
+      "skippedUsage": "Não executado: uso de {bucket} em {percent}%, limite {threshold}%"
     },
     "editor": {
       "unsavedChanges": "Alterações não salvas",
@@ -3384,7 +3404,8 @@
         "failed": "Falhou",
         "running": "Em execução",
         "pending": "Pendente",
-        "cancelled": "Cancelado"
+        "cancelled": "Cancelado",
+        "skipped": "Ignorado"
       },
       "triggerDesc": {
         "cron": "Agendado em horários fixos",
@@ -4149,7 +4170,8 @@
     "usageRefresh": "Atualizar uso",
     "limitedUntil": "Disponível novamente em {time}",
     "allLimited": "Todas as contas salvas atingiram um limite.",
-    "allLimitedUntil": "Todas as contas salvas atingiram um limite. A primeira volta a ficar disponível em {time}."
+    "allLimitedUntil": "Todas as contas salvas atingiram um limite. A primeira volta a ficar disponível em {time}.",
+    "removeBlockedAutomations": "Ainda usada por {count} automação(ões): {automations}. Escolha outra conta para elas primeiro."
   },
   "usage": {
     "staleRetry": "Os dados de uso podem estar desatualizados - a última atualização falhou. Próxima tentativa às {time}; clique para tentar agora. {error}",
@@ -4174,7 +4196,8 @@
       "runNow": "Executar agora",
       "more": "Mais ações",
       "watches": "Observa {projects}",
-      "withContext": "Com conversa"
+      "withContext": "Com conversa",
+      "maxUsage": "Até {percent}%"
     },
     "empty": {
       "title": "Automatize uma tarefa recorrente",
@@ -4247,7 +4270,10 @@
       "triggerProject": "O projeto que a disparou",
       "contextLabel": "Conversa",
       "useContext": "Continuar a conversa que a disparou",
-      "useContextHint": "O Claude retoma uma cópia dessa conversa — sua própria sessão fica intacta — e é informado de quais arquivos ela alterou. Use isto para que um auto-commit só toque no trabalho dessa conversa quando várias sessões do Claude compartilham um repositório."
+      "useContextHint": "O Claude retoma uma cópia dessa conversa — sua própria sessão fica intacta — e é informado de quais arquivos ela alterou. Use isto para que um auto-commit só toque no trabalho dessa conversa quando várias sessões do Claude compartilham um repositório.",
+      "maxUsage": "Limite de uso",
+      "maxUsageOff": "Sempre executar",
+      "maxUsageHint": "Pula as execuções automáticas enquanto o uso de sessão (5 h) ou semanal da conta estiver neste nível ou acima. Executar manualmente sempre funciona."
     },
     "menu": {
       "edit": "Editar",

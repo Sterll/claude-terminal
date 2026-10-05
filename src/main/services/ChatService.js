@@ -2413,10 +2413,14 @@ class ChatService {
   /**
    * Run a single prompt through the SDK (no streaming input, no session to manage).
    * Used by WorkflowRunner for Claude/agent steps — the stream terminates on its own.
-   * @param {Object} opts - { cwd, prompt, model, effort, maxTurns, accountId, permissionMode, outputFormat, skills, onMessage, signal }
+   * @param {Object} opts - { cwd, prompt, model, effort, maxTurns, accountId, automation, permissionMode, outputFormat, skills, onMessage, signal }
+   *   `automation` ({ workflowId, workflowName, runId, noteAccount }) is set when
+   *   the step belongs to a workflow run: the account it ran on is reported
+   *   through `noteAccount`, and its tokens are priced under that workflow
+   *   before the transcript is deleted.
    * @returns {Promise<{ output: string, success: boolean, ... }>}
    */
-  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, accountId = null, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
+  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, accountId = null, automation = null, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
     // A workflow step runs the local CLI. A remote project's path does not
     // exist here, and falling back to the home directory would run the step
     // somewhere the user never asked for.
@@ -2440,6 +2444,20 @@ class ChatService {
       }
       if (overlay) runtime.env = { ...runtime.env, ...overlay };
     }
+
+    // The account this step is really spending: the named one, or whichever
+    // account holds the machine-wide login right now. Resolved once, here,
+    // so the run history and the cost record cannot disagree.
+    let effectiveAccountId = accountId;
+    if (automation && !effectiveAccountId) {
+      try {
+        effectiveAccountId = (await AccountManager.listAccounts({ includeCredentials: false })).liveId || null;
+      } catch {
+        effectiveAccountId = null;
+      }
+    }
+    automation?.noteAccount?.(effectiveAccountId);
+    const startedAt = Date.now();
 
     const abortController = new AbortController();
     if (signal) {
@@ -2528,6 +2546,23 @@ class ChatService {
       // NEW id, but if a future SDK ever ignored it we would be deleting the
       // user's own conversation. Cheap check, unrecoverable loss if wrong.
       if (workflowSessionId && workflowSessionId !== resume) {
+        // Price the step first: once the transcript is gone, nothing records
+        // what it spent. Also on failure or cancel, which spent tokens too.
+        if (automation?.workflowId) {
+          try {
+            const { file, dir } = _workflowSessionPaths(resolvedCwd, workflowSessionId);
+            await require('./CostService').recordAutomationRun({
+              files: [file, ..._listJsonl(path.join(dir, 'subagents'))],
+              since: startedAt,
+              workflowId: automation.workflowId,
+              workflowName: automation.workflowName,
+              runId: automation.runId,
+              accountId: effectiveAccountId,
+            });
+          } catch (e) {
+            console.warn(`[ChatService] Could not record automation cost: ${e.message}`);
+          }
+        }
         _deleteWorkflowSession(resolvedCwd, workflowSessionId);
       }
     }
@@ -3317,6 +3352,15 @@ function _workflowSessionPaths(cwd, sessionId) {
   const { encodeProjectPath } = require('../../shared/session-dirs');
   const base = path.join(require('os').homedir(), '.claude', 'projects', encodeProjectPath(cwd));
   return { file: path.join(base, `${sessionId}.jsonl`), dir: path.join(base, sessionId) };
+}
+
+/** The `.jsonl` files directly inside `dir`, or none when it does not exist. */
+function _listJsonl(dir) {
+  try {
+    return fs.readdirSync(dir).filter(name => name.endsWith('.jsonl')).map(name => path.join(dir, name));
+  } catch {
+    return [];
+  }
 }
 
 function _deleteWorkflowSession(cwd, sessionId) {

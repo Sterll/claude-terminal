@@ -2388,6 +2388,25 @@
       "listPrice": "Figures are API list prices for the tokens used. A subscription does not bill them: they measure how much of the plan limit the work drew.",
       "estimated": "{cost} predates {date}, when account tracking started, and is attributed to the account that held the login at that date.",
       "unpriced": "No price known for: {models}"
+    },
+    "views": {
+      "overview": "Overview",
+      "automations": "Automations"
+    },
+    "automations": {
+      "subtitle": "What each automation costs, at API list prices.",
+      "empty": "No automation has run over this period. Costs are recorded from this version on.",
+      "runs": "Runs",
+      "perRun": "Per run",
+      "byAutomation": "By automation",
+      "deleted": "deleted",
+      "note": "Automation runs are counted here and not in the overview: their conversation is deleted once they finish, so each run is priced just before.",
+      "columns": {
+        "automation": "Automation",
+        "runs": "Runs",
+        "perRun": "Per run",
+        "lastRun": "Last run"
+      }
     }
   },
   "connectivity": {
@@ -3275,7 +3294,8 @@
       "deletedLabel": "Deleted",
       "stopTitle": "Stop run",
       "workflowDeleted": "Deleted workflow",
-      "rerun": "Re-run"
+      "rerun": "Re-run",
+      "skippedUsage": "Not run: {bucket} usage at {percent}%, limit {threshold}%"
     },
     "editor": {
       "unsavedChanges": "Unsaved changes",
@@ -3384,7 +3404,8 @@
         "failed": "Failed",
         "running": "Running",
         "pending": "Pending",
-        "cancelled": "Cancelled"
+        "cancelled": "Cancelled",
+        "skipped": "Skipped"
       },
       "triggerDesc": {
         "cron": "Scheduled at fixed times",
@@ -4149,7 +4170,8 @@
     "usageRefresh": "Refresh usage",
     "limitedUntil": "Available again in {time}",
     "allLimited": "Every saved account has hit a limit.",
-    "allLimitedUntil": "Every saved account has hit a limit. The first one is available again in {time}."
+    "allLimitedUntil": "Every saved account has hit a limit. The first one is available again in {time}.",
+    "removeBlockedAutomations": "Still used by {count} automation(s): {automations}. Pick another account for them first."
   },
   "usage": {
     "staleRetry": "Usage data may be out of date - the last refresh failed. Next attempt at {time}; click to try now. {error}",
@@ -4174,7 +4196,8 @@
       "runNow": "Run now",
       "more": "More actions",
       "watches": "Watches {projects}",
-      "withContext": "With conversation"
+      "withContext": "With conversation",
+      "maxUsage": "Up to {percent}%"
     },
     "empty": {
       "title": "Automate a recurring task",
@@ -4247,7 +4270,10 @@
       "triggerProject": "The project that triggered it",
       "contextLabel": "Conversation",
       "useContext": "Continue the conversation that triggered it",
-      "useContextHint": "Claude resumes a copy of that conversation — your own session is left untouched — and is told which files it changed. Use this so an auto-commit only touches that conversation's work when several Claude sessions share a repository."
+      "useContextHint": "Claude resumes a copy of that conversation — your own session is left untouched — and is told which files it changed. Use this so an auto-commit only touches that conversation's work when several Claude sessions share a repository.",
+      "maxUsage": "Usage limit",
+      "maxUsageOff": "Always run",
+      "maxUsageHint": "Skip automatic runs while the account’s session (5 h) or weekly usage is at or above this level. Running it by hand always works."
     },
     "menu": {
       "edit": "Edit",

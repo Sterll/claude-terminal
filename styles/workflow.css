@@ -7131,6 +7131,18 @@ select.wf-step-edit-input {
 .auto-chip--schedule { color: var(--text-primary); }
 .auto-chip--next     { color: var(--accent-hover); border-color: var(--accent-dim); background: var(--accent-dim); }
 .auto-chip--muted    { font-style: italic; }
+.auto-chip--danger   { color: var(--danger); }
+
+/* The account a task runs on, and the accounts a run spent. */
+.auto-account-dot,
+.wf-run-account-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.wf-run-account { display: inline-flex; align-items: center; gap: 4px; }
+
+/* A run the usage gate held back: grey, like a cancelled one. */
+.auto-card-status--skipped { background: var(--text-muted); }
+.wf-run-card--skipped .wf-run-card-accent { background: var(--text-muted); }
+.wf-run-card--skipped .wf-run-card-status { color: var(--text-muted); }
+.wf-run-skip-reason { margin-top: 6px; font-size: var(--font-xs); color: var(--warning); }
 
 /* The toggle lives here with the buttons rather than floating at the top of the
    card: three controls scattered across two corners read as clutter. */

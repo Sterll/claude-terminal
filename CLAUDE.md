@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 267 test files)
+npm test                 # Run Jest tests (jsdom, 269 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -86,7 +86,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 38 IPC files, 348 handlers total
+├── src/main/ipc/                    # 38 IPC files, 349 handlers total
 ├── src/main/services/               # 38 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 29 utilities
@@ -105,7 +105,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4061 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4081 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade)
 
 Project Types (Plugin System)
@@ -164,7 +164,7 @@ Remote UI (PWA for mobile)
 | `discord-rpc.ipc.js` | 2 | Discord Rich Presence enable/disable |
 | `project.ipc.js` | 1 | TODO/FIXME/HACK/XXX scanning, project stats. A remote project's scan is one `git grep` (fallback `grep -rnI`) on its host, classified locally with the same patterns; `project-init-git` runs on the host, scaffolding refuses a remote destination |
 | `time.ipc.js` | 1 | Time tracking snapshot |
-| `cost.ipc.js` | 2 | API-equivalent cost report per account / project / model / day, this machine's share of an account's weekly percentage, and the two listeners it registers: live-account changes on `AccountManager`, weekly readings on `UsageService.onSample` |
+| `cost.ipc.js` | 3 | API-equivalent cost report per account / project / model / day, the per-automation report (with current names swapped in from the workflow store), this machine's share of an account's weekly percentage, and the two listeners it registers: live-account changes on `AccountManager`, weekly readings on `UsageService.onSample` |
 | `telemetry.ipc.js` | 1 | Opt-in anonymous telemetry |
 | `preview.ipc.js` | 1 | Serves ```html markdown blocks over the `ct-preview://` scheme (see below) |
 | `project-types.ipc.js` | 2 | List declarative project-type extensions from `~/.claude-terminal/project-types/`, create that directory |
@@ -173,7 +173,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 348 IPC handlers across 38 files.**
+**Total: 349 IPC handlers across 38 files.**
 
 ### Services (`src/main/services/`)
 
@@ -213,7 +213,7 @@ Remote UI (PWA for mobile)
 | `CloudRelayClient.js` | WSS client to self-hosted cloud relay |
 | `SyncEngine.js` | Bidirectional desktop <-> cloud sync, conflict resolution, file watcher, per-entity toggles |
 | `TelemetryService.js` | Opt-in anonymous telemetry |
-| `CostService.js` | Prices what Claude Code consumed on this machine at API list rates (`src/shared/model-pricing.js`), from the transcripts under `~/.claude/projects`. The transcripts do not record the account, so attribution is rebuilt, most specific first: the account a chat session started on (`ChatService` reports it at `init`), the project's binding, then whichever account held the machine-wide login at that moment, from a timeline `AccountManager.onLiveChange` feeds. That timeline only starts when this service first runs; older work goes to the account live at that point and is reported as `estimatedCost`. Claude Code writes one message several times while it streams, the early copies with a partial `output_tokens`, so every counter keeps its maximum rather than its first value. First scan reads in 4 MB chunks and yields between them; later ones read only the bytes appended since. `getQuotaEstimate` answers who is using a shared account: the weekly percentage counts every person on it and this machine sees only its own spend, but over any stretch the percentage rose by at least that spend divided by the price of 1%. Each pair of recorded readings (`cost/usage-samples.json`, one per `UsageService` fetch) therefore gives a floor on that price, widened by one point for whole-percent rounding; the best floor bounds this machine's share from above and everyone else's from below. It is exact over any stretch where only this machine worked, and is never a guess: with a single reading it says it cannot separate the shares yet |
+| `CostService.js` | Prices what Claude Code consumed on this machine at API list rates (`src/shared/model-pricing.js`), from the transcripts under `~/.claude/projects`. The transcripts do not record the account, so attribution is rebuilt, most specific first: the account a chat session started on (`ChatService` reports it at `init`), the project's binding, then whichever account held the machine-wide login at that moment, from a timeline `AccountManager.onLiveChange` feeds. That timeline only starts when this service first runs; older work goes to the account live at that point and is reported as `estimatedCost`. Claude Code writes one message several times while it streams, the early copies with a partial `output_tokens`, so every counter keeps its maximum rather than its first value. First scan reads in 4 MB chunks and yields between them; later ones read only the bytes appended since. `getQuotaEstimate` answers who is using a shared account: the weekly percentage counts every person on it and this machine sees only its own spend, but over any stretch the percentage rose by at least that spend divided by the price of 1%. Each pair of recorded readings (`cost/usage-samples.json`, one per `UsageService` fetch) therefore gives a floor on that price, widened by one point for whole-percent rounding; the best floor bounds this machine's share from above and everyone else's from below. It is exact over any stretch where only this machine worked, and is never a guess: with a single reading it says it cannot separate the shares yet. **Automations are priced separately.** A workflow Claude step runs in a throwaway session whose transcript `ChatService.runSinglePrompt` deletes as soon as the step ends, so the scan never holds it; `recordAutomationRun` reads that transcript (and its subagents') just before the deletion and appends one line to `cost/automation-runs.jsonl`, tagged with the workflow, the run and the account the step ran on. Only turns newer than the step count, because a step that resumes a conversation runs in a fork carrying copies of that conversation's turns. The file is append-only JSON Lines, so a torn last line loses that step and nothing else, and nothing ever rewrites it. `getAutomationReport` aggregates it per automation; those steps also feed `spendSeries`, since they are this machine's spend |
 | `ProjectTypeExtensionService.js` | Discovers third-party project types in `~/.claude-terminal/project-types/`. Reads and validates a declarative manifest and hands the renderer inert JSON — it never `require()`s what it finds, in either process. Off by default, per-extension opt-in on top, and it never rejects: a broken extension yields one entry in `problems[]` and nothing else. Design note: `design/project-type-extensions.md` |
 | `FivemService.js` | Re-export (delegated to `src/project-types/fivem`) |
 | `SshHostService.js` | Remote SSH hosts (design: `design/remote-ssh.md`). Owns `remote-hosts.json` (atomic write, `.bak`, `REMOTE_HOSTS_UNREADABLE` on a parse failure, never synced, no free-form ssh option), a pool of up to three channel lanes per profile (a request with no idle lane waits at the host for the first lane that frees up or opens, never in a busy lane's queue; the keepalive pings any idle lane), `resolveAlias()` (`ssh -G` for an ssh_config alias, shown by the profile test), the handshake capabilities (login PATH, git, claude), and the connection state machine broadcast as `ssh-status-changed`. Backoff 1, 2, 4, 8, 16, then 30 s; never retries an auth or host key failure; reads wait for a reconnect within their own timeout, writes fail fast with `reason: 'disconnected'`. Nothing connects at startup |
@@ -393,7 +393,7 @@ The tests are the point, not the line count. Everything listed above was unreach
 | `ArtifactsPanel` | Gallery of **published** artifacts for the current project - the local equivalent of Claude Desktop's artifact list. These come from the SDK's `Artifact` tool, so each has a real title, subtitle, emoji and shareable URL. Deliberately not the extracts the store also holds |
 | `TasksView` | The "simple mode" tab of the workflow panel. A task is a workflow with `mode: 'simple'`; the user edits what / when / where and `src/shared/simple-task.js` compiles the cron expression, graph and steps. It writes the same workflow object the advanced editor writes, through the same `workflow.save` IPC |
 | `ErrorLogPanel` | Error log viewer with level/domain filtering, pattern detection, AI diagnosis and export |
-| `CostPanel` | The Cost tab: API-equivalent cost per account, project, model and day, for this week, last week, 7 / 30 days, this month or all time. Its weekly-limit card splits each account's percentage into this machine's share (a maximum) and everyone else's (a minimum), with the price floor of 1% behind it, from `CostService.getQuotaEstimate` |
+| `CostPanel` | The Cost tab: API-equivalent cost per account, project, model and day, for this week, last week, 7 / 30 days, this month or all time. Its weekly-limit card splits each account's percentage into this machine's share (a maximum) and everyone else's (a minimum), with the price floor of 1% behind it, from `CostService.getQuotaEstimate`. A second view, **Automations**, shows what each automation cost (runs, cost, cost per run, the accounts it spent, last run) from `CostService.getAutomationReport`; those runs are not in the overview, whose transcripts never hold them |
 
 The dashboard has three sub-views, switched by `_dashViews` and rendered from `DashboardService`: **Overview** (the default), **Kanban** (delegated to `KanbanPanel`) and **Timeline**. The timeline is the only one that loads its own data, through `ProjectTimeline`; it caches the collected events for 30 s so changing the period or a filter chip redraws without six more round trips, and `invalidateCache()` drops that cache alongside the dashboard one.
 
@@ -430,7 +430,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4061 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4081 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -651,6 +651,7 @@ Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guard
 ├── usage.json                         # Focused account's usage, mirrored for the MCP tools
 ├── cost/account-timeline.json         # Live-account switches and per-session accounts, for cost attribution
 ├── cost/usage-samples.json            # Weekly usage readings per account, 35 days, for the shared-account split
+├── cost/automation-runs.jsonl         # One line per automation Claude step: workflow, run, account, tokens per model
 ├── usage/triggers/                    # Re-fetch requests dropped by the MCP usage_refresh tool
 ├── workflows/
 │   ├── definitions.json               # Workflow graphs (single-writer protocol, see _workflowStore.js)
@@ -758,7 +759,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 267 unit test files (jsdom environment)
+npm test                    # Run all 269 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -767,7 +768,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 267 test files
+- **Framework:** Jest with jsdom, 269 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

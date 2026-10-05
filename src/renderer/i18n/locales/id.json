@@ -2388,6 +2388,25 @@
       "listPrice": "Angka ini adalah harga daftar API untuk token yang digunakan. Langganan tidak menagihnya: angka ini mengukur seberapa banyak batas paket yang terpakai.",
       "estimated": "{cost} terjadi sebelum {date}, saat pelacakan akun dimulai, dan dikaitkan dengan akun yang login pada tanggal itu.",
       "unpriced": "Harga tidak diketahui untuk: {models}"
+    },
+    "views": {
+      "overview": "Ringkasan",
+      "automations": "Otomasi"
+    },
+    "automations": {
+      "subtitle": "Biaya tiap otomasi, dengan harga daftar API.",
+      "empty": "Tidak ada otomasi yang berjalan pada periode ini. Biaya dicatat mulai versi ini.",
+      "runs": "Jalankan",
+      "perRun": "Per jalankan",
+      "byAutomation": "Per otomasi",
+      "deleted": "dihapus",
+      "note": "Jalankan otomasi dihitung di sini, bukan di ringkasan: percakapannya dihapus setelah selesai, jadi setiap jalankan dihitung tepat sebelumnya.",
+      "columns": {
+        "automation": "Otomasi",
+        "runs": "Jalankan",
+        "perRun": "Per jalankan",
+        "lastRun": "Terakhir"
+      }
     }
   },
   "connectivity": {
@@ -3275,7 +3294,8 @@
       "deletedLabel": "Dihapus",
       "stopTitle": "Hentikan eksekusi",
       "workflowDeleted": "Workflow dihapus",
-      "rerun": "Jalankan ulang"
+      "rerun": "Jalankan ulang",
+      "skippedUsage": "Tidak dijalankan: penggunaan {bucket} {percent}%, batas {threshold}%"
     },
     "editor": {
       "unsavedChanges": "Perubahan belum disimpan",
@@ -3384,7 +3404,8 @@
         "failed": "Gagal",
         "running": "Berjalan",
         "pending": "Menunggu",
-        "cancelled": "Dibatalkan"
+        "cancelled": "Dibatalkan",
+        "skipped": "Dilewati"
       },
       "triggerDesc": {
         "cron": "Terjadwal pada waktu tertentu",
@@ -4149,7 +4170,8 @@
     "usageRefresh": "Segarkan penggunaan",
     "limitedUntil": "Tersedia lagi dalam {time}",
     "allLimited": "Semua akun tersimpan telah mencapai batas.",
-    "allLimitedUntil": "Semua akun tersimpan telah mencapai batas. Akun pertama tersedia lagi dalam {time}."
+    "allLimitedUntil": "Semua akun tersimpan telah mencapai batas. Akun pertama tersedia lagi dalam {time}.",
+    "removeBlockedAutomations": "Masih dipakai {count} otomasi: {automations}. Pilih akun lain untuk otomasi itu dulu."
   },
   "usage": {
     "staleRetry": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. Percobaan berikutnya pukul {time}; klik untuk mencoba sekarang. {error}",
@@ -4174,7 +4196,8 @@
       "runNow": "Jalankan sekarang",
       "more": "Aksi lainnya",
       "watches": "Memantau {projects}",
-      "withContext": "Dengan percakapan"
+      "withContext": "Dengan percakapan",
+      "maxUsage": "Hingga {percent}%"
     },
     "empty": {
       "title": "Otomatiskan tugas yang berulang",
@@ -4247,7 +4270,10 @@
       "triggerProject": "Proyek yang memicunya",
       "contextLabel": "Percakapan",
       "useContext": "Lanjutkan percakapan yang memicunya",
-      "useContextHint": "Claude melanjutkan salinan percakapan tersebut — sesi Anda sendiri tidak tersentuh — dan diberi tahu file apa saja yang telah diubahnya. Gunakan ini agar auto-commit hanya menyentuh pekerjaan dari percakapan tersebut ketika beberapa sesi Claude berbagi satu repositori."
+      "useContextHint": "Claude melanjutkan salinan percakapan tersebut — sesi Anda sendiri tidak tersentuh — dan diberi tahu file apa saja yang telah diubahnya. Gunakan ini agar auto-commit hanya menyentuh pekerjaan dari percakapan tersebut ketika beberapa sesi Claude berbagi satu repositori.",
+      "maxUsage": "Batas penggunaan",
+      "maxUsageOff": "Selalu jalankan",
+      "maxUsageHint": "Lewati jalankan otomatis selama penggunaan sesi (5 jam) atau mingguan akun mencapai batas ini. Menjalankan manual selalu bisa."
     },
     "menu": {
       "edit": "Edit",

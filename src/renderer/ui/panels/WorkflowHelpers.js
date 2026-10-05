@@ -530,6 +530,7 @@ function statusLabel(s) {
     running: 'workflow.helpers.status.running',
     pending: 'workflow.helpers.status.pending',
     cancelled: 'workflow.helpers.status.cancelled',
+    skipped: 'workflow.helpers.status.skipped',
   };
   return map[s] ? t(map[s]) : s;
 }

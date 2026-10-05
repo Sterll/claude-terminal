@@ -21,6 +21,20 @@ async function wrap(fn) {
   }
 }
 
+/**
+ * Names of the workflows with a Claude step pinned to this account.
+ * @param {string} accountId
+ * @returns {Promise<string[]>}
+ */
+async function automationsUsingAccount(accountId) {
+  if (!accountId) return [];
+  const { accountsUsedBy } = require('../../shared/simple-task');
+  const workflows = await require('../services/WorkflowStorage').loadWorkflows();
+  return (Array.isArray(workflows) ? workflows : [])
+    .filter(wf => accountsUsedBy(wf).includes(accountId))
+    .map(wf => wf.name || wf.id);
+}
+
 /** Accounts whose credential store this run has already bootstrapped. */
 const seededStores = new Set();
 
@@ -136,6 +150,19 @@ function registerAccountsHandlers() {
   });
 
   ipcMain.handle('accounts-remove', async (_event, { id } = {}) => {
+    // An automation that names this account would fail on its next run, with
+    // nobody there to see it. Refused here rather than in the renderer: the
+    // workflow list is only loaded there once the Workflows tab has been
+    // opened, and this check must not depend on that.
+    const users = await automationsUsingAccount(id);
+    if (users.length) {
+      return {
+        success: false,
+        code: 'ACCOUNT_USED_BY_AUTOMATIONS',
+        automations: users,
+        error: `This account is used by ${users.length} automation(s): ${users.join(', ')}. Pick another account for them first.`,
+      };
+    }
     const result = await wrap(() => AccountManager.removeAccount(id));
     if (result.success) await broadcastAccounts();
     return result;
