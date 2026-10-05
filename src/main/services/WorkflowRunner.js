@@ -80,7 +80,9 @@ async function runAgentStep(config, vars, signal, chatService, automation, onMes
   // Resolve cwd: prefer explicit cwd, then project context (same pattern as git/shell steps)
   let   cwd      = resolveVars(config.cwd || '', vars) || ctx.project || '';
   const model    = config.model || null;
-  const VALID_EFFORTS = ['low', 'medium', 'high', 'max'];
+  // The shared list, as claude.node.js uses: a hand-kept copy here lacked
+  // `xhigh`, so a legacy step set to it silently ran at the default effort.
+  const VALID_EFFORTS = require('../../shared/model-options').EFFORT_VALUES.filter(Boolean);
   const rawEffort = config.effort || null;
   const effort   = rawEffort && VALID_EFFORTS.includes(rawEffort) ? rawEffort : null;
   const maxTurns = config.maxTurns || 30;

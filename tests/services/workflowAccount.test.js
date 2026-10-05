@@ -233,3 +233,20 @@ describe('runSinglePrompt', () => {
     expect(query).not.toHaveBeenCalled();
   });
 });
+
+describe('the legacy agent step', () => {
+  // `agent` has no node file, so it runs through WorkflowRunner's own
+  // runAgentStep, which used to carry a hand-kept effort list without xhigh.
+  test('passes every effort the shared list knows, xhigh included', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const WorkflowRunner = require('../../src/main/services/WorkflowRunner');
+    const { EFFORT_VALUES } = require('../../src/shared/model-options');
+    for (const effort of EFFORT_VALUES.filter(Boolean)) {
+      const chatService = { runSinglePrompt: jest.fn(async () => ({ output: 'ok', success: true })) };
+      const runner = new WorkflowRunner({ sendFn: () => {}, chatService, waitCallbacks: new Map() });
+      const res = await runner.testStep({ id: 's1', type: 'agent', prompt: 'hi', effort }, { project: boundDir });
+      expect(res.success).toBe(true);
+      expect(chatService.runSinglePrompt.mock.calls[0][0].effort).toBe(effort);
+    }
+  });
+});
