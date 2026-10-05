@@ -149,6 +149,10 @@ function registerAccountsHandlers() {
     return result;
   });
 
+  // Read-only: lets the delete button refuse before asking for confirmation,
+  // the way it already does for bound projects. accounts-remove re-checks.
+  ipcMain.handle('accounts-automations', (_event, { id } = {}) => wrap(() => automationsUsingAccount(id)));
+
   ipcMain.handle('accounts-remove', async (_event, { id } = {}) => {
     // An automation that names this account would fail on its next run, with
     // nobody there to see it. Refused here rather than in the renderer: the

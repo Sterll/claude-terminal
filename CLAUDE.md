@@ -86,7 +86,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 38 IPC files, 349 handlers total
+├── src/main/ipc/                    # 38 IPC files, 350 handlers total
 ├── src/main/services/               # 38 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 29 utilities
@@ -144,7 +144,7 @@ Remote UI (PWA for mobile)
 | `cloud-projects.ipc.js` | 11 | Cloud project upload / download / listing |
 | `parallel.ipc.js` | 9 | Parallel task orchestration across git worktrees |
 | `knowledge.ipc.js` | 9 | Global knowledge CRUD, pin, enable, search, CLAUDE.md block preview/sync |
-| `accounts.ipc.js` | 9 | Multiple Claude accounts: capture, list, switch, rename, delete, per-project binding |
+| `accounts.ipc.js` | 10 | Multiple Claude accounts: capture, list, switch, rename, delete (refused while a project or an automation still uses the account), per-project binding |
 | `plugin.ipc.js` | 8 | Installed plugins, catalog, marketplaces, install/uninstall via Claude CLI PTY |
 | `cloud-sync.ipc.js` | 8 | Bidirectional desktop <-> cloud sync with per-entity toggles |
 | `artifacts.ipc.js` | 8 | Artifact library: list, get, versions, search, stats, delete |
@@ -173,7 +173,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 349 IPC handlers across 38 files.**
+**Total: 350 IPC handlers across 38 files.**
 
 ### Services (`src/main/services/`)
 

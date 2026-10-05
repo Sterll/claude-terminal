@@ -2932,6 +2932,19 @@ class SettingsPanel extends BasePanel {
           }), 8000);
           return;
         }
+        // Same for automations pinned to it, asked of main because the
+        // workflow list is only loaded here once the Workflows tab opened.
+        // accounts-remove refuses again, so a failed check only costs the
+        // early answer, never the account.
+        const showAutomationsBlock = (names) => showError(t('accounts.removeBlockedAutomations', {
+          count: names.length,
+          automations: names.join(', ')
+        }), 8000);
+        const users = await this.api.accounts.automationsUsing?.(id).catch(() => null);
+        if (users?.success && users.data?.length) {
+          showAutomationsBlock(users.data);
+          return;
+        }
         const { showConfirm } = require('../components/Modal');
         const ok = await showConfirm({
           title: t('common.delete') || 'Delete',
@@ -2941,10 +2954,8 @@ class SettingsPanel extends BasePanel {
         try {
           const r = await this.api.accounts.remove(id);
           if (r?.code === 'ACCOUNT_USED_BY_AUTOMATIONS') {
-            showError(t('accounts.removeBlockedAutomations', {
-              count: r.automations.length,
-              automations: r.automations.join(', ')
-            }), 8000);
+            // An automation was pinned to it while the dialog was open.
+            showAutomationsBlock(r.automations);
             return;
           }
           if (!r?.success) {

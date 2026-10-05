@@ -52,3 +52,11 @@ test('an account no automation names is removed as before', async () => {
   expect(res.success).toBe(true);
   expect(mockAccountManager.removeAccount).toHaveBeenCalledWith('acc-work');
 });
+
+test('the read-only check answers before any confirmation, and removes nothing', async () => {
+  mockWorkflows.push({ id: 'wf-1', ...compileTask({ name: 'Daily recap', simple: { prompt: 'x', account: 'acc-work' } }) });
+  const handlers = loadHandlers();
+  expect(await handlers['accounts-automations'](null, { id: 'acc-work' })).toEqual({ success: true, data: ['Daily recap'] });
+  expect(await handlers['accounts-automations'](null, { id: 'acc-perso' })).toEqual({ success: true, data: [] });
+  expect(mockAccountManager.removeAccount).not.toHaveBeenCalled();
+});
