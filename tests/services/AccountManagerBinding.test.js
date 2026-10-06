@@ -23,9 +23,9 @@ jest.mock('../../src/main/utils/paths', () => {
   };
 });
 
-// The real keytar would hit the developer's login keychain.
+// The real module would run /usr/bin/security against the developer's login keychain.
 const mockKeychain = new Map();
-jest.mock('keytar', () => ({
+jest.mock('../../src/main/utils/macKeychain', () => ({
   getPassword: jest.fn(async (service, account) => mockKeychain.get(`${service}:${account}`) ?? null),
   setPassword: jest.fn(async (service, account, secret) => { mockKeychain.set(`${service}:${account}`, secret); }),
   deletePassword: jest.fn(async (service, account) => mockKeychain.delete(`${service}:${account}`))
@@ -214,11 +214,11 @@ describe('per-account credential store', () => {
 
     // The CLI refreshes and writes to its namespaced entry.
     mockKeychain.set(namespacedKey(dir), JSON.stringify(creds('tok-max-v2')));
-    require('keytar').getPassword.mockClear();
+    require('../../src/main/utils/macKeychain').getPassword.mockClear();
     await AccountManager.ensureAccountStore(max.id);
 
     expect(fs.existsSync(seedPath(max.id))).toBe(false);
-    expect(require('keytar').getPassword).toHaveBeenCalledTimes(1);
+    expect(require('../../src/main/utils/macKeychain').getPassword).toHaveBeenCalledTimes(1);
   });
 
   test('a refresh in a bound account leaves the machine-wide store alone', async () => {
@@ -279,9 +279,9 @@ describe('file store platforms', () => {
 
 test('listing IDs for usage does not access the unrelated machine-wide Keychain item', async () => {
   const max = await capture('Max', 'tok-max');
-  require('keytar').getPassword.mockClear();
+  require('../../src/main/utils/macKeychain').getPassword.mockClear();
   const list = await AccountManager.listAccounts({ includeCredentials: false });
   expect(list.accounts.map(account => account.id)).toEqual([max.id]);
   expect(list.hasCredentials).toBeNull();
-  expect(require('keytar').getPassword).not.toHaveBeenCalled();
+  expect(require('../../src/main/utils/macKeychain').getPassword).not.toHaveBeenCalled();
 });

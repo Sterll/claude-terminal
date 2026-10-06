@@ -17,12 +17,9 @@ const crypto = require('crypto');
 
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
-let keytar = null;
-try {
-  keytar = require('keytar');
-} catch (_) {
-  // Native module unavailable (electron-rebuild failed) — file store only.
-}
+// Through /usr/bin/security, as the CLI does, never in-process: see macKeychain.js
+// for why reading the CLI's items from inside the app raised a password dialog.
+const keychain = require('./macKeychain');
 
 function getCredentialsPath() {
   const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
@@ -30,22 +27,23 @@ function getCredentialsPath() {
 }
 
 function useKeychain() {
-  return process.platform === 'darwin' && keytar !== null;
+  return process.platform === 'darwin';
 }
 
 function keychainAccount() {
   return os.userInfo().username;
 }
 
-// Several callers can need the same item while macOS is showing its access
-// dialog. Share that pending read; do not cache secrets after it settles, since
-// the CLI can refresh or replace them outside this process.
+// Several callers can need the same item at once, and a locked keychain holds
+// the read open behind its unlock dialog. Share that pending read; do not cache
+// secrets after it settles, since the CLI can refresh or replace them outside
+// this process.
 const pendingReads = new Map();
 function readKeychain(service) {
   const account = keychainAccount();
   const id = JSON.stringify([service, account]);
   if (pendingReads.has(id)) return pendingReads.get(id);
-  const read = Promise.resolve().then(() => keytar.getPassword(service, account));
+  const read = Promise.resolve().then(() => keychain.getPassword(service, account));
   pendingReads.set(id, read);
   const clear = () => { if (pendingReads.get(id) === read) pendingReads.delete(id); };
   read.then(clear, clear);
@@ -97,7 +95,7 @@ async function readCredentials() {
 async function writeCredentials(payload) {
   let wrote = false;
   if (useKeychain()) {
-    await keytar.setPassword(KEYCHAIN_SERVICE, keychainAccount(), payload);
+    await keychain.setPassword(KEYCHAIN_SERVICE, keychainAccount(), payload);
     pendingReads.delete(JSON.stringify([KEYCHAIN_SERVICE, keychainAccount()]));
     wrote = true;
   }
@@ -178,7 +176,7 @@ async function readCredentialsForDir(dir, { pruneSeed = false } = {}) {
     }
     if (credentials) {
       // The successful read already proves the vault took over; probing it
-      // again solely to remove the seed can raise a second access dialog.
+      // again solely to remove the seed would be a second read for nothing.
       // A cleanup error must not fall back to stale seed credentials.
       if (pruneSeed) fs.rmSync(seedPathForDir(dir), { force: true });
       return credentials;
@@ -211,7 +209,7 @@ function writeSeedForDir(dir, creds) {
 async function deleteCredentialsForDir(dir) {
   if (useKeychain()) {
     try {
-      await keytar.deletePassword(keychainServiceForDir(dir), keychainAccount());
+      await keychain.deletePassword(keychainServiceForDir(dir), keychainAccount());
       pendingReads.delete(JSON.stringify([keychainServiceForDir(dir), keychainAccount()]));
     } catch (_) {
       // Nothing stored, or the Keychain refused — the directory still goes.
