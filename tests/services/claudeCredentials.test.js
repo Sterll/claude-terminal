@@ -13,11 +13,15 @@ const os = require('os');
 const path = require('path');
 
 const mockKeychain = new Map();
-jest.mock('keytar', () => ({
+jest.mock('../../src/main/utils/macKeychain', () => ({
   getPassword: jest.fn(async (service, account) => mockKeychain.get(`${service}:${account}`) ?? null),
   setPassword: jest.fn(async (service, account, secret) => { mockKeychain.set(`${service}:${account}`, secret); }),
   deletePassword: jest.fn(async (service, account) => mockKeychain.delete(`${service}:${account}`))
 }));
+
+// keytar would make this app the requester on items only /usr/bin/security is
+// trusted with: a password dialog per read. It must never be reached.
+jest.mock('keytar', () => ({ getPassword: jest.fn(), setPassword: jest.fn(), deletePassword: jest.fn() }));
 
 const credentials = require('../../src/main/utils/claudeCredentials');
 
@@ -86,6 +90,20 @@ describe('on macOS', () => {
     const onDisk = JSON.parse(fs.readFileSync(credentials.getCredentialsPath(), 'utf8'));
     expect(onDisk.claudeAiOauth.accessToken).toBe('sk-ant-oat01-new');
   });
+
+  test('never goes through keytar, whose in-process reads raise a password dialog', async () => {
+    const keytar = require('keytar');
+    mockKeychain.set(KEY, JSON.stringify(oauth('sk-ant-oat01-keychain')));
+
+    await credentials.readAccessToken();
+    await credentials.writeCredentials(JSON.stringify(oauth('sk-ant-oat01-written')));
+    await credentials.readCredentialsForDir(CONFIG_DIR);
+    await credentials.deleteCredentialsForDir(fs.mkdtempSync(path.join(os.tmpdir(), 'ct-creds-dir-')));
+
+    expect(keytar.getPassword).not.toHaveBeenCalled();
+    expect(keytar.setPassword).not.toHaveBeenCalled();
+    expect(keytar.deletePassword).not.toHaveBeenCalled();
+  });
 });
 
 describe('elsewhere', () => {
@@ -128,27 +146,27 @@ describe('token validity', () => {
 
 
 describe('concurrent Keychain readers', () => {
-  beforeEach(() => { setPlatform('darwin'); require('keytar').getPassword.mockClear(); });
+  beforeEach(() => { setPlatform('darwin'); require('../../src/main/utils/macKeychain').getPassword.mockClear(); });
 
   test('shares one pending access dialog, then reads fresh credentials on the next call', async () => {
     let finish;
-    require('keytar').getPassword.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    require('../../src/main/utils/macKeychain').getPassword.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const first = credentials.readCredentials();
     const second = credentials.readAccessToken();
     await Promise.resolve();
-    expect(require('keytar').getPassword).toHaveBeenCalledTimes(1);
+    expect(require('../../src/main/utils/macKeychain').getPassword).toHaveBeenCalledTimes(1);
     finish(JSON.stringify(oauth('old')));
     expect((await first).claudeAiOauth.accessToken).toBe('old');
     expect(await second).toBe('old');
     mockKeychain.set(KEY, JSON.stringify(oauth('refreshed-elsewhere')));
     expect(await credentials.readAccessToken()).toBe('refreshed-elsewhere');
-    expect(require('keytar').getPassword).toHaveBeenCalledTimes(2);
+    expect(require('../../src/main/utils/macKeychain').getPassword).toHaveBeenCalledTimes(2);
   });
 
   test('a denied read settles all callers and permits an explicit subsequent retry', async () => {
-    require('keytar').getPassword.mockRejectedValueOnce(new Error('Access denied'));
+    require('../../src/main/utils/macKeychain').getPassword.mockRejectedValueOnce(new Error('Access denied'));
     await expect(Promise.all([credentials.readCredentials(), credentials.readAccessToken()])).resolves.toEqual([null, null]);
-    expect(require('keytar').getPassword).toHaveBeenCalledTimes(1);
+    expect(require('../../src/main/utils/macKeychain').getPassword).toHaveBeenCalledTimes(1);
     mockKeychain.set(KEY, JSON.stringify(oauth('allowed')));
     expect(await credentials.readAccessToken()).toBe('allowed');
   });

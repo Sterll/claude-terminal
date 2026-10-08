@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 269 test files)
+npm test                 # Run Jest tests (jsdom, 270 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -41,7 +41,7 @@ features, not the install:
 | Missing | Effect |
 |---------|--------|
 | `node-pty` | No terminals |
-| `keytar` | No GitHub token, Groq key or account switching |
+| `keytar` | No GitHub token or Groq key |
 | `better-sqlite3` | No SQLite connections; the other four drivers are pure JS |
 
 `postinstall` prints exactly that and exits 0, so `npm install` succeeds and
@@ -89,7 +89,7 @@ Electron Main Process (Node.js)
 ├── src/main/ipc/                    # 38 IPC files, 350 handlers total
 ├── src/main/services/               # 38 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 29 utilities
+├── src/main/utils/                  # 30 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
 Electron Renderer Process (Browser)
@@ -235,6 +235,7 @@ Remote UI (PWA for mobile)
 | `paths.js` | Path constants (`~/.claude-terminal/`, `~/.claude/`), `ensureDataDir()`, `loadAccentColor()`, `managedSettingsPaths()` |
 | `claudeBridge.js` | Dynamic ESM loader for the Agent SDK's Remote Control bridge, with feature detection over its `@alpha` surface |
 | `claudeCredentials.js` | Reads/writes the CLI's live credential store across platforms (macOS Keychain vs `~/.claude/.credentials.json`), used by `AccountManager` |
+| `macKeychain.js` | The CLI's Keychain items, read and written through `/usr/bin/security` exactly as the CLI does, never through keytar. Every one of those items trusts `security` and nothing else, so an in-process read makes this app the requester and macOS asks for the login password; "Always Allow" pins the app's code signature, which an ad-hoc signed build changes on every update. keytar stays for the secrets the app creates itself |
 | `claudeConfig.js` | Single guarded read/modify/write boundary for `~/.claude.json`, under a cross-process lock. Refuses to write when the file changed underneath, since the Claude CLI rewrites it continuously |
 | `sdkCli.js` | Locates the bundled Agent SDK CLI binary, including inside `app.asar.unpacked` |
 | `fileLock.js` | Cross-process advisory lock, used by the workflow store and by concurrent settings writers |
@@ -675,7 +676,8 @@ OS credential store (via keytar)       # GitHub token, Groq API key
 
 Secrets never go in `settings.json`. On macOS the Claude CLI keeps its own credentials in
 the login Keychain rather than `~/.claude/.credentials.json`; `claudeCredentials.js` hides
-that difference from `AccountManager`.
+that difference from `AccountManager`, and reaches those items through `/usr/bin/security`
+(`macKeychain.js`) rather than keytar, so reading them never raises a password dialog.
 
 ## Key Dependencies
 
@@ -759,7 +761,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 269 unit test files (jsdom environment)
+npm test                    # Run all 270 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -768,7 +770,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 269 test files
+- **Framework:** Jest with jsdom, 270 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

@@ -21,10 +21,10 @@ jest.mock('../../src/main/utils/paths', () => {
   };
 });
 
-// In-memory Keychain. keytar is a native module; the real one would hit the
+// In-memory Keychain. The real module runs /usr/bin/security against the
 // developer's actual login keychain.
 const mockKeychain = new Map();
-jest.mock('keytar', () => ({
+jest.mock('../../src/main/utils/macKeychain', () => ({
   getPassword: jest.fn(async (service, account) => mockKeychain.get(`${service}:${account}`) ?? null),
   setPassword: jest.fn(async (service, account, secret) => { mockKeychain.set(`${service}:${account}`, secret); }),
   deletePassword: jest.fn(async (service, account) => mockKeychain.delete(`${service}:${account}`))
