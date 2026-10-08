@@ -13,6 +13,7 @@
 
 jest.mock('child_process', () => ({ execFile: jest.fn() }));
 
+const { EventEmitter } = require('events');
 const { execFile } = require('child_process');
 const keychain = require('../../src/main/utils/macKeychain');
 
@@ -31,7 +32,10 @@ function answer({ code = 0, stdout = '' } = {}) {
       if (code === 0) cb(null, stdout, '');
       else cb(Object.assign(new Error(`security exited with ${code}`), { code }), '', '');
     });
-    return { stdin: { end: (data) => { call.stdin = data ?? ''; } } };
+    // An emitter, as the real pipe is: emitting 'error' with no listener throws.
+    const stdin = Object.assign(new EventEmitter(), { end: (data) => { call.stdin = data ?? ''; } });
+    call.stdinStream = stdin;
+    return { stdin };
   });
   return call;
 }
@@ -104,6 +108,22 @@ describe('setPassword', () => {
   test('refuses a name that would break out of the quoted command line', async () => {
     await expect(keychain.setPassword('evil" -T "/bin/sh', ACCOUNT, 'x')).rejects.toThrow();
     expect(execFile).not.toHaveBeenCalled();
+  });
+
+  test('refuses quotes, escapes and control characters in either name', async () => {
+    for (const name of ["it's", 'a\\b','a\rb', 'a\tb', 'a\u0000b']) {
+      await expect(keychain.setPassword(SERVICE, name, 'x')).rejects.toThrow(/Unsupported/);
+      await expect(keychain.setPassword(name, ACCOUNT, 'x')).rejects.toThrow(/Unsupported/);
+    }
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  test('a child that exits before reading stdin does not crash main', async () => {
+    const call = answer({ code: 1 });
+    const write = expect(keychain.setPassword(SERVICE, ACCOUNT, 'x')).rejects.toThrow(/exited with 1/);
+
+    expect(() => call.stdinStream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))).not.toThrow();
+    await write;
   });
 
   test('a failed write is thrown', async () => {

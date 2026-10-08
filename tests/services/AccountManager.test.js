@@ -137,6 +137,21 @@ describe('macOS Keychain store', () => {
     expect(fs.existsSync(credentialsFile())).toBe(false);
   });
 
+  test('switching writes compact JSON, as the CLI does', async () => {
+    // A newline makes `security -w` print the item as hex, and indented JSON
+    // in hex outgrew the `security -i` line, pushing the secret onto argv.
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-max')));
+    const max = await AccountManager.captureCurrent('Max 20x');
+    mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-team', 'team')));
+    await AccountManager.captureCurrent('Team');
+
+    await AccountManager.switchTo(max.id);
+
+    const written = mockKeychain.get(MOCK_KEY);
+    expect(written).not.toMatch(/\s/);
+    expect(written).toBe(JSON.stringify(JSON.parse(written)));
+  });
+
   test('switching preserves a token the CLI rotated on the outgoing account', async () => {
     mockKeychain.set(MOCK_KEY, JSON.stringify(creds('tok-max')));
     const max = await AccountManager.captureCurrent('Max 20x');

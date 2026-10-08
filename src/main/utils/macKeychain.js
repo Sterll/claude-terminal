@@ -41,6 +41,10 @@ function run(args, input) {
       if (err) reject(err);
       else resolve(stdout);
     });
+    // A child that exits before reading stdin makes the write fail with EPIPE.
+    // Unheard, that error is an uncaught exception in main; the exit code
+    // already reaches the callback above, so there is nothing to add here.
+    child.stdin.on('error', () => {});
     child.stdin.end(input);
   });
 }
@@ -91,7 +95,9 @@ async function getPassword(service, account) {
  * @param {string} secret
  */
 async function setPassword(service, account, secret) {
-  if (/["\\\n]/.test(service + account)) throw new Error('Unsupported Keychain service or account name');
+  // The names go on a quoted `-i` line: refuse anything the line splitter could
+  // read as a quote, an escape or a line end rather than trust it to agree.
+  if (/["'\\\x00-\x1f\x7f]/.test(service + account)) throw new Error('Unsupported Keychain service or account name');
   const hex = Buffer.from(secret, 'utf8').toString('hex');
   // Over stdin rather than argv, so the secret never shows up in `ps`.
   const line = `add-generic-password -U -a "${account}" -s "${service}" -X "${hex}"\n`;

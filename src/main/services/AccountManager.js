@@ -156,9 +156,14 @@ async function mergeWithLiveStore(creds) {
 /**
  * Write credentials back to every store the CLI might read on this platform,
  * so the swap takes effect whichever one it picks.
+ *
+ * Compact, as the CLI writes it. On macOS, `security -w` prints a payload
+ * holding a newline as hex, and its hex doubles the size, so indented JSON
+ * pushed the write past the `security -i` line limit and onto argv, where
+ * `ps` shows it to every local user while it runs.
  */
 async function writeCurrentCredentials(creds) {
-  await writeCredentials(JSON.stringify(await mergeWithLiveStore(creds), null, 2));
+  await writeCredentials(JSON.stringify(await mergeWithLiveStore(creds)));
 }
 
 function fingerprintCredentials(creds) {
