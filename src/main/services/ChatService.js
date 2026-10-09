@@ -10,6 +10,7 @@ const { app } = require('electron');
 const { execFileSync } = require('child_process');
 const ModelCatalogService = require('./ModelCatalogService');
 const AccountManager = require('./AccountManager');
+const UsageService = require('./UsageService');
 const chromeBridgeService = require('./ChromeBridgeService');
 const remoteControlService = require('./RemoteControlService');
 const { getSdkCliPath, getSdkCliVersion } = require('../utils/sdkCli');
@@ -1589,6 +1590,16 @@ class ChatService {
         if (message.type === 'prompt_suggestion') {
           this._send('chat-prompt-suggestion', { sessionId, suggestion: message.suggestion });
           continue;
+        }
+        // The plan's usage as the API stated it on this session's own
+        // responses, which keeps the titlebar current while the usage endpoint
+        // answers 429. Never allowed to end the session.
+        if (message.type === 'rate_limit_event') {
+          try {
+            UsageService.applyRateLimitInfo(session?.accountId || null, message.rate_limit_info);
+          } catch (err) {
+            console.warn('[ChatService] Could not apply rate limit figures:', err.message);
+          }
         }
         // Background task lifecycle (Task tool / subagents / local workflows).
         // Surfaced as a dedicated event so the UI can maintain a live task list

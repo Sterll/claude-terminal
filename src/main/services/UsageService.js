@@ -66,6 +66,9 @@ function entryFor(accountId) {
       // The store answered, but with an access token past its expiry. Not a
       // refusal: see TOKEN_EXPIRED_RECHECK.
       tokenExpired: false,
+      // When a chat session last reported this account's figures; see
+      // applyRateLimitInfo().
+      streamedAt: 0,
       // Bumped whenever the account's credentials are invalidated, so a store
       // read still in flight from before the switch is discarded rather than
       // writing the outgoing account's token back into the cache.
@@ -620,8 +623,10 @@ async function fetchUsage(accountId, force = false) {
     }
 
     // PTY fallback removed — launching `claude --dangerously-skip-permissions` just
-    // to read usage data is a security risk. Serve cached data, flagged as stale.
-    entry.isStale = true;
+    // to read usage data is a security risk. Serve cached data, flagged as stale,
+    // unless a chat session confirmed them since: an endpoint that would not
+    // answer says nothing about figures the API stated a minute ago.
+    entry.isStale = !(entry.streamedAt && Date.now() - entry.streamedAt < DATA_STALE_AFTER);
     // Mirrored on the way out too: a consumer reading the file needs to see
     // that these figures stopped being confirmed, not just the last good ones.
     mirrorToDisk(entry);
@@ -636,6 +641,92 @@ async function fetchUsage(accountId, force = false) {
     // late must not declare the live one done.
     if (entry.fetchStartedAt === startedAt) entry.isFetching = false;
   }
+}
+
+// ── Figures from the chat stream ──
+//
+// The usage endpoint is not the only place these numbers exist. The API states
+// the plan's windows on the headers of every model response, and the CLI
+// forwards them on the SDK stream as a `rate_limit_event` whenever one of them
+// moves by a whole percent. A chat session therefore carries its account's
+// figures as they change, at no cost.
+//
+// It matters most when the endpoint is least able to answer. A CLI that hits
+// the limit asks `/api/oauth/usage` why, so an account running a dozen
+// sessions into its limit gets the endpoint answering 429 to every caller, this
+// app included. The titlebar then held the last figure fetched before the wall:
+// 63% on a session the CLI was already refusing.
+
+/** The two windows the headers report, by the bucket the titlebar draws for each. */
+const STREAM_WINDOWS = {
+  five_hour: { id: 'session', type: 'session', label: null, labelKey: 'ui.session' },
+  seven_day: { id: 'weekly', type: 'weekly', label: null, labelKey: 'ui.weekly' }
+};
+
+/** Unix seconds on the wire, ISO strings everywhere in this service. */
+function isoFromSeconds(seconds) {
+  return Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : null;
+}
+
+/**
+ * Fold the figures of a `rate_limit_event` into an account's usage.
+ *
+ * Only the session and weekly windows: a scoped limit comes under a name the
+ * CLI maps to a model itself, and the extra-usage balance is not on the
+ * headers at all, so both keep what the last fetch said.
+ *
+ * @param {string|null} accountId - the account the session runs as
+ * @param {Object} info - the event's `rate_limit_info`
+ * @returns {boolean} whether it carried anything to apply
+ */
+function applyRateLimitInfo(accountId, info) {
+  const observed = new Map();
+  for (const [name, bucket] of Object.entries(STREAM_WINDOWS)) {
+    const window = info?.unifiedWindows?.[name];
+    if (!Number.isFinite(window?.utilization) || !Number.isFinite(window?.resetsAt)) continue;
+    observed.set(bucket.id, {
+      // A fraction on the wire, a percentage everywhere else.
+      utilization: Math.round(window.utilization * 100),
+      resetsAt: isoFromSeconds(window.resetsAt)
+    });
+  }
+  // A refusal names the window that ran out, which is full whatever the last
+  // header put it at.
+  const refused = info?.status === 'rejected' ? STREAM_WINDOWS[info.rateLimitType]?.id : null;
+  if (refused) {
+    const seen = observed.get(refused);
+    observed.set(refused, {
+      utilization: Math.max(seen?.utilization ?? 0, 100),
+      resetsAt: isoFromSeconds(info.resetsAt) ?? seen?.resetsAt ?? null
+    });
+  }
+  if (!observed.size) return false;
+
+  const entry = entryFor(accountId);
+  const buckets = (entry.usageData?.buckets || [])
+    .map(b => (observed.has(b.id) ? { ...b, ...observed.get(b.id) } : b));
+  // Before any fetch has landed there is nothing to update in place.
+  const missing = Object.values(STREAM_WINDOWS)
+    .filter(bucket => observed.has(bucket.id) && !buckets.some(b => b.id === bucket.id))
+    .map(bucket => ({ ...bucket, ...observed.get(bucket.id) }));
+  buckets.unshift(...missing);
+
+  const now = new Date();
+  const data = {
+    extraUsage: null,
+    ...entry.usageData,
+    timestamp: now.toISOString(),
+    buckets,
+    _source: 'stream'
+  };
+  entry.usageData = data;
+  entry.lastFetch = now;
+  entry.streamedAt = now.getTime();
+  entry.isStale = false;
+  mirrorToDisk();
+  if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
+  _maybeNotifyLimit(entry, data);
+  return true;
 }
 
 /**
@@ -1031,6 +1122,7 @@ module.exports = {
   refreshUsage,
   usageForAccount,
   fetchUsage,
+  applyRateLimitInfo,
   invalidateCredentials,
   setFocusedAccount,
   getFocusedAccount,

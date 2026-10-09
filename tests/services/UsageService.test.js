@@ -838,3 +838,172 @@ describe('figures past their reset', () => {
     });
   });
 });
+
+/**
+ * Figures reported by a chat session.
+ *
+ * The CLI forwards the plan's rate-limit headers on the SDK stream. Those keep
+ * arriving when the usage endpoint answers 429, which it does to every caller
+ * once the account's sessions hit the limit and each asks it why. The titlebar
+ * used to sit on the last fetched figure meanwhile: 63% on a session the CLI
+ * was refusing.
+ */
+describe('figures from the chat stream', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const CREDENTIALS_MODULE = '../../src/main/utils/claudeCredentials';
+  const ACCOUNT_MANAGER = '../../src/main/services/AccountManager';
+  const HOUR = 3600 * 1000;
+  const SESSION_RESET = 1791584400;
+  const WEEKLY_RESET = 1791698400;
+
+  let dataDir;
+
+  beforeEach(() => { dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-usage-stream-')); });
+  afterEach(() => {
+    jest.dontMock(CREDENTIALS_MODULE);
+    jest.dontMock('https');
+    jest.dontMock(ACCOUNT_MANAGER);
+    jest.dontMock('../../src/main/utils/paths');
+    jest.resetModules();
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5 });
+  });
+
+  /** The endpoint answers `statuses` in turn, then 429 for good. */
+  function load(statuses = []) {
+    const queue = [...statuses];
+    const credentials = { claudeAiOauth: { accessToken: 'token-a', expiresAt: Date.now() + 24 * HOUR } };
+    jest.resetModules();
+    jest.doMock(CREDENTIALS_MODULE, () => ({
+      ...jest.requireActual(CREDENTIALS_MODULE),
+      readCredentials: jest.fn().mockResolvedValue(credentials)
+    }));
+    // A bound account's store is read through AccountManager.
+    jest.doMock(ACCOUNT_MANAGER, () => ({
+      credentialsForAccount: jest.fn().mockResolvedValue(credentials)
+    }));
+    jest.doMock('https', () => ({
+      get: (options, callback) => {
+        const statusCode = queue.length ? queue.shift() : 429;
+        const body = statusCode === 200
+          ? JSON.stringify({
+            limits: [
+              { kind: 'session', percent: 63, resets_at: '2099-01-01T00:00:00Z' },
+              { kind: 'weekly_all', percent: 29, resets_at: '2099-01-05T00:00:00Z' },
+              { kind: 'weekly_scoped', percent: 4, resets_at: null, scope: { model: { display_name: 'Fable' } } }
+            ],
+            extra_usage: { is_enabled: true, utilization: 100 }
+          })
+          : JSON.stringify({ error: { type: 'rate_limit_error', message: 'Rate limited.' } });
+        const res = {
+          statusCode,
+          on: (event, fn) => {
+            if (event === 'data') fn(body);
+            if (event === 'end') fn();
+            return res;
+          }
+        };
+        callback(res);
+        return { on: jest.fn(), destroy: jest.fn() };
+      }
+    }));
+    jest.doMock('../../src/main/utils/paths', () => ({
+      ...jest.requireActual('../../src/main/utils/paths'),
+      dataDir
+    }));
+    return require('../../src/main/services/UsageService');
+  }
+
+  const event = (fiveHour, sevenDay, extra = {}) => ({
+    status: 'allowed',
+    unifiedWindows: {
+      five_hour: { utilization: fiveHour, resetsAt: SESSION_RESET },
+      seven_day: { utilization: sevenDay, resetsAt: WEEKLY_RESET }
+    },
+    ...extra
+  });
+  const figures = data => data.buckets.map(b => [b.id, b.utilization]);
+
+  test('moves the session and weekly bars, and leaves the rest as fetched', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage('acc-team');
+    const onUpdate = jest.fn();
+    usage.onUpdate(onUpdate);
+
+    expect(usage.applyRateLimitInfo('acc-team', event(0.87, 0.31))).toBe(true);
+
+    const { data } = usage.getUsageData('acc-team');
+    expect(figures(data)).toEqual([['session', 87], ['weekly', 31], ['scoped:Fable', 4]]);
+    expect(data.buckets[0].resetsAt).toBe(new Date(SESSION_RESET * 1000).toISOString());
+    expect(data.buckets[1].resetsAt).toBe(new Date(WEEKLY_RESET * 1000).toISOString());
+    expect(data.extraUsage).toEqual({ is_enabled: true, utilization: 100 });
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ buckets: data.buckets }), 'acc-team');
+  });
+
+  test('a refused window reads full, whatever the last header said', () => {
+    const usage = load();
+    usage.applyRateLimitInfo(null, event(0.98, 0.4, {
+      status: 'rejected', rateLimitType: 'five_hour', resetsAt: SESSION_RESET
+    }));
+    expect(figures(usage.getUsageData(null).data)).toEqual([['session', 100], ['weekly', 40]]);
+  });
+
+  test('draws the bars before any fetch has landed', () => {
+    const usage = load();
+    usage.applyRateLimitInfo(null, event(0.25, 0.35));
+    const { data, stale } = usage.getUsageData(null);
+    expect(data.buckets).toEqual([
+      { id: 'session', type: 'session', label: null, labelKey: 'ui.session', utilization: 25, resetsAt: new Date(SESSION_RESET * 1000).toISOString() },
+      { id: 'weekly', type: 'weekly', label: null, labelKey: 'ui.weekly', utilization: 35, resetsAt: new Date(WEEKLY_RESET * 1000).toISOString() }
+    ]);
+    expect(data.extraUsage).toBeNull();
+    expect(stale).toBe(false);
+  });
+
+  test('ignores an event that carries no window', () => {
+    const usage = load();
+    expect(usage.applyRateLimitInfo(null, { status: 'allowed' })).toBe(false);
+    expect(usage.applyRateLimitInfo(null, undefined)).toBe(false);
+    expect(usage.getUsageData(null).data).toBeNull();
+  });
+
+  test('lands on the account the session runs as, not the others', async () => {
+    const usage = load([200, 200]);
+    await usage.fetchUsage('acc-a');
+    await usage.fetchUsage('acc-b');
+    usage.applyRateLimitInfo('acc-b', event(0.9, 0.5));
+    expect(usage.getUsageData('acc-a').data.buckets[0].utilization).toBe(63);
+    expect(usage.getUsageData('acc-b').data.buckets[0].utilization).toBe(90);
+  });
+
+  test('stays current while the endpoint answers 429', async () => {
+    const start = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      const usage = load([200]);
+      await usage.fetchUsage('acc-team');
+      usage.applyRateLimitInfo('acc-team', event(1, 0.4, { status: 'rejected', rateLimitType: 'five_hour' }));
+
+      clock.mockReturnValue(start + 60 * 1000);
+      const refreshed = await usage.refreshUsage('acc-team');
+      const served = usage.getUsageData('acc-team');
+      expect(figures(refreshed).slice(0, 2)).toEqual([['session', 100], ['weekly', 40]]);
+      // The endpoint failed, but the figures were confirmed a minute ago.
+      expect(served.stale).toBe(false);
+      expect(served.error).toMatch(/429/);
+
+      // Once the stream has gone quiet for long enough, they are old like any other.
+      clock.mockReturnValue(start + 11 * 60 * 1000);
+      await usage.refreshUsage('acc-team');
+      expect(usage.getUsageData('acc-team').stale).toBe(true);
+    } finally { clock.mockRestore(); }
+  });
+
+  test('a failed fetch with no stream behind it is still badged at once', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage('acc-team');
+    await usage.refreshUsage('acc-team');
+    expect(usage.getUsageData('acc-team').stale).toBe(true);
+  });
+});
