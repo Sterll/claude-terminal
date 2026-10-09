@@ -22,6 +22,7 @@ function load(sdkPromise, accountEnv = async () => null, listAccounts = async ()
     electron: { app: {} },
     './ModelCatalogService': { setFetcher() {}, setCliVersion() {} },
     './AccountManager': { accountEnv, listAccounts },
+    './UsageService': { applyRateLimitInfo() {} },
     './ChromeBridgeService': { getSessionConfig: () => null },
     './RemoteControlService': { onSessionClosed() {} },
     '../utils/sdkCli': { getSdkCliPath: () => '/unused/fake-cli', getSdkCliVersion: () => null },
