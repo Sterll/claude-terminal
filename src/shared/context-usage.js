@@ -70,4 +70,36 @@ function contextTokensFromMessage(msg) {
     || contextTokensFromUsage(msg.message?.usage);
 }
 
-module.exports = { contextTokensFromUsage, contextTokensFromMessage };
+/**
+ * The context window the CLI says the model ran with, read off a result
+ * message's `modelUsage`.
+ *
+ * Guessing it from the id only works for builds that spell it out (`[1m]`):
+ * Opus 5.5 serves a 1M window under a plain id, so the gauge read
+ * "677k / 200k (339%)". The CLI knows the real figure and reports it per model
+ * on every result, so that is the source.
+ *
+ * A turn that spawned subagents lists their models too, usually smaller ones,
+ * so the entry for the main model wins. Without a match the largest window is
+ * taken: the main loop's model is the one holding the conversation, and a
+ * window too large only under-reads the ring, never overflows it.
+ *
+ * @param {object|null|undefined} result An SDK result message.
+ * @param {string} [model] The wire id the main loop reported.
+ * @returns {number} the window in tokens; 0 when the result carries none.
+ */
+function contextWindowFromResult(result, model) {
+  const usage = result?.modelUsage;
+  if (!usage || typeof usage !== 'object') return 0;
+  const entries = Object.entries(usage).filter(([, u]) => positive(u?.contextWindow));
+  if (!entries.length) return 0;
+  const bare = (id) => String(id || '').replace(/\[[^\]]*\]$/, '');
+  if (model) {
+    const main = entries.find(([key, u]) => key === model || u.canonicalModel === model)
+      || entries.find(([key, u]) => bare(key) === bare(model) || bare(u.canonicalModel) === bare(model));
+    if (main) return main[1].contextWindow;
+  }
+  return Math.max(...entries.map(([, u]) => u.contextWindow));
+}
+
+module.exports = { contextTokensFromUsage, contextTokensFromMessage, contextWindowFromResult };

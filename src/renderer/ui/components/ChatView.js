@@ -54,7 +54,7 @@ const { saveTerminalSessions } = require('../../services/TerminalSessionService'
 
 const { matchModel, resolveModelSelection, uncataloguedModelLabel, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
 const { PERMISSION_MODES, permissionModeInfo, modeFromSetting, settingFromMode } = require('../../../shared/permission-modes');
-const { contextTokensFromMessage } = require('../../../shared/context-usage');
+const { contextTokensFromMessage, contextWindowFromResult } = require('../../../shared/context-usage');
 const { parseTerminalCommand } = require('../../../shared/terminal-commands');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
@@ -220,6 +220,9 @@ class ChatView extends BaseComponent {
   let premiumNoticeDismissed = false;
   let hasSentPrompt = false;
   let inputTokens = 0; // drives the context gauge
+  // The window the CLI reported for the model it ran (`modelUsage`), keyed by
+  // that model so a switch falls back to the estimate until the next result.
+  let reportedContextWindow = { model: '', tokens: 0 };
   const toolCards = new Map(); // content_block index -> element
   const toolInputBuffers = new Map(); // content_block index -> accumulated JSON string
   const todoToolIndices = new Map(); // block index -> { kind: 'TaskCreate'|'TaskUpdate'|'TaskList'|'TaskGet'|'TodoWrite', toolUseId }
@@ -862,13 +865,23 @@ class ChatView extends BaseComponent {
    * The `[1m]` build carries its own window, so the model decides — the
    * `enable1MContext` setting is a separate beta opt-in and can't be the only
    * input, or picking "Opus (1M context)" would still read "/200K".
+   *
+   * Once a turn has finished, the CLI's own figure overrides all of that: a
+   * model can serve 1M under a plain id (Opus 5.5 does), which no id-based
+   * guess sees.
    */
   function currentContextLimit() {
+    if (reportedContextWindow.tokens > 0 && reportedContextWindow.model === model) {
+      return reportedContextWindow.tokens;
+    }
     const active = matchModel(allCatalogModels(), selectedModel);
     const oneM = hasOneMContext(selectedModel)
       || hasOneMContext(active?.value)
       || hasOneMContext(active?.resolvedModel)
-      || getSetting('enable1MContext');
+      || getSetting('enable1MContext')
+      // A window cannot hold more than it is: before the first result says
+      // otherwise (a resumed transcript), 677k in hand means a 1M build.
+      || inputTokens > 200000;
     return oneM ? 1000000 : 200000;
   }
 
@@ -6936,6 +6949,8 @@ class ChatView extends BaseComponent {
       // API call it made, not what occupies the window. The assistant frames
       // above carry that.
       if (message.model) model = message.model;
+      const reportedWindow = contextWindowFromResult(message, model);
+      if (reportedWindow > 0) reportedContextWindow = { model, tokens: reportedWindow };
       updateStatusInfo();
 
       // Handle SDK errors (error_during_execution, error_max_turns, etc.)

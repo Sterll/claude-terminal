@@ -1,6 +1,6 @@
 // context-usage — what actually occupies the context window.
 
-const { contextTokensFromUsage, contextTokensFromMessage } = require('../../src/shared/context-usage');
+const { contextTokensFromUsage, contextTokensFromMessage, contextWindowFromResult } = require('../../src/shared/context-usage');
 
 describe('contextTokensFromUsage', () => {
   test('counts cached tokens, which is the whole point', () => {
@@ -90,5 +90,35 @@ describe('contextTokensFromMessage', () => {
     expect(contextTokensFromMessage(null)).toBe(0);
     expect(contextTokensFromMessage({})).toBe(0);
     expect(contextTokensFromMessage('nope')).toBe(0);
+  });
+});
+
+describe('contextWindowFromResult', () => {
+  test('reads the main model window, not a subagent one', () => {
+    const result = {
+      modelUsage: {
+        'claude-haiku-4-5-20251001': { contextWindow: 200000 },
+        'claude-opus-5-5': { contextWindow: 1000000 },
+      },
+    };
+    expect(contextWindowFromResult(result, 'claude-opus-5-5')).toBe(1000000);
+    expect(contextWindowFromResult(result, 'claude-haiku-4-5-20251001')).toBe(200000);
+  });
+
+  test('matches through the canonical id and a [1m] suffix', () => {
+    const result = { modelUsage: { 'claude-opus-5[1m]': { contextWindow: 1000000, canonicalModel: 'claude-opus-5' } } };
+    expect(contextWindowFromResult(result, 'claude-opus-5')).toBe(1000000);
+  });
+
+  test('falls back to the largest window when the model is unknown', () => {
+    const result = { modelUsage: { a: { contextWindow: 200000 }, b: { contextWindow: 1000000 } } };
+    expect(contextWindowFromResult(result, 'other')).toBe(1000000);
+    expect(contextWindowFromResult(result)).toBe(1000000);
+  });
+
+  test('answers 0 when nothing is reported', () => {
+    expect(contextWindowFromResult(null)).toBe(0);
+    expect(contextWindowFromResult({})).toBe(0);
+    expect(contextWindowFromResult({ modelUsage: { a: { contextWindow: 0 } } })).toBe(0);
   });
 });
