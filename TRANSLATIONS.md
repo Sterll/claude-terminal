@@ -16,12 +16,12 @@ explains how to contribute new languages or improve existing ones.
 
 | Flag | Language | Locale code | Coverage | Keys | Status |
 |------|----------|-------------|----------|------|--------|
-| 🇺🇸 | English | `en` | ![100%](https://img.shields.io/badge/i18n-100%25-brightgreen) | ~800 / ~800 | Base (reference) |
-| 🇫🇷 | French | `fr` | ![i18n fr](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_fr.json) | ~800 / ~800 | ✅ Complete |
-| 🇪🇸 | Spanish | `es` | ![i18n es](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json) | ~800 / ~800 | ✅ Complete |
-| 🇮🇩 | Indonesian | `id` | ![i18n id](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json) | ~800 / ~800 | ✅ Complete |
-| 🇨🇳 | Simplified Chinese | `zh-CN` | ![i18n zh-CN](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_zh-CN.json) | ~800 / ~800 | ✅ Complete |
-| 🇧🇷 | Brazilian Portuguese | `pt-BR` | ![i18n pt-BR](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_pt-BR.json) | ~800 / ~800 | ✅ Complete |
+| 🇬🇧 | English | en | ![100%](https://img.shields.io/badge/i18n-100%25-brightgreen) | ~800 / ~800 | Base (reference) |
+| 🇫🇷 | French | r | ![i18n fr](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bernardopg/8aa5c09aca432a7a39aefe32e8ed393a/raw/i18n_fr.json) | ~800 / ~800 | ✅ Complete |
+| 🇪🇸 | Spanish | es | ![i18n es](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_es.json) | ~800 / ~800 | ✅ Complete |
+| 🇮🇩 | Indonesian | id | ![i18n id](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_id.json) | ~800 / ~800 | ✅ Complete |
+| 🇨🇳 | Simplified Chinese | zh-CN | ![i18n zh-CN](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_zh-CN.json) | ~800 / ~800 | ✅ Complete |
+| 🇧🇷 | Brazilian Portuguese | pt-BR | ![i18n pt-BR](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/Sterll/ec1241ea62520261790ef5a411b4b212/raw/i18n_pt-BR.json) | ~800 / ~800 | ✅ Complete |
 
 ---
 
