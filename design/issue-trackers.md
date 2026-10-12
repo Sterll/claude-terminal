@@ -1,6 +1,6 @@
 # Issue trackers: a provider-neutral ticket layer
 
-**Status:** the core and every surface are in, tested against the fake adapter. No provider is registered yet: the first one, Linear, comes in its own pull request (see *Delivery*). Until then Settings → Tickets says no tracker is available.
+**Status:** all three steps under *Delivery* are in. Linear is the one provider registered; a workspace is connected in Settings → Tickets.
 **Scope:** `src/shared/issue-trackers.js`, `src/main/issue-trackers/`, the Tickets screen and the per-session Tickets tab.
 **Audience:** anyone writing an adapter for a new provider, and anyone about to change the contract.
 
