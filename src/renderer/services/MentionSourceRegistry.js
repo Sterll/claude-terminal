@@ -31,8 +31,13 @@
  *     consumer = 'mention' | 'palette'
  *     api      = { addMentionChip?, insertText?, openPanel?, closeDropdown? }
  *
- *   // Optional: what to attach to the chat message when picked via @-mention
+ *   // Optional: what to attach to the chat message when picked via @-mention.
+ *   // `data.chipLabel`, when set, is the chip's text instead of `@<id>`.
  *   getChipData?(item): { type, label, data }
+ *
+ *   // Optional: the chip's content for Claude, computed when the message is
+ *   // sent. Without it a chip sends nothing but its label.
+ *   resolve?(data, ctx): Promise<string>   ctx = { project, linkTicket? }
  * }
  * -----------------------------------------------------------------------------
  */

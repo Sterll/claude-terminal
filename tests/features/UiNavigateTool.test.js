@@ -79,7 +79,7 @@ describe('ui_navigate', () => {
 
     expect(tool).toBeDefined();
     const targets = tool.inputSchema.properties.tab.enum;
-    for (const id of ['claude', 'git', 'tasks', 'control-tower', 'session-replay', 'workspace', 'errorlog', 'settings']) {
+    for (const id of ['claude', 'git', 'tickets', 'tasks', 'control-tower', 'session-replay', 'workspace', 'errorlog', 'settings']) {
       expect(targets).toContain(id);
     }
   });

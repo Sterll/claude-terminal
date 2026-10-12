@@ -44,7 +44,7 @@ function saveSettings(settings) {
 // Must mirror _ALL_TABS_ORDER in renderer.js. Tabs missing here are rejected by
 // sidebar_set_pinned and silently dropped from the pinned list, so keep in sync.
 const ALL_TABS = [
-  'claude', 'git', 'database', 'mcp', 'plugins', 'skills',
+  'claude', 'git', 'tickets', 'database', 'mcp', 'plugins', 'skills',
   'agents', 'workflows', 'tasks', 'control-tower', 'dashboard', 'timetracking', 'cost',
   // 'artifacts' is omitted on purpose: its sidebar button is hidden, so there is
   // nothing to navigate to. TAB_LABELS keeps its entry for when it comes back.
@@ -54,6 +54,7 @@ const ALL_TABS = [
 const TAB_LABELS = {
   claude: 'Claude (terminal/chat)',
   git: 'Git & version control',
+  tickets: 'Tickets (issue tracker)',
   database: 'Database management',
   mcp: 'MCP servers',
   plugins: 'Claude Code plugins',

@@ -73,6 +73,10 @@ function start(win) {
           try {
             require('./WorkflowService').onHookEvent(event);
           } catch (_) { /* WorkflowService optional dependency */ }
+          // And to ticket detection: a terminal session's tracker tool calls and prompts.
+          try {
+            require('./IssueDetectionService').onHookEvent(event);
+          } catch (_) { /* detection must never break hook delivery */ }
         } catch (e) {
           console.warn('[HookEventServer] Malformed payload:', body.substring(0, 200));
         }
