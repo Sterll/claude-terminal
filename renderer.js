@@ -3901,6 +3901,10 @@ function _switchToSettingsTab(...args) {
   registry.ensureAllLoaded().then(() => SettingsPanel.switchToSettingsTab(...args));
 }
 
+// Components without access to the navigation (the chat's Git tab) ask for a
+// settings sub-tab through this event rather than reaching into renderer.js.
+document.addEventListener('ct-open-settings', (e) => _switchToSettingsTab(e.detail?.tab));
+
 document.getElementById('btn-settings').onclick = () => {
   const currentActive = document.querySelector('.nav-tab[data-tab].active');
   if (currentActive) _saveScrollPositions(currentActive.dataset.tab);

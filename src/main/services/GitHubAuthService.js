@@ -135,7 +135,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
           if (cacheKey && res.headers.etag) {
             etagCache.set(cacheKey, { etag: res.headers.etag, data: parsed });
           }
-          resolve({ status: res.statusCode, data: parsed });
+          resolve({ status: res.statusCode, data: parsed, sso: res.headers['x-github-sso'] || null });
         } catch (e) {
           // Parse as form-urlencoded if JSON fails
           const parsed = {};
@@ -143,7 +143,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
             const [key, value] = pair.split('=');
             parsed[decodeURIComponent(key)] = decodeURIComponent(value || '');
           });
-          resolve({ status: res.statusCode, data: parsed });
+          resolve({ status: res.statusCode, data: parsed, sso: res.headers['x-github-sso'] || null });
         }
       });
     });
@@ -477,6 +477,121 @@ async function getPullRequests(owner, repo, perPage = 5, page = 1, state = 'all'
   } catch (e) {
     console.error('Error fetching pull requests:', e);
     return { authenticated: true, pullRequests: [], error: e.message };
+  }
+}
+
+/**
+ * What GitHub says when an organization enforces SAML SSO and this token was
+ * never authorized for it: a 403 whose X-GitHub-SSO header is
+ * `required; url=<page that authorizes it>`. Read so the caller can offer that
+ * page instead of taking the 403 for "nothing there".
+ * @param {string|null} header
+ * @returns {{ url: string, org: string|null }|null}
+ */
+function ssoRequirement(header) {
+  const m = /^required;\s*url=(\S+)/i.exec(String(header || ''));
+  if (!m) return null;
+  try {
+    const url = new URL(m[1]);
+    if (url.protocol !== 'https:' || url.host.toLowerCase() !== config.webHostname.toLowerCase()) return null;
+    return { url: url.toString(), org: url.pathname.match(/^\/orgs\/([^/]+)\/sso/)?.[1] || null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The pull requests whose head is `headOwner:branch`, newest first. The head
+ * owner matters: a branch pushed to a fork and proposed upstream lives under
+ * the fork's owner, not the repository's.
+ * @returns {Promise<{authenticated: boolean, pullRequests: Array, error?: string}>}
+ */
+async function getPullRequestsForBranch(owner, repo, headOwner, branch) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, pullRequests: [] };
+
+  try {
+    const head = encodeURIComponent(`${headOwner}:${branch}`);
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/pulls?head=${head}&state=all&per_page=5&sort=updated&direction=desc`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `pulls-head:${owner}/${repo}/${headOwner}:${branch}`
+    });
+
+    if (response.status === 200) {
+      const pullRequests = (response.data || []).map(pr => ({
+        number: pr.number,
+        title: pr.title,
+        state: pr.merged_at ? 'merged' : pr.state,
+        draft: pr.draft || false,
+        url: pr.html_url,
+        headSha: pr.head?.sha || null,
+        headRef: pr.head?.ref || null,
+        baseRef: pr.base?.ref || null,
+        updatedAt: pr.updated_at
+      }));
+      return { authenticated: true, pullRequests };
+    }
+    if (response.status === 404) return { authenticated: true, pullRequests: [], notFound: true };
+    const sso = response.status === 403 ? ssoRequirement(response.sso) : null;
+    if (sso) return { authenticated: true, pullRequests: [], ssoRequired: sso };
+    return { authenticated: true, pullRequests: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching pull requests for a branch:', e);
+    return { authenticated: true, pullRequests: [], error: e.message };
+  }
+}
+
+/**
+ * One pull request by number: what the Git tab needs for a pull request a
+ * session created, whose branch may live in a worktree since removed.
+ * @returns {Promise<{ authenticated: boolean, pullRequest?: object|null, notFound?: boolean, ssoRequired?: object, error?: string }>}
+ */
+async function getPullRequest(owner, repo, number) {
+  const token = await getToken();
+  if (!token) return { authenticated: false };
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${Number(number)}`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `pull:${owner}/${repo}#${Number(number)}`
+    });
+    if (response.status === 200) {
+      const pr = response.data || {};
+      return {
+        authenticated: true,
+        pullRequest: {
+          number: pr.number,
+          title: pr.title,
+          state: pr.merged_at ? 'merged' : pr.state,
+          draft: pr.draft || false,
+          url: pr.html_url,
+          headSha: pr.head?.sha || null,
+          headRef: pr.head?.ref || null,
+          baseRef: pr.base?.ref || null,
+          updatedAt: pr.updated_at
+        }
+      };
+    }
+    if (response.status === 404) return { authenticated: true, pullRequest: null, notFound: true };
+    const sso = response.status === 403 ? ssoRequirement(response.sso) : null;
+    if (sso) return { authenticated: true, pullRequest: null, ssoRequired: sso };
+    return { authenticated: true, pullRequest: null, error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching a pull request:', e);
+    return { authenticated: true, pullRequest: null, error: e.message };
   }
 }
 
@@ -1066,6 +1181,9 @@ module.exports = {
   getWorkflowJobs,
   getJobLogs,
   getPullRequests,
+  getPullRequestsForBranch,
+  getPullRequest,
+  ssoRequirement,
   createPullRequest,
   parseGitHubRemote,
   getCheckRuns,
