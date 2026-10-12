@@ -110,7 +110,7 @@ describe('@tickets mention source', () => {
     ]);
     expect(text).toContain('## Why');
     expect(text).toContain('## Latest comments');
-    expect(text).toContain('## Sub-issues\n- ENG-151 [Todo] Persist ticket filters per screen');
+    expect(text).toContain('## Sub-issues (1/3 done)\n- ENG-151 [Todo] Persist ticket filters per screen');
   });
 
   test('a ticket that cannot be loaded still sends something useful', async () => {

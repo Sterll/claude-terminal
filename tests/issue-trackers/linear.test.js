@@ -112,7 +112,47 @@ describe('mapping', () => {
     expect(issue.facets).toEqual({ project: 'Tickets', cycle: 'Cycle 42' });
     expect(issue.container).toEqual({ id: 't-eng', name: 'Engineering' });
     expect(issue.comments.map((c) => c.id)).toEqual(['cm-1', 'cm-2']);
-    expect(issue.children.map((c) => c.key).sort()).toEqual(['ENG-121', 'ENG-151']);
+    expect(issue.children.map((c) => c.key).sort()).toEqual(['ENG-117', 'ENG-121', 'ENG-151']);
+  });
+
+  test('a listed issue carries its parent, and both carry how far their sub-issues are', async () => {
+    const sent = [];
+    const spy = (url, init) => { sent.push(JSON.parse(init.body)); return fixture.fetch(url, init); };
+    const c = linear.createClient({ secret: fixture.secret, fetch: spy });
+    const { issues } = await c.listIssues(normalizeQuery({ limit: 100 }), null);
+    const byKey = Object.fromEntries(issues.map((i) => [i.key, i]));
+    expect(byKey['ENG-151'].parent).toEqual({
+      key: 'ENG-142',
+      title: 'Session tickets tab',
+      url: expect.stringMatching(/^https:\/\/linear\.app\/acme\/issue\/ENG-142\//),
+      state: expect.objectContaining({ name: 'In Progress', category: 'started' }),
+      subIssues: { total: 3, done: 1 }, // ENG-117 is done, whether or not it is listed
+    });
+    expect(byKey['ENG-142'].subIssues).toEqual({ total: 3, done: 1 });
+    expect(byKey['ENG-142'].parent).toBeNull();
+    expect(byKey['ENG-139'].subIssues).toBeNull();
+    // One request for the page, one for every count on it.
+    expect(sent.map((r) => r.operationName)).toEqual(['Issues', 'SubIssues']);
+    expect(sent[1].variables.filter.parent.id.in).toEqual(expect.arrayContaining(['i-eng-142', 'i-ops-12']));
+  });
+
+  test('counts that cannot be read leave the list standing', async () => {
+    const spy = (url, init) => (JSON.parse(init.body).operationName === 'SubIssues'
+      ? Promise.resolve({ ok: false, status: 500, headers: { get: () => null }, json: async () => ({}) })
+      : fixture.fetch(url, init));
+    const c = linear.createClient({ secret: fixture.secret, fetch: spy });
+    const { issues } = await c.listIssues(normalizeQuery({ limit: 100 }), null);
+    expect(issues.length).toBeGreaterThan(10);
+    expect(issues.every((i) => i.subIssues === null)).toBe(true);
+    expect(issues.find((i) => i.key === 'ENG-151').parent.key).toBe('ENG-142');
+  });
+
+  test('the detail counts its own sub-issues and its parent\'s', async () => {
+    const parent = await client().getIssue('ENG-142');
+    expect(parent.subIssues).toEqual({ total: 3, done: 1 });
+    const child = await client().getIssue('ENG-151');
+    expect(child.parent).toMatchObject({ key: 'ENG-142', subIssues: { total: 3, done: 1 } });
+    expect(child.subIssues).toBeNull();
   });
 
   test('updateIssue sends only the fields it was given', async () => {

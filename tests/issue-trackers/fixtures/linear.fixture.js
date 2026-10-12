@@ -91,10 +91,10 @@ const ROWS = [
   ['ENG-155', 'Key prefixes shared between two trackers', 'backlog', 4, null, ['l-bug'], 'p-tickets', null, { creator: 'u-ada' }],
   ['ENG-121', 'Confirmation card for detected tickets', 'backlog', 3, null, ['l-feature'], 'p-sessions', null, { parent: 'ENG-142' }],
   ['ENG-160', 'Crash report from the nightly build', 'triage', 0, null, ['l-bug'], null, null, {}],
-  ['ENG-117', 'Crash when a tab closes mid-stream', 'done', 1, 'u-alan', ['l-bug'], null, 'c-eng-41', {}],
+  ['ENG-117', 'Crash when a tab closes mid-stream', 'done', 1, 'u-alan', ['l-bug'], null, 'c-eng-41', { parent: 'ENG-142' }],
   ['ENG-110', 'Rewrite the legacy diff view', 'canceled', 4, null, [], null, null, {}],
   ['OPS-12', 'Rotate the relay certificates', 'progress', 2, 'u-margaret', [], null, 'c-ops-7', { dueDate: '2026-10-15' }],
-  ['OPS-9', 'Nightly backup check', 'done', 3, 'u-margaret', ['l-docs'], null, null, {}],
+  ['OPS-9', 'Nightly backup check', 'done', 3, 'u-margaret', ['l-docs'], null, null, { parent: 'OPS-12' }],
   ['DES-31', 'Ticket card density on small screens', 'todo', 3, 'u-grace', ['l-ux'], 'p-tickets', null, { dueDate: '2026-10-20' }],
   ['DES-28', 'Empty state illustrations', 'backlog', 4, null, ['l-ux'], 'p-onboarding', null, {}],
 ];
@@ -141,6 +141,23 @@ function reset() {
 
 const user = (id) => USERS.find((u) => u.id === id) || null;
 
+/** The parent as an issue node carries it: enough to draw it, not its own parent. */
+function parentNode(row) {
+  const parent = row.parent && issues.find((r) => r.identifier === row.parent);
+  if (!parent) return null;
+  const state = STATES.find((s) => s.id === parent.stateId);
+  return {
+    id: parent.id,
+    identifier: parent.identifier,
+    title: parent.title,
+    url: `https://linear.app/acme/issue/${parent.identifier}/${slugify(parent.title)}`,
+    state: { id: state.id, name: state.name, color: state.color, type: state.type },
+  };
+}
+
+const childrenOf = (row) => issues.filter((r) => r.parent === row.identifier);
+const stateOf = (row) => STATES.find((s) => s.id === row.stateId);
+
 function issueNode(row) {
   const team = TEAMS.find((t) => t.id === row.teamId);
   const state = STATES.find((s) => s.id === row.stateId);
@@ -164,6 +181,7 @@ function issueNode(row) {
     team,
     project: project ? { id: project.id, name: project.name } : null,
     cycle: cycle ? { id: cycle.id, number: cycle.number, name: cycle.name } : null,
+    parent: parentNode(row),
   };
 }
 
@@ -218,6 +236,13 @@ function matchField(row, field, cond) {
     case 'updatedAt':
       if (cond.gt !== undefined) return row.updatedAt > cond.gt;
       break;
+    case 'parent': {
+      if (cond.id?.in) {
+        const parent = issues.find((r) => r.identifier === row.parent);
+        return !!parent && cond.id.in.includes(parent.id);
+      }
+      break;
+    }
     default:
   }
   throw new UnknownFilter(`fixture does not evaluate ${field}: ${JSON.stringify(cond)}`);
@@ -282,7 +307,22 @@ function resolve(operationName, v) {
           ...issueNode(row),
           description: row.description,
           comments: { nodes: row.comments.map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, user: user(c.userId) })) },
-          children: { nodes: issues.filter((r) => r.parent === row.identifier).map(issueNode) },
+          children: { nodes: childrenOf(row).map(issueNode) },
+          parent: row.parent
+            ? { ...parentNode(row), children: { nodes: childrenOf(issues.find((r) => r.identifier === row.parent)).map((c) => ({ state: { type: stateOf(c).type } })) } }
+            : null,
+        },
+      };
+    }
+    case 'SubIssues': {
+      const all = issues.filter((row) => matches(row, v.filter));
+      const start = v.after ? Number(v.after) : 0;
+      const slice = all.slice(start, start + v.first);
+      const more = start + v.first < all.length;
+      return {
+        issues: {
+          nodes: slice.map((row) => ({ parent: { id: issues.find((r) => r.identifier === row.parent).id }, state: { type: stateOf(row).type } })),
+          pageInfo: { hasNextPage: more, endCursor: more ? String(start + v.first) : null },
         },
       };
     }

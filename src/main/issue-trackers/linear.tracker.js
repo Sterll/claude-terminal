@@ -55,7 +55,12 @@ const ISSUE_FIELDS = `
     team { id key name }
     project { id name }
     cycle { id number name }
+    parent { id identifier title url state { id name color type } }
   }`;
+
+/** Sub-issue counts come 250 to a request, and stop there: 1000 children is plenty for one page. */
+const PROGRESS_PAGE = 250;
+const PROGRESS_MAX_PAGES = 4;
 
 const USER_FIELDS = 'id name avatarUrl';
 
@@ -150,6 +155,30 @@ function cycleLabel(cycle) {
   return cycle.name || `Cycle ${cycle.number}`;
 }
 
+function toState(state) {
+  return {
+    id: state?.id,
+    name: state?.name,
+    color: state?.color,
+    category: CATEGORY_BY_TYPE[state?.type] || 'backlog',
+  };
+}
+
+const isClosed = (type) => ['done', 'canceled'].includes(CATEGORY_BY_TYPE[type]);
+
+/** `{ total, done }` from a list of sub-issue nodes, null when there are none. */
+function progressOf(nodes) {
+  if (!nodes?.length) return null;
+  return { total: nodes.length, done: nodes.filter((n) => isClosed(n.state?.type)).length };
+}
+
+/** The counts `subIssueCounts` found, on the issue and on its parent. */
+function withProgress(issue, node, counts) {
+  issue.subIssues = counts.get(node.id) || null;
+  if (issue.parent) issue.parent.subIssues = counts.get(node.parent.id) || null;
+  return issue;
+}
+
 function toIssue(node) {
   const facets = {};
   if (node.project?.name) facets.project = node.project.name;
@@ -160,12 +189,7 @@ function toIssue(node) {
     id: node.id,
     title: node.title,
     url: node.url,
-    state: {
-      id: node.state?.id,
-      name: node.state?.name,
-      color: node.state?.color,
-      category: CATEGORY_BY_TYPE[node.state?.type] || 'backlog',
-    },
+    state: toState(node.state),
     priority: priority >= 0 && priority <= 4 ? priority : null,
     assignee: toPerson(node.assignee),
     labels: (node.labels?.nodes || []).map((l) => ({ id: l.id, name: l.name, color: l.color })),
@@ -176,6 +200,9 @@ function toIssue(node) {
     branchName: node.branchName || null,
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
+    parent: node.parent
+      ? { key: node.parent.identifier, title: node.parent.title, url: node.parent.url, state: node.parent.state ? toState(node.parent.state) : null }
+      : null,
   };
 }
 
@@ -249,6 +276,43 @@ function sortPage(issues, sort) {
 function createClient({ secret, fetch }) {
   const ctx = { secret, fetch };
 
+  /**
+   * How many sub-issues each listed issue and each listed issue's parent has,
+   * and how many are closed: all of them, not only the listed ones. Linear has
+   * no count field, so this asks for the children themselves, which costs
+   * a few points per child rather than a nested connection per listed issue.
+   * Decoration only: a failure leaves the counts out and the list stands.
+   */
+  async function subIssueCounts(nodes) {
+    const counts = new Map();
+    const ids = [...new Set(nodes.flatMap((n) => [n.id, n.parent?.id]).filter(Boolean))];
+    if (!ids.length) return counts;
+    try {
+      let after = null;
+      for (let page = 0; page < PROGRESS_MAX_PAGES; page++) {
+        const data = await request(ctx, 'SubIssues', `query SubIssues($first: Int!, $after: String, $filter: IssueFilter) {
+          issues(first: $first, after: $after, filter: $filter) {
+            nodes { parent { id } state { type } }
+            pageInfo { hasNextPage endCursor }
+          }
+        }`, { first: PROGRESS_PAGE, after, filter: { parent: { id: { in: ids } } } });
+        for (const child of data.issues?.nodes || []) {
+          const id = child.parent?.id;
+          if (!id) continue;
+          const c = counts.get(id) || { total: 0, done: 0 };
+          c.total++;
+          if (isClosed(child.state?.type)) c.done++;
+          counts.set(id, c);
+        }
+        if (!data.issues?.pageInfo?.hasNextPage) break;
+        after = data.issues.pageInfo.endCursor;
+      }
+    } catch {
+      return new Map();
+    }
+    return counts;
+  }
+
   return {
     async whoAmI() {
       const data = await request(ctx, 'Viewer', `query Viewer {
@@ -321,8 +385,10 @@ function createClient({ secret, fetch }) {
         orderBy: query.sort === 'created' ? 'createdAt' : 'updatedAt',
       });
       const conn = data.issues || {};
+      const nodes = conn.nodes || [];
+      const counts = await subIssueCounts(nodes);
       return {
-        issues: sortPage((conn.nodes || []).map(toIssue), query.sort),
+        issues: sortPage(nodes.map((n) => withProgress(toIssue(n), n, counts)), query.sort),
         next: conn.pageInfo?.hasNextPage ? conn.pageInfo.endCursor || null : null,
       };
     },
@@ -334,6 +400,7 @@ function createClient({ secret, fetch }) {
           description
           comments(first: 100) { nodes { id body createdAt user { ${USER_FIELDS} } } }
           children(first: 100) { nodes { ...IssueFields } }
+          parent { children(first: 100) { nodes { state { type } } } }
         }
       }
       ${ISSUE_FIELDS}`, { id: key });
@@ -342,8 +409,11 @@ function createClient({ secret, fetch }) {
       const comments = (node.comments?.nodes || [])
         .map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, author: toPerson(c.user) }))
         .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+      const issue = toIssue(node);
+      issue.subIssues = progressOf(node.children?.nodes);
+      if (issue.parent) issue.parent.subIssues = progressOf(node.parent.children?.nodes);
       return {
-        ...toIssue(node),
+        ...issue,
         description: node.description || null,
         comments,
         children: (node.children?.nodes || []).map(toIssue),
@@ -361,7 +431,8 @@ function createClient({ secret, fetch }) {
       }
       ${ISSUE_FIELDS}`, { id: key, input });
       if (!data.issueUpdate?.success || !data.issueUpdate.issue) throw trackerError('PROVIDER', `Linear did not update ${key}`);
-      return toIssue(data.issueUpdate.issue);
+      const node = data.issueUpdate.issue;
+      return withProgress(toIssue(node), node, await subIssueCounts([node]));
     },
 
     async addComment(key, body) {

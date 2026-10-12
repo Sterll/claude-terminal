@@ -97,7 +97,7 @@ describe('HTML', () => {
     document.body.innerHTML = view.detailHtml(detail, { renderMarkdown, providerName: 'Linear', metadata });
     expect(renderMarkdown).toHaveBeenCalledTimes(3); // description + two comments
     expect(document.querySelector('.issue-detail-title').textContent).toBe('Session tickets tab');
-    expect(document.querySelectorAll('.issue-detail-children .issue-row')).toHaveLength(2);
+    expect(document.querySelectorAll('.issue-detail-children .issue-row')).toHaveLength(3);
     expect(document.querySelector('[data-action="open"]').textContent).toBe(t('tickets.detail.openIn', { provider: 'Linear' }));
     expect(document.querySelector('[data-action="copy-branch"]').title).toBe(detail.branchName);
   });
@@ -145,5 +145,20 @@ describe('board', () => {
     const detail = { ...issues.find((i) => i.key === 'ENG-142'), description: null, comments: [], children: [] };
     document.body.innerHTML = view.detailHtml(detail, { renderMarkdown: () => '', providerName: 'Linear', metadata, editableFields: { state: true, assignee: false, priority: true } });
     expect([...document.querySelectorAll('.issue-prop-edit')].map((b) => b.dataset.edit)).toEqual(['state', 'priority']);
+  });
+});
+
+describe('sub-issues', () => {
+  test('by status, a sub-issue in another status than its parent sits under it, shown for context, in its own group', () => {
+    const groups = view.groupIssues(issues, 'status', metadata);
+    document.body.innerHTML = view.groupsHtml(groups);
+    const todo = [...document.querySelectorAll('.issue-group')].find((g) => g.querySelector('.issue-group-label').textContent === 'Todo');
+    const rows = [...todo.querySelectorAll('.issue-row')];
+    const context = rows.find((r) => r.dataset.key === 'ENG-142');
+    expect(context.classList.contains('context')).toBe(true);
+    expect(context.querySelector('.issue-progress').textContent.trim()).toBe('1/3'); // ENG-117 is done, and not listed
+    expect(rows[rows.indexOf(context) + 1].dataset).toMatchObject({ key: 'ENG-151', depth: '1', last: '' });
+    const started = [...document.querySelectorAll('.issue-group')].find((g) => g.querySelector('.issue-group-label').textContent === 'In Progress');
+    expect(started.querySelector('.issue-row:not(.context)[data-key="ENG-142"]')).not.toBeNull();
   });
 });
