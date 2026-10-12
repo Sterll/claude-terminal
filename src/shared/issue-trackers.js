@@ -208,6 +208,26 @@ function sanitizePerson(raw) {
   return { id, name, avatarUrl: cleanUrl(raw.avatarUrl) };
 }
 
+/** A state as an adapter returned it, or null when its name or category is unusable. */
+function sanitizeState(raw) {
+  if (!isObject(raw)) return null;
+  const name = cleanString(raw.name, LIMITS.name);
+  const category = STATE_CATEGORIES.includes(raw.category) ? raw.category : null;
+  if (!name || !category) return null;
+  return { id: cleanId(raw.id), name, color: cleanColor(raw.color), category };
+}
+
+/**
+ * How far an issue's sub-issues are: `done` of `total` closed (done or
+ * canceled). Null when the issue has none, so "no sub-issues" draws nothing.
+ */
+function sanitizeProgress(raw) {
+  if (!isObject(raw)) return null;
+  const { total, done } = raw;
+  if (!Number.isInteger(total) || !Number.isInteger(done) || total < 1 || done < 0 || done > total) return null;
+  return { total, done };
+}
+
 function sanitizeLabel(raw) {
   if (!isObject(raw)) return null;
   const name = cleanString(raw.name, LIMITS.name);
@@ -261,6 +281,8 @@ function sanitizeIssue(raw, provider) {
     branchName: null,
     createdAt: cleanTimestamp(raw.createdAt),
     updatedAt: cleanTimestamp(raw.updatedAt),
+    parent: null,
+    subIssues: null,
   };
 
   if (raw.url != null && !issue.url) problems.push('url: not an https URL');
@@ -317,6 +339,33 @@ function sanitizeIssue(raw, provider) {
     const branch = cleanString(raw.branchName, LIMITS.branchName);
     if (branch && !/\s/.test(branch)) issue.branchName = branch;
     else problems.push('branchName: contains whitespace');
+  }
+
+  // The parent travels with the issue, so a list can show it above its
+  // sub-issues even when the parent itself is not in the list.
+  if (raw.parent != null) {
+    const p = isObject(raw.parent) ? raw.parent : {};
+    const parentKey = cleanKey(p.key);
+    const parentTitle = cleanString(p.title, LIMITS.title);
+    if (parentKey && parentTitle && parentKey !== key) {
+      issue.parent = {
+        ref: formatRef(provider, parentKey),
+        key: parentKey,
+        title: parentTitle,
+        url: cleanUrl(p.url),
+        state: sanitizeState(p.state),
+        subIssues: sanitizeProgress(p.subIssues),
+      };
+      if (p.state != null && !issue.parent.state) problems.push('parent.state: needs a name and a category');
+      if (p.subIssues != null && !issue.parent.subIssues) problems.push('parent.subIssues: expected { total, done } with 0 <= done <= total');
+    } else {
+      problems.push('parent: needs a key, other than the issue\'s own, and a title');
+    }
+  }
+
+  if (raw.subIssues != null) {
+    issue.subIssues = sanitizeProgress(raw.subIssues);
+    if (!issue.subIssues && raw.subIssues?.total !== 0) problems.push('subIssues: expected { total, done } with 0 <= done <= total');
   }
 
   return { issue, problems };

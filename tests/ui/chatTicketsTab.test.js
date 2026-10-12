@@ -122,7 +122,7 @@ function makeTab(over = {}) {
 
 const panel = () => document.querySelector('.panel');
 const badge = () => document.querySelector('.badge');
-const rows = () => [...panel().querySelectorAll('.session-tickets-row')].map((r) => r.dataset.ref);
+const rows = () => [...panel().querySelectorAll('.session-tickets-row:not(.context)')].map((r) => r.dataset.ref);
 
 test('the tab only appears once a tracker is connected', async () => {
   api.issueTrackers.connections.mockResolvedValueOnce({ ok: true, connections: [] });
@@ -217,6 +217,28 @@ test('the provisional tab key moves to the CLI session id; a fork copies', async
   expect((await api.issueLinks.get('sess-A')).links).toHaveLength(1);
   expect((await api.issueLinks.get('sess-B')).links).toHaveLength(1);
   expect(badge().textContent).toBe('1');
+  tab.destroy();
+});
+
+test('a sub-ticket sits under its parent: shown for context while the parent is not linked, linked in one click', async () => {
+  const tab = makeTab();
+  await tab.probe();
+  await tab.linkTicket({ ref: 'fake:#4', connectionId: conn.id, title: 'Sub-task of #1' }, 'manual');
+  tab.show();
+  await waitFor(() => panel().querySelector('.session-tickets-row.context'));
+  const context = panel().querySelector('.session-tickets-row.context');
+  expect(context.dataset.ref).toBe('fake:#1');
+  expect(context.querySelector('.issue-progress').textContent.trim()).toBe('0/1');
+  expect(context.nextElementSibling.dataset).toMatchObject({ ref: 'fake:#4', depth: '1', last: '' });
+  expect(badge().textContent).toBe('1'); // shown, not linked
+  context.querySelector('[data-action="open"]').click();
+  expect(api.dialog.openExternal).toHaveBeenCalledWith('https://example.com/acme/app/issues/1');
+
+  context.querySelector('[data-action="link-parent"]').click();
+  await waitFor(() => rows().length === 2 && !panel().querySelector('.session-tickets-row.context'));
+  expect([...panel().querySelectorAll('.session-tickets-row')].map((r) => [r.dataset.ref, r.dataset.depth || '0']))
+    .toEqual([['fake:#1', '0'], ['fake:#4', '1']]);
+  expect(badge().textContent).toBe('2');
   tab.destroy();
 });
 
@@ -466,7 +488,9 @@ describe('@tickets mention source', () => {
       'https://example.com/acme/app/issues/1',
     ]);
     expect(text).toContain('Body of #1');
-    expect(text).toContain('## Sub-issues\n- #4 [Open] Sub-task of #1');
+    expect(text).toContain('## Sub-issues (0/1 done)\n- #4 [Open] Sub-task of #1');
+    const child = await issueSource.resolve({ ref: 'fake:#4', key: '#4', title: 'Sub-task of #1', connectionId: conn.id }, {});
+    expect(child.split('\n')).toContain('Sub-issue of #1: Crash when the tab closes');
     expect(text).not.toContain('## Latest comments');
 
     const closed = await issueSource.resolve({ ref: 'fake:#3', key: '#3', title: 'Old flaky test', connectionId: conn.id }, {});

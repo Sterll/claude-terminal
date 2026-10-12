@@ -914,6 +914,12 @@
       "edit": "Ubah",
       "startSession": "Mulai sesi"
     },
+    "subIssues": {
+      "progress": "{done} dari {total} sub-tiket selesai",
+      "contextParent": "Induk dari tiket di bawah, ditampilkan sebagai konteks",
+      "parent": "Sub-tiket dari",
+      "parentOf": "Sub-tiket dari {key}"
+    },
     "errors": {
       "auth": "Kunci {provider} ditolak. Hubungkan kembali di pengaturan.",
       "rateLimited": "Terlalu banyak permintaan ke {provider}. Akan dicoba lagi sebentar lagi.",

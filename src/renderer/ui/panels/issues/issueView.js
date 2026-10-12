@@ -384,14 +384,131 @@ function sessionsHtml(count) {
   return `<span class="issue-sessions" title="${escapeHtml(label)}">${escapeHtml(label)}</span>`;
 }
 
-function rowHtml(issue, { selected = false, now, sessions = 0 } = {}) {
+// ── Hierarchy ────────────────────────────────────────────────────────────────
+
+/** How deep a sub-issue is drawn; anything deeper sits at this level. */
+const MAX_DEPTH = 4;
+
+/**
+ * Sub-issues under their parent, the way Linear lists them. An item whose
+ * parent is in the same list goes under it, wherever the parent is; one whose
+ * parent is not gets that parent as a context node, drawn dimmed from what the
+ * child carries and shared by its siblings, at the place of the first of them.
+ * The order is otherwise the list's own.
+ *
+ * Items are issues by default; the session tab passes its links and says how
+ * to reach each one's issue, which may not be loaded yet (then it stays a leaf).
+ *
+ * @template T
+ * @param {T[]} items
+ * @param {(item: T) => object|null|undefined} [issueOf]
+ * @returns {Array<{ item: T|null, issue: object|null, context: boolean, children: Array }>}
+ */
+function nestIssues(items, issueOf = (item) => item) {
+  const nodes = items.map((item) => ({ item, issue: issueOf(item) || null, context: false, children: [] }));
+  const byKey = new Map();
+  for (const node of nodes) if (node.issue && !byKey.has(node.issue.key)) byKey.set(node.issue.key, node);
+  // Trackers have no cycles, but an adapter could send one: a node that would
+  // end up under itself stays at the top instead of vanishing with its loop.
+  const underItself = (host, node) => {
+    for (let cur = host, hops = 0; cur && hops <= items.length; cur = byKey.get(cur.issue?.parent?.key), hops++) {
+      if (cur === node) return true;
+    }
+    return false;
+  };
+  const top = [];
+  const contexts = new Map();
+  for (const node of nodes) {
+    const parent = node.issue?.parent;
+    if (!parent) {
+      top.push(node);
+      continue;
+    }
+    const host = byKey.get(parent.key);
+    if (host && !underItself(host, node)) {
+      host.children.push(node);
+      continue;
+    }
+    if (host) {
+      top.push(node);
+      continue;
+    }
+    let context = contexts.get(parent.key);
+    if (!context) {
+      context = { item: null, issue: contextIssue(parent), context: true, children: [] };
+      contexts.set(parent.key, context);
+      top.push(context);
+    }
+    context.children.push(node);
+  }
+  return top;
+}
+
+/** A parent known only through its child, shaped enough for a row. */
+function contextIssue(parent) {
+  return {
+    ref: parent.ref,
+    key: parent.key,
+    title: parent.title,
+    url: parent.url || null,
+    state: parent.state || null,
+    subIssues: parent.subIssues || null,
+    priority: null,
+    assignee: null,
+    labels: [],
+    facets: {},
+    dueDate: null,
+    updatedAt: null,
+  };
+}
+
+/** Depth-first, each node with how deep it sits and whether it closes its parent's branch. */
+function flattenTree(nodes, depth = 0, out = []) {
+  nodes.forEach((node, i) => {
+    out.push({ node, depth: Math.min(depth, MAX_DEPTH), last: i === nodes.length - 1 });
+    flattenTree(node.children, depth + 1, out);
+  });
+  return out;
+}
+
+/** "3/5" with a ring that fills as sub-issues close. */
+function progressHtml(subIssues) {
+  if (!subIssues) return '';
+  const { done, total } = subIssues;
+  const label = t('tickets.subIssues.progress', { done, total });
+  const r = 5;
+  const length = 2 * Math.PI * r;
+  const filled = total ? (done / total) * length : 0;
+  return `<span class="issue-progress${done === total ? ' complete' : ''}" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}">
+      <svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="${r}" class="issue-progress-track"/><circle cx="7" cy="7" r="${r}" class="issue-progress-fill" stroke-dasharray="${filled.toFixed(2)} ${length.toFixed(2)}" transform="rotate(-90 7 7)"/></svg>
+      ${done}/${total}
+    </span>`;
+}
+
+/** Where a sub-issue sits in its tree, as attributes a row carries. The last one ends the line in an elbow. */
+function depthAttrs(depth, last = false) {
+  return depth ? ` data-depth="${depth}"${last ? ' data-last' : ''} style="--depth: ${depth}"` : '';
+}
+
+function rowHtml(issue, { selected = false, now, sessions = 0, depth = 0, last = false, context = false, hint = true } = {}) {
+  if (context) {
+    // The parent of the rows below, not in the list itself: dimmed, and only
+    // what the child carried about it.
+    return `
+    <div class="issue-row context${selected ? ' selected' : ''}" role="row" tabindex="0" data-ref="${escapeHtml(issue.ref)}" data-key="${escapeHtml(issue.key)}"${hint ? ` title="${escapeHtml(t('tickets.subIssues.contextParent'))}"` : ''}${depthAttrs(depth, last)}>
+      ${priorityIcon(null)}
+      <span class="issue-key">${escapeHtml(issue.key)}</span>
+      ${issue.state ? stateDot(issue.state) : '<span class="issue-state" aria-hidden="true"></span>'}
+      <span class="issue-title-cell"><span class="issue-title">${escapeHtml(issue.title)}</span>${progressHtml(issue.subIssues)}</span>
+    </div>`;
+  }
   const facet = issue.facets.cycle || issue.facets.sprint || issue.facets.milestone || '';
   return `
-    <div class="issue-row${selected ? ' selected' : ''}" role="row" tabindex="0" data-ref="${escapeHtml(issue.ref)}" data-key="${escapeHtml(issue.key)}">
+    <div class="issue-row${selected ? ' selected' : ''}" role="row" tabindex="0" data-ref="${escapeHtml(issue.ref)}" data-key="${escapeHtml(issue.key)}"${depthAttrs(depth, last)}>
       ${priorityIcon(issue.priority)}
       <span class="issue-key">${escapeHtml(issue.key)}</span>
       ${stateDot(issue.state)}
-      <span class="issue-title">${escapeHtml(issue.title)}</span>
+      <span class="issue-title-cell"><span class="issue-title">${escapeHtml(issue.title)}</span>${progressHtml(issue.subIssues)}</span>
       ${labelsHtml(issue.labels)}
       ${sessionsHtml(sessions)}
       ${facet ? `<span class="issue-facet">${escapeHtml(facet)}</span>` : ''}
@@ -419,7 +536,9 @@ function groupsHtml(groups, { selectedRef = null, collapsed = new Set(), now, se
           <span class="issue-group-count">${group.issues.length}</span>
         </button>`
       : '';
-    const rows = isCollapsed ? '' : group.issues.map((issue) => rowHtml(issue, { selected: issue.ref === selectedRef, now, sessions: sessionCounts[issue.ref] || 0 })).join('');
+    const rows = isCollapsed ? '' : flattenTree(nestIssues(group.issues))
+      .map(({ node, depth, last }) => rowHtml(node.issue, { selected: node.issue.ref === selectedRef, now, sessions: sessionCounts[node.issue.ref] || 0, depth, last, context: node.context }))
+      .join('');
     return `<section class="issue-group" data-group="${escapeHtml(group.key)}">${header}<div class="issue-group-rows" role="rowgroup">${rows}</div></section>`;
   }).join('');
 }
@@ -432,9 +551,11 @@ function cardHtml(issue, { selected = false, draggable = false, sessions = 0 } =
         <span class="issue-key">${escapeHtml(issue.key)}</span>
         ${avatarHtml(issue.assignee, 'issue-avatar-sm')}
       </div>
+      ${issue.parent ? `<div class="issue-card-parent" title="${escapeHtml(t('tickets.subIssues.parentOf', { key: issue.parent.key }))}"><span class="issue-key">${escapeHtml(issue.parent.key)}</span> ${escapeHtml(issue.parent.title)}</div>` : ''}
       <div class="issue-card-title">${escapeHtml(issue.title)}</div>
       <div class="issue-card-meta">
         ${priorityIcon(issue.priority)}
+        ${progressHtml(issue.subIssues)}
         ${labelsHtml(issue.labels, 2)}
         ${sessionsHtml(sessions)}
         ${facet ? `<span class="issue-facet">${escapeHtml(facet)}</span>` : ''}
@@ -483,7 +604,7 @@ function detailHtml(issue, { renderMarkdown, providerName, metadata, editableFie
     .join('');
   const children = issue.children.length
     ? `<section class="issue-detail-section">
-        <h4>${escapeHtml(t('tickets.detail.subIssues'))} <span class="issue-group-count">${issue.children.length}</span></h4>
+        <h4>${escapeHtml(t('tickets.detail.subIssues'))} <span class="issue-group-count">${issue.children.length}</span> ${progressHtml(issue.subIssues)}</h4>
         <div class="issue-detail-children">${issue.children.map((c) => rowHtml(c)).join('')}</div>
       </section>`
     : '';
@@ -505,6 +626,7 @@ function detailHtml(issue, { renderMarkdown, providerName, metadata, editableFie
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
+    ${issue.parent ? `<div class="issue-detail-parent"><span class="issue-detail-parent-label">${escapeHtml(t('tickets.subIssues.parent'))}</span>${rowHtml(contextIssue(issue.parent), { context: true, hint: false })}</div>` : ''}
     <h3 class="issue-detail-title">${escapeHtml(issue.title)}</h3>
     <div class="issue-detail-actions">
       ${canStart ? `<button type="button" class="btn-sm issues-primary issue-action" data-action="start-session" aria-haspopup="dialog">${escapeHtml(t('tickets.detail.startSession'))}</button>` : ''}
@@ -563,6 +685,11 @@ module.exports = {
   relativeTime,
   rowHtml,
   groupsHtml,
+  nestIssues,
+  flattenTree,
+  contextIssue,
+  progressHtml,
+  depthAttrs,
   detailHtml,
   boardColumns,
   dropTargetState,

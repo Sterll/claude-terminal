@@ -914,6 +914,12 @@
       "edit": "Alterar",
       "startSession": "Iniciar uma sessão"
     },
+    "subIssues": {
+      "progress": "{done} de {total} subtickets concluídos",
+      "contextParent": "Pai dos tickets abaixo, exibido como contexto",
+      "parent": "Subticket de",
+      "parentOf": "Subticket de {key}"
+    },
     "errors": {
       "auth": "A chave do {provider} foi recusada. Conecte-a de novo nas configurações.",
       "rateLimited": "Requisições demais para o {provider}. Uma nova tentativa será feita em breve.",

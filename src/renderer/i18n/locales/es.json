@@ -911,6 +911,12 @@
       "edit": "Cambiar",
       "startSession": "Iniciar una sesión"
     },
+    "subIssues": {
+      "progress": "{done} de {total} subtickets terminados",
+      "contextParent": "Padre de los tickets de abajo, mostrado como contexto",
+      "parent": "Subticket de",
+      "parentOf": "Subticket de {key}"
+    },
     "errors": {
       "auth": "La clave de {provider} fue rechazada. Vuelve a conectarla en los ajustes.",
       "rateLimited": "Demasiadas solicitudes a {provider}. Se reintentará en breve.",

@@ -42,6 +42,7 @@ function issueAsText(issue) {
   lines.push(facts.join(' | '));
   if (issue.url) lines.push(issue.url);
   if (issue.branchName) lines.push(`Suggested branch: ${issue.branchName}`);
+  if (issue.parent) lines.push(`Sub-issue of ${issue.parent.key}: ${issue.parent.title}`);
   if (issue.description) {
     const text = issue.description.length > DESCRIPTION_CHARS
       ? `${issue.description.slice(0, DESCRIPTION_CHARS)}\n[description truncated]`
@@ -54,7 +55,7 @@ function issueAsText(issue) {
     for (const c of comments) lines.push(`- ${c.author?.name || 'someone'}: ${c.body.replace(/\s+/g, ' ').slice(0, 500)}`);
   }
   if (issue.children?.length) {
-    lines.push('', '## Sub-issues');
+    lines.push('', issue.subIssues ? `## Sub-issues (${issue.subIssues.done}/${issue.subIssues.total} done)` : '## Sub-issues');
     for (const child of issue.children) lines.push(`- ${child.key} [${child.state.name}] ${child.title}`);
   }
   return lines.join('\n');

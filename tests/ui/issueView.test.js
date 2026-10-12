@@ -202,3 +202,77 @@ describe('board', () => {
     expect([...document.querySelectorAll('.issue-prop-edit')].map((b) => b.dataset.edit)).toEqual(['state']);
   });
 });
+
+describe('sub-issues', () => {
+  const shape = (nodes) => nodes.map((n) => (n.children.length
+    ? { key: n.issue.key, context: n.context, children: shape(n.children) }
+    : { key: n.issue.key, context: n.context }));
+
+  test('a sub-issue goes under its parent when both are listed, wherever the parent is', () => {
+    expect(shape(view.nestIssues([byKey('#4'), byKey('#2'), byKey('#1')]))).toEqual([
+      { key: '#2', context: false },
+      { key: '#1', context: false, children: [{ key: '#4', context: false }] },
+    ]);
+  });
+
+  test('a parent that is not listed is shown once, for context, where its first sub-issue was', () => {
+    const tree = view.nestIssues([byKey('#2'), byKey('#4')]);
+    expect(shape(tree)).toEqual([
+      { key: '#2', context: false },
+      { key: '#1', context: true, children: [{ key: '#4', context: false }] },
+    ]);
+    expect(tree[1].issue).toMatchObject({ ref: 'fake:#1', title: 'Crash when the tab closes', subIssues: { total: 1, done: 0 }, state: { name: 'Open' } });
+  });
+
+  test('only the last sub-issue of a parent closes its branch', () => {
+    const second = { ...byKey('#2'), parent: byKey('#4').parent };
+    const flat = view.flattenTree(view.nestIssues([byKey('#1'), byKey('#4'), second]));
+    expect(flat.map(({ node, depth, last }) => [node.issue.key, depth, last])).toEqual([['#1', 0, true], ['#4', 1, false], ['#2', 1, true]]);
+    expect(view.depthAttrs(1, true)).toBe(' data-depth="1" data-last style="--depth: 1"');
+    expect(view.depthAttrs(0, true)).toBe('');
+  });
+
+  test('a loop sent by an adapter keeps every issue on screen', () => {
+    const a = { ...byKey('#1'), parent: { ref: 'fake:#2', key: '#2', title: 'x' } };
+    const b = { ...byKey('#2'), parent: { ref: 'fake:#1', key: '#1', title: 'y' } };
+    expect(view.flattenTree(view.nestIssues([a, b])).map(({ node }) => node.issue.key).sort()).toEqual(['#1', '#2']);
+  });
+
+  test('items that are not issues nest through the accessor, and an unloaded one stays a leaf', () => {
+    const links = [{ ref: 'fake:#4' }, { ref: 'fake:#9' }];
+    const tree = view.nestIssues(links, (l) => (l.ref === 'fake:#4' ? byKey('#4') : null));
+    expect(tree.map((n) => [n.context, n.issue?.key ?? null])).toEqual([[true, '#1'], [false, null]]);
+    expect(tree[0].children[0].item).toBe(links[0]);
+  });
+
+  test('grouped apart from its parent, a sub-issue sits under it, shown for context, in its own group', () => {
+    const groups = view.groupIssues(issues, 'assignee', metadata);
+    document.body.innerHTML = view.groupsHtml(groups);
+    const [ada, unassigned] = document.querySelectorAll('.issue-group');
+    const context = unassigned.querySelector('.issue-row.context');
+    expect(context.dataset.key).toBe('#1');
+    expect(context.title).toBe(t('tickets.subIssues.contextParent'));
+    expect(context.nextElementSibling.dataset).toMatchObject({ key: '#4', depth: '1', last: '' });
+    expect(ada.querySelector('.issue-row:not(.context)[data-key="#1"] .issue-progress').textContent.trim()).toBe('0/1');
+    expect(unassigned.querySelector('.issue-group-count').textContent).toBe(String(groups[1].issues.length)); // context rows not counted
+  });
+
+  test('progress on rows and cards; a sub-issue\'s card names its parent', () => {
+    document.body.innerHTML = view.rowHtml(byKey('#1'));
+    const progress = document.querySelector('.issue-progress');
+    expect(progress.textContent.trim()).toBe('0/1');
+    expect(progress.title).toBe(t('tickets.subIssues.progress', { done: 0, total: 1 }));
+    document.body.innerHTML = view.cardHtml(byKey('#4'));
+    expect(document.querySelector('.issue-card-parent').textContent).toContain('#1');
+    expect(view.progressHtml(null)).toBe('');
+  });
+
+  test('the detail of a sub-issue leads to its parent', async () => {
+    const { issue: detail } = sanitizeIssueDetail(await client.getIssue('#4'), 'fake');
+    document.body.innerHTML = view.detailHtml(detail, { renderMarkdown: (md) => md, providerName: 'Fake Tracker', metadata });
+    const parent = document.querySelector('.issue-detail-parent .issue-row');
+    expect(parent.dataset.key).toBe('#1');
+    expect(parent.hasAttribute('title')).toBe(false);
+    expect(parent.querySelector('.issue-progress').textContent.trim()).toBe('0/1');
+  });
+});

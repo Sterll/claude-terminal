@@ -81,6 +81,34 @@ describe('extractKeyedRefs', () => {
 });
 
 describe('sanitizeIssue', () => {
+  test('a parent travels with its sub-issue, with its state and progress', () => {
+    const { issue, problems } = sanitizeIssue({
+      key: 'ENG-151', title: 'Child', state: { name: 'Todo', category: 'todo' },
+      parent: { key: 'ENG-142', title: 'Parent', url: 'https://linear.app/x', state: { name: 'In Progress', category: 'started', color: '#f2c94c' }, subIssues: { total: 3, done: 1 } },
+      subIssues: { total: 0, done: 0 },
+    }, 'linear');
+    expect(problems).toEqual([]);
+    expect(issue.parent).toEqual({
+      ref: 'linear:ENG-142', key: 'ENG-142', title: 'Parent', url: 'https://linear.app/x',
+      state: { id: null, name: 'In Progress', color: '#f2c94c', category: 'started' },
+      subIssues: { total: 3, done: 1 },
+    });
+    expect(issue.subIssues).toBeNull(); // none is not drawn
+  });
+
+  test('an unusable parent or progress is dropped and reported', () => {
+    const base = { key: 'ENG-151', title: 'Child', state: { name: 'Todo', category: 'todo' } };
+    const self = sanitizeIssue({ ...base, parent: { key: 'ENG-151', title: 'Me' } }, 'linear');
+    expect(self.issue.parent).toBeNull();
+    expect(self.problems).toEqual([expect.stringContaining('parent:')]);
+    const bad = sanitizeIssue({ ...base, subIssues: { total: 2, done: 3 }, parent: { key: 'ENG-1', title: 'P', state: { name: 'x' }, subIssues: { total: 1.5, done: 0 } } }, 'linear');
+    expect(bad.issue.subIssues).toBeNull();
+    expect(bad.issue.parent).toMatchObject({ key: 'ENG-1', state: null, subIssues: null });
+    expect(bad.problems).toEqual(expect.arrayContaining([
+      expect.stringContaining('subIssues:'), expect.stringContaining('parent.state:'), expect.stringContaining('parent.subIssues:'),
+    ]));
+  });
+
   test('fills every optional field with an explicit empty value', () => {
     const { issue, problems } = sanitizeIssue(minimal(), 'linear');
     expect(problems).toEqual([]);
@@ -102,6 +130,8 @@ describe('sanitizeIssue', () => {
       branchName: null,
       createdAt: null,
       updatedAt: null,
+      parent: null,
+      subIssues: null,
     });
   });
 

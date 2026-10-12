@@ -98,7 +98,8 @@ const flush = async (ms = 0) => {
     quiet = inflight === 0 ? quiet + 1 : 0;
   }
 };
-const rowKeys = () => [...root.querySelectorAll('.issues-list > .issue-group .issue-row')].map((r) => r.dataset.key);
+// The tickets the list holds: a parent shown only for context is not one of them.
+const rowKeys = () => [...root.querySelectorAll('.issues-list > .issue-group .issue-row:not(.context)')].map((r) => r.dataset.key);
 const lastQuery = () => api.issueTrackers.listIssues.mock.calls.at(-1)[1];
 
 beforeEach(() => {
@@ -126,7 +127,7 @@ test('without a connection it says so and leads to the settings', async () => {
 test('a first visit lists every open ticket of the workspace, grouped by status', async () => {
   await setup();
   expect(lastQuery()).toMatchObject({ mine: null, stateCategories: ['backlog', 'todo', 'started'] });
-  expect(rowKeys()).toEqual(['#4', '#2', '#1']); // #3 is closed
+  expect(rowKeys()).toEqual(['#2', '#1', '#4']); // #3 is closed; #4 is a sub-issue of #1, so under it
   expect(root.querySelector('.issues-count').textContent).toBe('3');
   expect(root.querySelector('.issues-reset')).toBeNull();
 });
@@ -246,6 +247,25 @@ test('a sub-issue in the detail opens in its place', async () => {
   root.querySelector('.issue-detail-children .issue-row[data-key="#4"]').click();
   await flush();
   expect(root.querySelector('.issue-detail-title').textContent).toBe('Sub-task of #1');
+});
+
+test('a parent shown for context opens like any ticket; a sub-issue\'s detail leads back to it', async () => {
+  await setup();
+  root.querySelector('[data-menu="groupBy"]').click();
+  [...root.querySelectorAll('.issues-menu-item')].find((b) => b.dataset.value === 'assignee').click();
+  await flush(200);
+  const unassigned = [...root.querySelectorAll('.issue-group')].find((g) => g.querySelector('.issue-group-label')?.textContent === t('tickets.groupBy.noAssignee'));
+  const context = unassigned.querySelector('.issue-row.context[data-key="#1"]');
+  expect(context.nextElementSibling.dataset).toMatchObject({ key: '#4', depth: '1', last: '' });
+  context.click();
+  await flush();
+  expect(root.querySelector('.issue-detail-title').textContent).toBe('Crash when the tab closes');
+
+  root.querySelector('.issue-detail-children .issue-row[data-key="#4"]').click();
+  await flush();
+  root.querySelector('.issue-detail-parent .issue-row').click();
+  await flush();
+  expect(root.querySelector('.issue-detail-title').textContent).toBe('Crash when the tab closes');
 });
 
 test('a rejected key is explained, with the way to fix it', async () => {

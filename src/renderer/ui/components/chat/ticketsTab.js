@@ -62,6 +62,7 @@ function createTicketsTab(deps) {
   let links = [];
   const issues = new Map(); // ref → { issue?, error?, at }
   const metadata = new Map(); // connectionId → metadata
+  const contextParents = new Map(); // ref → { issue, connectionId } of the dimmed parents last drawn
   let visible = false;
   let destroyed = false;
   let searching = false;
@@ -199,7 +200,7 @@ function createTicketsTab(deps) {
 
   // ── Rendering ──
 
-  function rowHtml(l) {
+  function rowHtml(l, depth = 0, last = false) {
     const hit = issues.get(l.ref);
     const conn = connectionFor(l);
     const provider = providerFor(conn);
@@ -215,13 +216,14 @@ function createTicketsTab(deps) {
         ? `<button type="button" class="session-tickets-state session-tickets-failed" data-action="retry" data-ref="${escapeHtml(l.ref)}" title="${escapeHtml(t('chat.tickets.retryHint', { reason: issueView.errorText(hit.error, provider?.name || '') }))}">${escapeHtml(t('chat.tickets.loadFailed'))}</button>`
         : `<span class="session-tickets-state session-tickets-muted">${escapeHtml(t('tickets.panel.loading'))}</span>`;
     return `
-      <li class="session-tickets-row" data-ref="${escapeHtml(l.ref)}">
+      <li class="session-tickets-row" data-ref="${escapeHtml(l.ref)}"${issueView.depthAttrs(depth, last)}>
         ${issue ? issueView.priorityIcon(issue.priority) : '<span class="issue-priority"></span>'}
         <span class="issue-key">${escapeHtml(key)}</span>
         <span class="session-tickets-title">
           <span class="session-tickets-name">${escapeHtml(issue?.title || l.title || key)}</span>
           <span class="session-tickets-source">${escapeHtml(sourceLabel(l.source))}${l.evidence ? ` · ${escapeHtml(l.evidence)}` : ''}</span>
         </span>
+        ${issueView.progressHtml(issue?.subIssues)}
         ${state}
         ${issue ? issueView.avatarHtml(issue.assignee, 'issue-avatar-sm') : ''}
         ${issue?.url ? `<button type="button" class="session-tickets-icon" data-action="open" data-ref="${escapeHtml(l.ref)}" title="${escapeHtml(t('tickets.detail.openIn', { provider: provider?.name || '' }))}" aria-label="${escapeHtml(t('tickets.detail.openIn', { provider: provider?.name || '' }))}">
@@ -234,6 +236,43 @@ function createTicketsTab(deps) {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </li>${recap?.ref === l.ref ? recapEditorHtml(provider) : ''}`;
+  }
+
+  /**
+   * The parent of linked tickets that is not linked itself: dimmed, drawn from
+   * what its children carry, with a way to open it or link it too.
+   */
+  function contextRowHtml(parent, depth, last, providerName) {
+    return `
+      <li class="session-tickets-row context" data-ref="${escapeHtml(parent.ref)}" title="${escapeHtml(t('tickets.subIssues.contextParent'))}"${issueView.depthAttrs(depth, last)}>
+        <span class="issue-priority"></span>
+        <span class="issue-key">${escapeHtml(parent.key)}</span>
+        <span class="session-tickets-title"><span class="session-tickets-name">${escapeHtml(parent.title)}</span></span>
+        ${issueView.progressHtml(parent.subIssues)}
+        ${parent.state ? `<span class="session-tickets-state">${issueView.stateDot(parent.state)} ${escapeHtml(parent.state.name)}</span>` : ''}
+        ${parent.url ? `<button type="button" class="session-tickets-icon" data-action="open" data-ref="${escapeHtml(parent.ref)}" title="${escapeHtml(t('tickets.detail.openIn', { provider: providerName }))}" aria-label="${escapeHtml(t('tickets.detail.openIn', { provider: providerName }))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </button>` : ''}
+        <button type="button" class="session-tickets-icon" data-action="link-parent" data-ref="${escapeHtml(parent.ref)}" title="${escapeHtml(t('chat.tickets.link'))}" aria-label="${escapeHtml(t('chat.tickets.link'))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </li>`;
+  }
+
+  /** Linking a context parent: the same link as the search makes, then its live state. */
+  async function linkParent(ref) {
+    const parent = contextParents.get(ref);
+    if (!parent) return;
+    const res = await api.issueLinks.link(key, { ref, connectionId: parent.connectionId, title: parent.issue.title, source: 'manual' }, { projectId: deps.getProjectId?.() || null });
+    if (destroyed) return;
+    if (!res?.ok) {
+      deps.showToast({ type: 'error', title: res?.error || t('common.errorOccurred') });
+      return;
+    }
+    links = res.links;
+    updateBadge();
+    if (visible) render();
+    fetchIssues();
   }
 
   /** The comment being written, under its ticket. Nothing is posted until Publish. */
@@ -350,7 +389,15 @@ function createTicketsTab(deps) {
       return `<p class="session-tickets-empty">${escapeHtml(t('chat.tickets.filterNone'))}
         <button type="button" class="session-tickets-clear" data-action="filter-clear">${escapeHtml(t('chat.tickets.filterClear'))}</button></p>`;
     }
-    return `<ul class="session-tickets-list">${shown.map(rowHtml).join('')}</ul>`;
+    // Sub-tickets under their parent, as on the Tickets screen.
+    contextParents.clear();
+    const tree = issueView.flattenTree(issueView.nestIssues(shown, (l) => issues.get(l.ref)?.issue));
+    return `<ul class="session-tickets-list">${tree.map(({ node, depth, last }) => {
+      if (!node.context) return rowHtml(node.item, depth, last);
+      const child = node.children[0]?.item || {};
+      contextParents.set(node.issue.ref, { issue: node.issue, connectionId: child.connectionId || null });
+      return contextRowHtml(node.issue, depth, last, providerFor(connectionFor(child))?.name || '');
+    }).join('')}</ul>`;
   }
 
   const countText = (rows) => {
@@ -520,8 +567,11 @@ function createTicketsTab(deps) {
           }
         });
         break;
+      case 'link-parent':
+        linkParent(ref);
+        break;
       case 'open': {
-        const url = issues.get(ref)?.issue?.url;
+        const url = issues.get(ref)?.issue?.url || contextParents.get(ref)?.issue?.url;
         if (url) api.dialog.openExternal(url);
         break;
       }

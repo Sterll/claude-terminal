@@ -914,6 +914,12 @@
       "edit": "Change",
       "startSession": "Start a session"
     },
+    "subIssues": {
+      "progress": "{done} of {total} sub-issues done",
+      "contextParent": "Parent of the tickets below, shown for context",
+      "parent": "Sub-issue of",
+      "parentOf": "Sub-issue of {key}"
+    },
     "errors": {
       "auth": "The {provider} key was rejected. Connect it again in the settings.",
       "rateLimited": "Too many requests to {provider}. It will retry shortly.",

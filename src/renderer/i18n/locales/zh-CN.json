@@ -914,6 +914,12 @@
       "edit": "修改",
       "startSession": "开始会话"
     },
+    "subIssues": {
+      "progress": "已完成 {done}/{total} 个子工单",
+      "contextParent": "下方工单的父工单，仅作参考显示",
+      "parent": "父工单",
+      "parentOf": "{key} 的子工单"
+    },
     "errors": {
       "auth": "{provider} 密钥被拒绝，请在设置中重新连接。",
       "rateLimited": "对 {provider} 的请求过多，稍后将自动重试。",

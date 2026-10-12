@@ -93,10 +93,13 @@ Every method is async. Failures reject with an `Error` whose `code` is one of `A
   container: { id, name } | null,                // Linear team, Jira project, GitHub repository
   facets: { cycle: 'Cycle 42' },                 // display values of the declared facets
   estimate, dueDate, branchName, createdAt, updatedAt,
+  parent: { ref, key, title, url, state, subIssues } | null,  // enough to draw the parent above its sub-issues
+  subIssues: { total, done } | null,             // done: closed (done or canceled); null when it has none
 }
 ```
 
 - **State categories** are what makes a board across several teams possible: each team has its own states, but every state belongs to one of five categories. Linear calls them state types, Jira status categories, GitHub has only open (`todo`) and closed (`done`).
+- **Hierarchy** travels with each issue: its `parent` (key, title, state and that parent's own progress) and its own `subIssues` count. A list nests a sub-issue under its parent when both are listed, and otherwise draws the parent from what the child carries, dimmed, as Linear does; no extra request is needed to show where a ticket belongs. `subIssues` counts every sub-issue the tracker has, not only the listed ones, so an adapter may need a second, cheap request to fill it.
 - **Priority** follows Linear's scale. A provider with no priorities reports `null`, never `0`: "no priority set" and "this tracker has no priorities" are different facts for the filter bar.
 
 A **query** (`normalizeQuery()`) is the only thing an adapter receives: `text`, `mine` (`assigned`, `created`, `subscribed`), `stateCategories`, `stateIds`, `assigneeIds` (with the special values `me` and `none`), `priorities`, `labelIds`, `facets`, `updatedSince`, `sort` and `limit`. Unknown values are dropped rather than rejected, so a saved filter from an older build degrades to "no filter" instead of to an error.

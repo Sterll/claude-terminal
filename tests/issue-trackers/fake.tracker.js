@@ -40,7 +40,14 @@ function seed() {
 const state = (id) => STATES.find((s) => s.id === id);
 const person = (id) => PEOPLE.find((p) => p.id === id) || null;
 
-function toIssue(row) {
+/** `{ total, done }` over every sub-issue of `row`, or null when it has none. */
+function progressOf(row, rows) {
+  const children = rows.filter((r) => r.parent === row.number);
+  return children.length ? { total: children.length, done: children.filter((r) => state(r.state).category === 'done').length } : null;
+}
+
+function toIssue(row, rows) {
+  const parent = row.parent ? rows.find((r) => r.number === row.parent) : null;
   return {
     key: `#${row.number}`,
     id: String(row.number),
@@ -57,6 +64,10 @@ function toIssue(row) {
     branchName: null,
     createdAt: '2026-10-01T09:00:00.000Z',
     updatedAt: row.updatedAt,
+    parent: parent
+      ? { key: `#${parent.number}`, title: parent.title, url: `https://example.com/acme/${parent.repo}/issues/${parent.number}`, state: state(parent.state), subIssues: progressOf(parent, rows) }
+      : null,
+    subIssues: progressOf(row, rows),
   };
 }
 
@@ -110,17 +121,17 @@ function createClient({ secret }) {
       const start = cursor ? Number(cursor) : 0;
       const page = list.slice(start, start + query.limit);
       const next = start + query.limit < list.length ? String(start + query.limit) : null;
-      return { issues: page.map(toIssue), next };
+      return { issues: page.map((r) => toIssue(r, rows)), next };
     },
 
     async getIssue(key) {
       authed();
       const row = find(key);
       return {
-        ...toIssue(row),
+        ...toIssue(row, rows),
         description: row.body,
         comments: row.comments.map((c) => ({ ...c, author: person(c.author), createdAt: '2026-10-03T12:00:00.000Z' })),
-        children: rows.filter((r) => r.parent === row.number).map(toIssue),
+        children: rows.filter((r) => r.parent === row.number).map((r) => toIssue(r, rows)),
       };
     },
 
@@ -132,7 +143,7 @@ function createClient({ secret }) {
       if (!state(patch.stateId)) throw trackerError('PROVIDER', `Unknown state ${patch.stateId}`);
       row.state = patch.stateId;
       row.updatedAt = new Date().toISOString();
-      return toIssue(row);
+      return toIssue(row, rows);
     },
 
     async addComment(key, body) {

@@ -949,3 +949,137 @@
 .issues-start-note { margin: 0; color: var(--text-muted); font-size: var(--font-xs); }
 .issues-start-actions { display: flex; gap: 8px; }
 .issues-start-actions .btn-sm { flex: none; }
+
+/* ── Sub-issues: tree, context parents, progress ──
+   As Linear draws them: a sub-issue is indented under its parent and a thin
+   line runs down from the parent's priority column, ending in an elbow at the
+   last one. A parent drawn only for context keeps its weight but not its
+   colour. The progress is a ring and a count, no frame. */
+.issue-title-cell {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.issue-title-cell .issue-title {
+  flex: 0 1 auto;
+}
+
+.issue-row[data-depth] {
+  position: relative;
+  padding-left: calc(20px + var(--depth) * 24px);
+}
+
+.issue-row[data-depth]::before,
+.issue-row[data-depth]::after {
+  content: '';
+  position: absolute;
+  left: calc(20px + (var(--depth) - 1) * 24px + 8px);
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.issue-row[data-depth]::before {
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--text-muted);
+}
+
+.issue-row[data-depth]::after {
+  top: 50%;
+  width: 10px;
+  border-top: 1px solid var(--text-muted);
+}
+
+.issue-row[data-depth][data-last]::before {
+  bottom: 50%;
+  width: 10px;
+  border-bottom: 1px solid var(--text-muted);
+  border-bottom-left-radius: 6px;
+}
+
+.issue-row[data-depth][data-last]::after {
+  content: none;
+}
+
+.issue-row.context .issue-title {
+  color: var(--text-tertiary);
+}
+
+.issue-row.context .issue-key {
+  opacity: 0.75;
+}
+
+.issue-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.issue-progress svg {
+  width: 13px;
+  height: 13px;
+}
+
+.issue-progress-track {
+  fill: none;
+  stroke: var(--border-color);
+  stroke-width: 2;
+}
+
+.issue-progress-fill {
+  fill: none;
+  stroke: var(--info);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.issue-progress.complete .issue-progress-fill {
+  stroke: var(--success);
+}
+
+.issue-detail-parent {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.issue-detail-parent-label {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+.issue-detail-parent .issue-row {
+  padding: 0 8px;
+  min-height: 32px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.issue-detail-parent .issue-row.context .issue-title {
+  color: var(--text-primary);
+}
+
+.issue-detail-parent .issue-row.context .issue-key {
+  opacity: 1;
+}
+
+.issue-card-parent {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-card-parent .issue-key {
+  min-width: 0;
+}

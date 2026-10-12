@@ -44,6 +44,7 @@ const RUNTIME_INJECTED = new Map([
   ['--type-color', 'DashboardService.js:2505, WebAppWizard.js:51 (project-type colour)'],
   ['--tc', 'SessionReplayPanel.js:1087 (per-step tone, used as rgba(var(--tc), …))'],
   ['--d', 'ChatView.js:5914 (per-row animation delay index)'],
+  ['--depth', 'issues/issueView.js depthAttrs() (how deep a sub-issue sits, Tickets screen and session tab)'],
 ]);
 
 /** @returns {string[]} every .css file under styles/ */

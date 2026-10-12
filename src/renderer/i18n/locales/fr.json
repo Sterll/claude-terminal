@@ -1009,6 +1009,12 @@
       "edit": "Modifier",
       "startSession": "Démarrer une session"
     },
+    "subIssues": {
+      "progress": "{done} sous-tickets terminés sur {total}",
+      "contextParent": "Parent des tickets ci-dessous, affiché pour le contexte",
+      "parent": "Sous-ticket de",
+      "parentOf": "Sous-ticket de {key}"
+    },
     "errors": {
       "auth": "La clé {provider} a été refusée. Reconnectez-la dans les réglages.",
       "rateLimited": "Trop de requêtes vers {provider}. Nouvel essai dans un instant.",
