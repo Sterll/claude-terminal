@@ -16,6 +16,7 @@ jest.mock('../../src/main/services/GitHubAuthService', () => ({
     return m ? { owner: m[1], repo: m[2] } : null;
   },
   getPullRequestsForBranch: jest.fn(),
+  getPullRequest: jest.fn(),
   getCheckRuns: jest.fn(),
   getWorkflowJob: jest.fn(),
   getPullRequestReviews: jest.fn(),
@@ -78,6 +79,7 @@ afterAll(() => {
 
 beforeEach(() => {
   github.getPullRequestsForBranch.mockReset().mockResolvedValue({ authenticated: true, pullRequests: [] });
+  github.getPullRequest.mockReset().mockResolvedValue({ authenticated: true, pullRequest: null, notFound: true });
   github.getCheckRuns.mockReset().mockResolvedValue({ checkRuns: [] });
   github.getWorkflowJob.mockReset().mockResolvedValue({ authenticated: true, job: null });
   github.getPullRequestReviews.mockReset().mockResolvedValue({ reviews: [] });
@@ -131,13 +133,19 @@ test('the pull request is looked up on the fork, under the fork\'s owner', async
     { user: 'grace', state: 'COMMENTED' },
   ] });
 
+  // Only the pull request itself says whether it can merge, and who is still asked to review.
+  github.getPullRequest.mockResolvedValue({ authenticated: true, pullRequest: { number: 57, mergeableState: 'blocked', requestedReviewers: ['grace'] } });
+
   const s = await summary(work);
   expect(github.getPullRequestsForBranch).toHaveBeenCalledWith('bleleve', 'claude-terminal', 'bleleve', 'feat/x');
   expect(github.getCheckRuns).toHaveBeenCalledWith('bleleve', 'claude-terminal', 'abc123');
+  expect(github.getPullRequest).toHaveBeenCalledWith('bleleve', 'claude-terminal', 57);
   expect(s.pr.authenticated).toBe(true);
   expect(s.pr.pullRequest).toMatchObject({
     number: 57,
     repo: 'bleleve/claude-terminal',
+    mergeableState: 'blocked',
+    requestedReviewers: ['grace'],
     checks: { total: 4, success: 1, failure: 1, pending: 1, skipped: 1, failing: [{ name: 'test', url: 'https://ci/test' }] },
     reviews: { approved: 1, changesRequested: 0 },
   });
@@ -175,8 +183,9 @@ test('a pull request found on one repository wins over another that could not be
     ? { authenticated: true, pullRequests: [{ number: 57, title: 'x', state: 'merged', url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: null }] }
     : { authenticated: true, pullRequests: [], ssoRequired: { url: 'https://github.com/orgs/Sterll/sso', org: 'Sterll' } }));
   const s = await summary(work);
-  expect(s.pr.pullRequest).toMatchObject({ number: 57, state: 'merged' });
+  expect(s.pr.pullRequest).toMatchObject({ number: 57, state: 'merged', mergeableState: null });
   expect(s.pr.ssoRequired).toBeUndefined();
+  expect(github.getPullRequest).not.toHaveBeenCalled(); // merged: nothing left to merge
 });
 
 test('without a GitHub login, it says so instead of guessing', async () => {
@@ -254,6 +263,19 @@ describe('helpers', () => {
 
   test('a plain comment does not override a reviewer\'s decision', () => {
     expect(_internals.summarizeReviews([{ user: 'a', state: 'APPROVED' }, { user: 'a', state: 'COMMENTED' }]).approved).toBe(1);
+  });
+
+  test('a request for changes keeps what the reviewer wrote, for the prompt that addresses it', () => {
+    const r = _internals.summarizeReviews([
+      { user: 'a', state: 'CHANGES_REQUESTED', body: 'Rename the helper.', htmlUrl: 'https://github.com/o/r/pull/1#pullrequestreview-9' },
+      { user: 'a', state: 'COMMENTED', body: 'nit' },
+      { user: 'b', state: 'APPROVED', body: 'LGTM' },
+    ]);
+    expect(r).toMatchObject({ approved: 1, changesRequested: 1 });
+    expect(r.decisions).toEqual([
+      { user: 'a', state: 'CHANGES_REQUESTED', body: 'Rename the helper.', url: 'https://github.com/o/r/pull/1#pullrequestreview-9' },
+      { user: 'b', state: 'APPROVED' },
+    ]);
   });
 });
 

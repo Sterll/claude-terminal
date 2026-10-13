@@ -73,6 +73,12 @@
 .chat-tab-ci.success { background: var(--success); }
 .chat-tab-ci.failure { background: var(--danger); }
 .chat-tab-ci.pending { width: 9px; height: 9px; }
+/* How many of the session's pull requests and branches need the user. */
+.chat-tab-badge.attention,
+.chat-tab.active .chat-tab-badge.attention {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
 .chat-tab-ci.pending,
 .session-git-spinner {
   box-sizing: border-box;
@@ -5925,3 +5931,222 @@ p.session-git-muted { margin: 0; }
   color: var(--text-primary);
 }
 .session-git-when { flex: none; font-size: var(--font-xs); }
+
+/* A session's pull requests as one list (chat/gitTab.js, chat/sessionPrs.js):
+   a row each, a verdict each, grouped by what needs the user. */
+.session-git-mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: var(--font-xs); }
+.session-git-empty { padding: 8px 2px; }
+
+.session-git-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+}
+.session-git-notice > span { flex: 1 1 240px; }
+.session-git-notice .btn-sm { flex: none; width: auto; }
+
+.session-git-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.session-git-chip {
+  padding: 3px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+.session-git-chip:hover { background: var(--bg-hover); }
+.session-git-chip.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent-hover); }
+.session-git-chip-count { margin-left: 2px; color: var(--text-muted); font-weight: 600; }
+.session-git-chip.action .session-git-chip-count { color: var(--danger); }
+.session-git-chip.waiting .session-git-chip-count { color: var(--warning); }
+.session-git-chip.ready .session-git-chip-count { color: var(--success); }
+.session-git-chip.done .session-git-chip-count { color: var(--purple); }
+.session-git-chip.active .session-git-chip-count { color: inherit; }
+
+.session-git-group { display: flex; flex-direction: column; gap: 6px; }
+.session-git-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.session-git-group-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
+.session-git-group-title.action .session-git-group-dot { background: var(--danger); }
+.session-git-group-title.waiting .session-git-group-dot { background: var(--warning); }
+.session-git-group-title.ready .session-git-group-dot { background: var(--success); }
+.session-git-group-title.done .session-git-group-dot { background: var(--purple); }
+.session-git-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+.session-git-group-toggle svg { width: 12px; height: 12px; transition: transform 0.12s ease; }
+.session-git-group-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.session-git-done-summary {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.session-git-done-summary:hover { background: var(--bg-hover); }
+
+.session-git-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  overflow: hidden;
+}
+.session-git-row + .session-git-row,
+.session-git-wt + .session-git-wt { border-top: 1px solid var(--border-color); }
+.session-git-row-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 4px 10px 4px 4px;
+  font-size: var(--font-sm);
+  cursor: pointer;
+}
+.session-git-row-line:hover { background: var(--bg-hover); }
+.session-git-chevron {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.session-git-chevron svg { width: 12px; height: 12px; transition: transform 0.12s ease; }
+.session-git-chevron[aria-expanded="true"] svg { transform: rotate(90deg); }
+.session-git-chevron:focus-visible { outline: 1px solid var(--accent); }
+
+.session-git-status {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: var(--font-2xs);
+  font-weight: 700;
+  line-height: 1;
+}
+.session-git-status.action { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+.session-git-status.waiting { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+.session-git-status.ready { background: color-mix(in srgb, var(--success) 16%, transparent); color: var(--success); }
+.session-git-status.done { background: color-mix(in srgb, var(--purple) 16%, transparent); color: var(--purple); }
+.session-git-status.done.closed { background: var(--bg-tertiary); color: var(--text-muted); }
+.session-git-status .session-git-spinner { border-color: var(--warning); border-top-color: transparent; }
+
+.session-git-repo {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+}
+.session-git-num { flex: none; font-size: var(--font-sm); }
+.session-git-row-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.session-git-row .session-git-pill { flex: none; }
+.session-git-dirty { flex: none; color: var(--text-muted); font-size: var(--font-xs); font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+.session-git-ci { flex: none; color: var(--text-muted); font-size: var(--font-xs); white-space: nowrap; }
+.session-git-ci .ok { color: var(--success); }
+.session-git-ci .fail { color: var(--danger); }
+.session-git-ci .warn { color: var(--warning); }
+.session-git-verdict {
+  flex: none;
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-xs);
+}
+.session-git-verdict.action { color: var(--danger); }
+.session-git-verdict.waiting { color: var(--warning); }
+.session-git-verdict.ready { color: var(--success); }
+.session-git-verdict.done { color: var(--purple); }
+.session-git-row-line .session-git-fix { flex: none; margin-left: 0; }
+.session-git-row-line .session-git-fix:disabled { cursor: progress; }
+
+.session-git-row-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 12px 12px 58px;
+  font-size: var(--font-sm);
+}
+.session-git-detail-line { display: flex; gap: 12px; align-items: baseline; }
+.session-git-detail-label {
+  flex: none;
+  width: 72px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+.session-git-detail-value {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.session-git-detail-value:not(:has(> ul, > .session-git-pills)) { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+.session-git-row-detail .session-git-failing { padding-left: 0; list-style: none; }
+
+.session-git-verdict-line { display: flex; align-items: center; gap: 8px; }
+.session-git-verdict-line .session-git-verdict { max-width: none; font-size: var(--font-sm); }
+
+.session-git-worktrees.folded { gap: 0; }
+.session-git-wt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: var(--font-sm);
+}
+.session-git-wt > svg { flex: none; width: 14px; height: 14px; color: var(--text-secondary); }
+.session-git-wt-branch { color: var(--text-primary); font-weight: 600; }
+.session-git-wt-place { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

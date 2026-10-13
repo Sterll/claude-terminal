@@ -151,15 +151,21 @@ async function checksOf(owner, repo, headSha) {
   return addStepProgress(owner, repo, summarizeChecks(res.checkRuns));
 }
 
-/** Each reviewer's latest decision; plain comments do not override a decision. */
+/**
+ * Each reviewer's latest decision; plain comments do not override a decision.
+ * A request for changes keeps what the reviewer wrote: it goes into the
+ * prompt that asks Claude to address it.
+ */
 function summarizeReviews(reviews) {
   const latest = new Map();
   for (const review of reviews || []) {
     if (!review.user) continue;
     if (review.state === 'COMMENTED' && latest.has(review.user)) continue;
-    latest.set(review.user, review.state);
+    latest.set(review.user, review);
   }
-  const decisions = [...latest.entries()].map(([user, state]) => ({ user, state }));
+  const decisions = [...latest.entries()].map(([user, review]) => (review.state === 'CHANGES_REQUESTED'
+    ? { user, state: review.state, body: review.body || '', url: review.htmlUrl || null }
+    : { user, state: review.state }));
   return {
     approved: decisions.filter((d) => d.state === 'APPROVED').length,
     changesRequested: decisions.filter((d) => d.state === 'CHANGES_REQUESTED').length,
@@ -209,15 +215,20 @@ async function findPullRequest(cwd, branch, remote, base) {
   if (!found) return { authenticated: true, createUrl, pullRequest: null, ...blocked };
 
   const { repo, pr } = found;
-  const [checks, reviews] = await Promise.all([
+  // The list carries no mergeability: an open one is read in full for it.
+  const [checks, reviews, full] = await Promise.all([
     checksOf(repo.owner, repo.repo, pr.headSha),
     github.getPullRequestReviews(repo.owner, repo.repo, pr.number),
+    pr.state === 'open' ? github.getPullRequest(repo.owner, repo.repo, pr.number) : null,
   ]);
+  const detail = full?.pullRequest || {};
   return {
     authenticated: true,
     createUrl,
     pullRequest: {
       ...pr,
+      mergeableState: detail.mergeableState || null,
+      requestedReviewers: detail.requestedReviewers || pr.requestedReviewers || [],
       repo: `${repo.owner}/${repo.repo}`,
       checks,
       reviews: summarizeReviews(reviews.reviews),
@@ -421,6 +432,51 @@ async function createdPullRequest(p) {
   };
 }
 
+/** "a:b" for every pair whose a is an ancestor of b. Once true, true for good. */
+const ancestry = new Set();
+const MAX_ANCESTRY = 500;
+
+async function isAncestor(cwd, a, b) {
+  const key = `${a}:${b}`;
+  if (ancestry.has(key)) return true;
+  // Exits non-zero when it is not one, or when a commit was never fetched here.
+  if ((await execGit(cwd, ['merge-base', '--is-ancestor', a, b])) === null) return false;
+  if (ancestry.size >= MAX_ANCESTRY) ancestry.clear();
+  ancestry.add(key);
+  return true;
+}
+
+/**
+ * Which open pull request each open one is stacked on, as `stackedOn`. A
+ * stack is built one of two ways: each pull request opened against the
+ * branch of the one below (its base is that one's head), or all of them
+ * opened against the same base, each carrying the commits of the one below.
+ * The second is read from the commits: the nearest open pull request whose
+ * head is an ancestor of this one's head.
+ */
+async function markStacks(cwd, prs) {
+  const open = prs.filter((p) => p.state === 'open' && p.repo);
+  for (const pr of open) {
+    const onBranch = open.find((o) => o !== pr && o.repo === pr.repo && o.headRef && o.headRef === pr.baseRef);
+    if (onBranch) {
+      pr.stackedOn = { number: onBranch.number, url: onBranch.url };
+      continue;
+    }
+    const below = [];
+    for (const o of open) {
+      if (o === pr || o.repo !== pr.repo || o.baseRef !== pr.baseRef || !o.headSha || !pr.headSha || o.headSha === pr.headSha) continue;
+      if (await isAncestor(cwd, o.headSha, pr.headSha)) below.push(o);
+    }
+    if (!below.length) continue;
+    // The nearest one sits on all the others.
+    let nearest = below[0];
+    for (const o of below.slice(1)) {
+      if (await isAncestor(cwd, nearest.headSha, o.headSha)) nearest = o;
+    }
+    pr.stackedOn = { number: nearest.number, url: nearest.url };
+  }
+}
+
 /**
  * What one session did in git: the worktrees it used, each with its branch
  * and that branch's pull request, and the pull requests it created that no
@@ -457,11 +513,12 @@ async function overview({ projectPath, sessionId = null } = {}, { activity = ses
   for (const p of [...act.prs].reverse()) {
     if (!shown.has(p.url.toLowerCase())) createdPrs.push(await createdPullRequest(p));
   }
+  await markStacks(projectPath, [...workspaces.map((w) => w.pr?.pullRequest), ...createdPrs.map((c) => c.pullRequest)].filter(Boolean));
   return { isRepo: true, mode: 'session', workspaces, createdPrs };
 }
 
 module.exports = {
   summary,
   overview,
-  _internals: { parseLog, parseRemotes, remoteHost, summarizeChecks, addStepProgress, summarizeReviews, workspacesOf, topCache },
+  _internals: { parseLog, parseRemotes, remoteHost, summarizeChecks, addStepProgress, summarizeReviews, workspacesOf, markStacks, topCache, ancestry },
 };

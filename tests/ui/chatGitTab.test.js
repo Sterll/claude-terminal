@@ -110,6 +110,19 @@ describe('gitTabHtml', () => {
     expect(el.querySelector('.session-git-pr-text .chip').textContent).toBe('ENG-142');
   });
 
+  test('an open pull request says where it stands in one line; push and Fix it keep their own place', () => {
+    const pr = summary().pr.pullRequest;
+    const dirty = render(summary({ ahead: 0, pr: { ...summary().pr, pullRequest: { ...pr, mergeableState: 'dirty', baseRef: 'main' } } }));
+    expect(dirty.querySelector('.session-git-verdict-line .session-git-verdict').textContent).toBe(t('chat.git.verdict.conflicts', { base: 'main' }));
+    expect(dirty.querySelector('.session-git-verdict-line [data-action="resolve"]')).not.toBeNull();
+
+    const unpushed = render(summary()); // one commit not pushed: the branch card has the button
+    expect(unpushed.querySelector('.session-git-verdict-line .session-git-verdict').textContent).toBe(t('chat.git.verdict.unpushed', { count: 1 }));
+    expect(unpushed.querySelector('.session-git-verdict-line [data-action]')).toBeNull();
+
+    expect(render(summary({ pr: { ...summary().pr, pullRequest: { ...pr, state: 'merged' } } })).querySelector('.session-git-verdict-line')).toBeNull();
+  });
+
   test.each([
     ['no pull request yet', { pr: { authenticated: true, pullRequest: null, createUrl: 'https://x' } }, 'create-pr', 'chat.git.prNone', undefined],
     ['no GitHub login', { pr: { authenticated: false, createUrl: 'https://x' } }, 'connect-github', 'chat.git.prLoginNeeded', undefined],
@@ -395,34 +408,88 @@ describe('createGitTab', () => {
 });
 
 describe('a session that worked in its own worktrees', () => {
-  const ws = (over = {}) => ({ ...summary(), dir: '/repo/.claude/worktrees/a', label: '.claude/worktrees/a', isRoot: false, at: 2, ...over });
+  const okChecks = (n = 3) => ({ total: n, success: n, failure: 0, pending: 0, skipped: 0, failing: [], running: [] });
+  const pull = (number, over = {}) => ({
+    number, title: `PR ${number}`, state: 'open', draft: false, url: `https://github.com/acme/app/pull/${number}`,
+    repo: 'acme/app', headRef: `feat/${number}`, baseRef: 'main', updatedAt: '2026-10-12T10:00:00Z',
+    mergeableState: 'clean', requestedReviewers: [], checks: okChecks(), reviews: { approved: 0, changesRequested: 0, decisions: [] }, ...over,
+  });
+  const ws = (over = {}) => ({ ...summary(), ahead: 0, dir: '/repo/.claude/worktrees/a', label: '.claude/worktrees/a', isRoot: false, at: 2, ...over });
+  const created = (pr) => ({ url: pr.url, number: pr.number, repo: pr.repo, authenticated: true, pullRequest: pr });
+  // Needs you: #1 conflicts, #6 changes requested, feat/local never published.
+  // Waiting: #2 a check running, #5 stacked on #2. Ready: #3. Done: #4.
   const overviewOf = (over = {}) => ({
     isRepo: true,
     mode: 'session',
     workspaces: [
-      ws({ branch: 'feat/a', pr: { ...summary().pr, pullRequest: { ...summary().pr.pullRequest, number: 7, url: 'https://github.com/acme/app/pull/7', createdHere: true } } }),
-      ws({ dir: '/repo/.claude/worktrees/b', label: '.claude/worktrees/b', branch: 'feat/b', removed: true, upstream: null, ahead: 0, dirty: undefined, commits: undefined, base: undefined, onBase: undefined, pr: { authenticated: true, pullRequest: null, createUrl: 'https://x' } }),
+      ws({ branch: 'feat/1', dir: '/wt/1', label: 'wt/1', pr: { authenticated: true, pullRequest: pull(1, { mergeableState: 'dirty', createdHere: true }) } }),
+      ws({ branch: 'feat/2', dir: '/wt/2', label: 'wt/2', pr: { authenticated: true, pullRequest: pull(2, { checks: { ...okChecks(2), total: 3, pending: 1, running: [{ name: 'e2e', url: 'https://ci/e2e', step: { number: 5, total: 8, name: 'Run smoke' } }] } }) } }),
+      ws({ branch: 'feat/local', dir: '/wt/local', label: 'wt/local', upstream: null, pr: { authenticated: true, pullRequest: null, createUrl: 'https://x' } }),
     ],
-    createdPrs: [{ url: 'https://github.com/acme/app/pull/9', number: 9, repo: 'acme/app', authenticated: true, pullRequest: { ...summary().pr.pullRequest, number: 9, title: 'Elsewhere', url: 'https://github.com/acme/app/pull/9', headRef: 'feat/z' } }],
+    createdPrs: [
+      created(pull(3, { reviews: { approved: 1, changesRequested: 0, decisions: [{ user: 'linus', state: 'APPROVED' }] } })),
+      created(pull(4, { state: 'merged', mergedAt: '2026-10-12T08:00:00Z' })),
+      created(pull(5, { stackedOn: { number: 2, url: 'https://github.com/acme/app/pull/2' } })),
+      created(pull(6, { reviews: { approved: 0, changesRequested: 1, decisions: [{ user: 'grace', state: 'CHANGES_REQUESTED', body: 'Rename it.' }] } })),
+    ],
     ...over,
   });
+  const keysIn = (root, group) => [...root.querySelectorAll(`.session-git-group[data-group="${group}"] .session-git-row`)].map((r) => r.dataset.key);
 
-  test('a card per worktree with its own branch and pull request, then the ones no card carries', () => {
+  test('a row per pull request, grouped by what needs the user, each with its verdict', () => {
     document.body.innerHTML = sessionHtml(overviewOf());
-    const cards = [...document.querySelectorAll('[data-ws]')];
-    expect(cards.map((c) => c.querySelector('.session-git-branch-name').textContent)).toEqual(['feat/a', 'feat/b']);
-    expect(cards[0].querySelector('.session-git-place').textContent).toBe('.claude/worktrees/a');
-    expect(cards[0].textContent).toContain(t('chat.git.createdHere'));
-    expect(cards[0].querySelector('[data-action="open-pr"]').dataset.url).toBe('https://github.com/acme/app/pull/7');
-    expect(cards[1].textContent).toContain(t('chat.git.removedWorktree'));
-    expect(cards[1].querySelector('[data-action="push"]')).toBeNull(); // nothing on disk to push
-    expect(document.querySelector('[data-created="0"] .session-git-pr-text').textContent).toBe('Elsewhere');
+    expect([...document.querySelectorAll('.session-git-group[data-group]')].map((g) => g.dataset.group)).toEqual(['action', 'waiting', 'ready', 'done']);
+    expect(keysIn(document, 'action')).toEqual(['https://github.com/acme/app/pull/1', 'https://github.com/acme/app/pull/6', 'branch:/wt/local']);
+    expect(keysIn(document, 'waiting')).toEqual(['https://github.com/acme/app/pull/2', 'https://github.com/acme/app/pull/5']);
+    const row = (n) => document.querySelector(`[data-key="https://github.com/acme/app/pull/${n}"]`);
+    expect(row(1).querySelector('.session-git-verdict').textContent).toBe(t('chat.git.verdict.conflicts', { base: 'main' }));
+    expect(row(2).querySelector('.session-git-verdict').textContent).toBe(t('chat.git.verdict.ciStep', { name: 'e2e', number: 5, total: 8 }));
+    expect(row(5).querySelector('.session-git-verdict').textContent).toBe(t('chat.git.verdict.stacked', { number: 2 }));
+    expect(row(3).querySelector('.session-git-verdict').textContent).toBe(t('chat.git.verdict.ready'));
+    // One repository: no tag repeating it on every row.
+    expect(document.querySelector('.session-git-repo')).toBeNull();
   });
 
-  test('the project folder is named when the session worked there', () => {
-    document.body.innerHTML = sessionHtml(overviewOf({ workspaces: [ws({ label: null, isRoot: true, dir: '/repo' })], createdPrs: [] }));
-    expect(document.querySelector('.session-git-place').textContent).toBe(t('chat.git.projectFolder'));
-    expect(document.querySelector('[data-created]')).toBeNull();
+  test('the chips count each group; done pull requests are folded into one line', () => {
+    document.body.innerHTML = sessionHtml(overviewOf());
+    const chips = [...document.querySelectorAll('.session-git-chip')].map((c) => [c.dataset.group, c.querySelector('.session-git-chip-count').textContent]);
+    expect(chips).toEqual([['', '7'], ['action', '3'], ['waiting', '2'], ['ready', '1'], ['done', '1']]);
+    expect(document.querySelector('[data-key="https://github.com/acme/app/pull/4"]')).toBeNull();
+    expect(document.querySelector('.session-git-done-summary').textContent).toContain('#4');
+    expect(document.querySelector('.session-git-head .session-git-count').textContent).toBe('6');
+  });
+
+  test('each row offers what its verdict asks for', () => {
+    document.body.innerHTML = sessionHtml(overviewOf());
+    const action = (key) => document.querySelector(`[data-key="${key}"] .session-git-row-line > .session-git-fix`)?.dataset.action || null;
+    expect(action('https://github.com/acme/app/pull/1')).toBe('resolve');
+    expect(action('https://github.com/acme/app/pull/6')).toBe('address-review');
+    expect(action('branch:/wt/local')).toBe('push');
+    expect(action('https://github.com/acme/app/pull/2')).toBeNull();
+  });
+
+  test('a pull request stacked on another says so, beside a verdict about something else', () => {
+    const o = overviewOf();
+    o.createdPrs[2].pullRequest.mergeableState = 'dirty';
+    document.body.innerHTML = sessionHtml(o);
+    const row = document.querySelector('[data-key="https://github.com/acme/app/pull/5"]');
+    expect(row.closest('.session-git-group').dataset.group).toBe('action');
+    expect(row.textContent).toContain(t('chat.git.stackedOn', { number: 2 }));
+  });
+
+  test('a fork and its upstream are told apart by owner', () => {
+    const o = overviewOf();
+    o.createdPrs[0].pullRequest.repo = 'upstream/app';
+    document.body.innerHTML = sessionHtml(o);
+    expect(document.querySelector('[data-key="https://github.com/acme/app/pull/3"] .session-git-repo').textContent).toBe('upstream');
+  });
+
+  test('a lookup that failed is said once, above the rows; nothing at all says so', () => {
+    document.body.innerHTML = sessionHtml(overviewOf({ createdPrs: [{ authenticated: false }, { authenticated: false }] }));
+    expect(document.querySelectorAll('.session-git-notice')).toHaveLength(1);
+    expect(document.querySelector('.session-git-notice [data-action="connect-github"]')).not.toBeNull();
+    document.body.innerHTML = sessionHtml(overviewOf({ workspaces: [], createdPrs: [] }));
+    expect(document.querySelector('.session-git-empty').textContent).toBe(t('chat.git.noPullRequests'));
   });
 
   describe('in the tab', () => {
@@ -430,6 +497,7 @@ describe('a session that worked in its own worktrees', () => {
     let api;
     let deps;
     const flush = () => new Promise((r) => setTimeout(r, 0));
+    const click = (selector) => panelEl.querySelector(selector).click();
 
     beforeEach(() => {
       document.body.innerHTML = '<div class="panel"></div>';
@@ -441,11 +509,13 @@ describe('a session that worked in its own worktrees', () => {
           push: jest.fn(async () => ({ success: true })),
           pushBranch: jest.fn(async () => ({ success: true })),
         },
+        github: { prComments: jest.fn(async () => ({ success: true, authenticated: true, comments: [{ user: 'grace', path: 'src/a.js', line: 4, body: 'Here.' }] })) },
         dialog: { openExternal: jest.fn() },
       };
       deps = {
         api, panelEl, getCwd: () => '/repo', sessionStartedAt: SESSION_START, onAvailable: jest.fn(),
         openGitScreen: jest.fn(), openSettings: jest.fn(), showToast: jest.fn(), onSummary: jest.fn(),
+        getSessionId: () => 'sid-12345678', fillComposer: jest.fn(),
       };
     });
 
@@ -461,33 +531,112 @@ describe('a session that worked in its own worktrees', () => {
       tab.destroy();
     });
 
-    test('each card acts on its own worktree; links open their own URL', async () => {
-      const tab = createGitTab({ ...deps, getSessionId: () => 'sid-12345678' });
+    test('a row unfolds on click and stays unfolded across reads', async () => {
+      const tab = createGitTab(deps);
       await tab.probe();
       tab.show();
-      panelEl.querySelector('[data-ws="0"] [data-action="push"]').click();
+      expect(panelEl.querySelector('.session-git-row-detail')).toBeNull();
+      click('[data-key="https://github.com/acme/app/pull/2"] .session-git-row-title');
+      const detail = () => panelEl.querySelector('[data-key="https://github.com/acme/app/pull/2"] .session-git-row-detail');
+      expect(detail().textContent).toContain('Run smoke');
+      expect(detail().textContent).toContain('wt/2');
+      await tab.probe();
+      expect(detail()).not.toBeNull();
+      click('[data-key="https://github.com/acme/app/pull/2"] [data-action="toggle-row"].session-git-chevron');
+      expect(detail()).toBeNull();
+      tab.destroy();
+    });
+
+    test('a chip narrows the list to its group; the done line unfolds', async () => {
+      const tab = createGitTab(deps);
+      await tab.probe();
+      tab.show();
+      click('.session-git-chip.waiting');
+      expect([...panelEl.querySelectorAll('.session-git-group[data-group]')].map((g) => g.dataset.group)).toEqual(['waiting']);
+      click('.session-git-chip[data-group=""]');
+      click('[data-action="toggle-done"]');
+      expect(keysIn(panelEl, 'done')).toEqual(['https://github.com/acme/app/pull/4']);
+      tab.destroy();
+    });
+
+    test('a row\'s link opens its own pull request, not the row', async () => {
+      const tab = createGitTab(deps);
+      await tab.probe();
+      tab.show();
+      click('[data-key="https://github.com/acme/app/pull/3"] [data-action="open-pr"]');
+      expect(api.dialog.openExternal).toHaveBeenCalledWith('https://github.com/acme/app/pull/3');
+      expect(panelEl.querySelector('.session-git-row-detail')).toBeNull();
+      tab.destroy();
+    });
+
+    test('conflicts and a review become prompts in this session\'s composer, naming the worktree', async () => {
+      const tab = createGitTab(deps);
+      await tab.probe();
+      tab.show();
+      click('[data-key="https://github.com/acme/app/pull/1"] [data-action="resolve"]');
+      expect(deps.fillComposer.mock.calls[0][0]).toContain('has conflicts with its base `main`');
+      expect(deps.fillComposer.mock.calls[0][0]).toContain('checked out in `/wt/1`');
+
+      click('[data-key="https://github.com/acme/app/pull/6"] [data-action="address-review"]');
       await flush();
-      expect(api.git.push).toHaveBeenCalledWith({ projectPath: '/repo/.claude/worktrees/a' });
-      panelEl.querySelector('[data-created="0"] [data-action="open-pr"]').click();
-      expect(api.dialog.openExternal).toHaveBeenCalledWith('https://github.com/acme/app/pull/9');
+      expect(api.github.prComments).toHaveBeenCalledWith({ remoteUrl: 'https://github.com/acme/app', pullNumber: 6 });
+      const prompt = deps.fillComposer.mock.calls[1][0];
+      expect(prompt).toContain('@grace wrote:\n> Rename it.');
+      expect(prompt).toContain('`src/a.js:4`, @grace');
+      expect(prompt).not.toContain('checked out'); // opened here, its worktree not shown
+      tab.destroy();
+    });
+
+    test('a branch never published is published from its own worktree', async () => {
+      const tab = createGitTab(deps);
+      await tab.probe();
+      tab.show();
+      click('[data-key="branch:/wt/local"] [data-action="push"]');
+      await flush();
+      expect(api.git.pushBranch).toHaveBeenCalledWith({ projectPath: '/wt/local', branch: 'feat/local' });
+      tab.destroy();
+    });
+
+    test('the worktrees, folded under the list, push each from its own folder', async () => {
+      const tab = createGitTab(deps);
+      await tab.probe();
+      tab.show();
+      expect(panelEl.querySelector('.session-git-wt')).toBeNull();
+      click('[data-action="toggle-worktrees"]');
+      expect([...panelEl.querySelectorAll('.session-git-wt-branch')].map((e) => e.textContent)).toEqual(['feat/1', 'feat/2', 'feat/local']);
+      click('.session-git-wt[data-ws="2"] [data-action="push"]');
+      await flush();
+      expect(api.git.pushBranch).toHaveBeenCalledWith({ projectPath: '/wt/local', branch: 'feat/local' });
+      tab.destroy();
+    });
+
+    test('the tab button is told how many rows need the user, only when it changes', async () => {
+      const onAttention = jest.fn();
+      const tab = createGitTab({ ...deps, onAttention });
+      await tab.probe();
+      await tab.probe();
+      expect(onAttention.mock.calls).toEqual([[3]]);
+      api.git.sessionOverview.mockResolvedValue(overviewOf({ workspaces: [] }));
+      await tab.probe();
+      expect(onAttention).toHaveBeenLastCalledWith(1);
       tab.destroy();
     });
 
     test('the summary hook sees every branch and pull request; getSummary reads the latest worktree', async () => {
-      const tab = createGitTab({ ...deps, getSessionId: () => 'sid-12345678' });
+      const tab = createGitTab(deps);
       await tab.probe();
       const seen = deps.onSummary.mock.calls.map(([s]) => [s.branch, s.pr?.pullRequest?.number || null]);
-      expect(seen).toEqual([['feat/a', 7], ['feat/b', null], ['feat/z', 9]]);
-      expect(tab.getSummary()).toMatchObject({ branch: 'feat/a' });
+      expect(seen).toEqual([['feat/1', 1], ['feat/2', 2], ['feat/local', null], ['feat/3', 3], ['feat/4', 4], ['feat/5', 5], ['feat/6', 6]]);
+      expect(tab.getSummary()).toMatchObject({ branch: 'feat/1' });
       tab.destroy();
     });
 
     test('a session the overview finds nothing for is drawn as the folder', async () => {
       api.git.sessionOverview.mockResolvedValue({ ...summary(), mode: 'project' });
-      const tab = createGitTab({ ...deps, getSessionId: () => 'sid-12345678' });
+      const tab = createGitTab(deps);
       await tab.probe();
       tab.show();
-      expect(panelEl.querySelector('[data-ws]')).toBeNull();
+      expect(panelEl.querySelector('.session-git-row')).toBeNull();
       expect(panelEl.querySelector('.session-git-branch-name').textContent).toBe('feat/x');
       tab.destroy();
     });

@@ -500,6 +500,14 @@ function ssoRequirement(header) {
   }
 }
 
+/** Who a pull request still waits on for a review: users by login, teams by name. */
+function requestedReviewersOf(pr) {
+  return [
+    ...(pr.requested_reviewers || []).map((user) => user?.login),
+    ...(pr.requested_teams || []).map((team) => team?.name || team?.slug),
+  ].filter(Boolean);
+}
+
 /**
  * The pull requests whose head is `headOwner:branch`, newest first. The head
  * owner matters: a branch pushed to a fork and proposed upstream lives under
@@ -534,6 +542,8 @@ async function getPullRequestsForBranch(owner, repo, headOwner, branch) {
         headSha: pr.head?.sha || null,
         headRef: pr.head?.ref || null,
         baseRef: pr.base?.ref || null,
+        requestedReviewers: requestedReviewersOf(pr),
+        mergedAt: pr.merged_at || null,
         updatedAt: pr.updated_at
       }));
       return { authenticated: true, pullRequests };
@@ -551,6 +561,11 @@ async function getPullRequestsForBranch(owner, repo, headOwner, branch) {
 /**
  * One pull request by number: what the Git tab needs for a pull request a
  * session created, whose branch may live in a worktree since removed.
+ *
+ * Only this endpoint carries `mergeable_state` (the list does not): `dirty`
+ * for conflicts, `behind` when branch protection wants the base merged in
+ * first, `blocked` by required reviews or checks, `clean` when it can merge.
+ * GitHub computes it in the background and answers `unknown` until then.
  * @returns {Promise<{ authenticated: boolean, pullRequest?: object|null, notFound?: boolean, ssoRequired?: object, error?: string }>}
  */
 async function getPullRequest(owner, repo, number) {
@@ -581,6 +596,9 @@ async function getPullRequest(owner, repo, number) {
           headSha: pr.head?.sha || null,
           headRef: pr.head?.ref || null,
           baseRef: pr.base?.ref || null,
+          mergeableState: pr.mergeable_state || null,
+          requestedReviewers: requestedReviewersOf(pr),
+          mergedAt: pr.merged_at || null,
           updatedAt: pr.updated_at
         }
       };

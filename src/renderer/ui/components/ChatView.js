@@ -271,6 +271,7 @@ class ChatView extends BaseComponent {
         <button class="chat-tab" data-tab="git" hidden>
           <span class="chat-tab-label">${escapeHtml(t('chat.tabGit') || 'Git')}</span>
           <span class="chat-tab-ci" role="img" hidden></span>
+          <span class="chat-tab-badge attention" data-badge="git" hidden>0</span>
         </button>
         <button class="chat-tab" data-tab="artifacts">
           <span class="chat-tab-label">${escapeHtml(t('chat.tabDocuments') || 'Documents')}</span>
@@ -433,12 +434,14 @@ class ChatView extends BaseComponent {
   const gitPanelEl = chatView.querySelector('.session-git-panel');
   const gitTabBtn = chatView.querySelector('.chat-tab[data-tab="git"]');
   const gitTabCiEl = gitTabBtn.querySelector('.chat-tab-ci');
+  const gitTabAttentionEl = gitTabBtn.querySelector('.chat-tab-badge[data-badge="git"]');
   // Where the session's branch stands (chat/gitTab.js). The tab appears once
   // the folder turns out to be a repository; a cloud project has no local one.
   // With the CLI's session id it reads the session's transcript and shows the
   // worktrees it actually used; a resumed tab has that id from the start.
   // Its pull requests' checks are the session's CI: a dot on the tab button
-  // says where they stand without opening it.
+  // says where they stand without opening it, and a count beside it how many
+  // of its pull requests and branches need the user.
   const gitTab = createGitTab({
     api,
     panelEl: gitPanelEl,
@@ -458,6 +461,11 @@ class ChatView extends BaseComponent {
       const text = ciStatusText(ci);
       gitTabCiEl.setAttribute('aria-label', text);
       gitTabBtn.title = text;
+    },
+    onAttention: (count) => {
+      gitTabAttentionEl.hidden = !count;
+      gitTabAttentionEl.textContent = String(count);
+      gitTabAttentionEl.title = t('chat.git.attention', { count });
     },
     isOnScreen: () => gitTabBtn.offsetParent !== null,
     // A failed check's log, as a draft in this conversation: the session that

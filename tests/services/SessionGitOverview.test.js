@@ -160,8 +160,8 @@ test('the pull requests it opened: marked on their card, the others listed with 
 
   expect(o.workspaces[0].pr.pullRequest).toMatchObject({ number: 7, createdHere: true });
   expect(o.createdPrs).toEqual([expect.objectContaining({ number: 9, repo: 'acme/app', pullRequest: expect.objectContaining({ number: 9, checks: expect.objectContaining({ success: 1 }) }) })]);
-  expect(github.getPullRequest).toHaveBeenCalledTimes(1);
-  expect(github.getPullRequest).toHaveBeenCalledWith('acme', 'app', 9);
+  // #9 because it was opened here; #7, found by its branch, for what only the pull request itself carries.
+  expect(github.getPullRequest.mock.calls).toEqual([['acme', 'app', 7], ['acme', 'app', 9]]);
 });
 
 test('a pull request it opened that GitHub will not show says why', async () => {
@@ -170,4 +170,55 @@ test('a pull request it opened that GitHub will not show says why', async () => 
   const o = await overview({ projectPath: proj, sessionId: 's1' }, { activity: activityOf([], [pr]) });
   expect(o).toMatchObject({ mode: 'session', workspaces: [] });
   expect(o.createdPrs[0]).toMatchObject({ number: 3, pullRequest: null, ssoRequired: { org: 'acme', repo: 'acme/app' } });
+});
+
+describe('stacked pull requests', () => {
+  let shas;
+
+  beforeAll(() => {
+    // one ← two ← three, all opened against main, each carrying the one below;
+    // and a branch beside them that shares nothing but main.
+    git(proj, 'checkout', '-q', '-b', 'stack/one', 'origin/main');
+    commit(proj, 's1.txt', 'one');
+    git(proj, 'checkout', '-q', '-b', 'stack/two');
+    commit(proj, 's2.txt', 'two');
+    git(proj, 'checkout', '-q', '-b', 'stack/three');
+    commit(proj, 's3.txt', 'three');
+    git(proj, 'checkout', '-q', '-b', 'side', 'origin/main');
+    commit(proj, 'side.txt', 'side');
+    git(proj, 'checkout', '-q', 'docs/unrelated');
+    shas = Object.fromEntries(['stack/one', 'stack/two', 'stack/three', 'side'].map((b) => [b, git(proj, 'rev-parse', b)]));
+  });
+
+  beforeEach(() => _internals.ancestry.clear());
+
+  const pr = (number, branch, over = {}) => ({
+    number, url: `https://github.com/acme/app/pull/${number}`, repo: 'acme/app', state: 'open',
+    headRef: branch, baseRef: 'main', headSha: shas[branch], ...over,
+  });
+
+  test('opened against the same base, each is stacked on the nearest one below it', async () => {
+    const prs = [pr(3, 'stack/three'), pr(1, 'stack/one'), pr(4, 'side'), pr(2, 'stack/two')];
+    await _internals.markStacks(proj, prs);
+    expect(prs.map((p) => [p.number, p.stackedOn?.number || null])).toEqual([[3, 2], [1, null], [4, null], [2, 1]]);
+    expect(prs[0].stackedOn.url).toBe('https://github.com/acme/app/pull/2');
+  });
+
+  test('opened against the branch of another, it is stacked on that one', async () => {
+    const prs = [pr(1, 'stack/one'), pr(4, 'side', { baseRef: 'stack/one' })];
+    await _internals.markStacks(proj, prs);
+    expect(prs[1].stackedOn).toEqual({ number: 1, url: 'https://github.com/acme/app/pull/1' });
+  });
+
+  test('only open pull requests of the same repository and base stack; unknown commits do not', async () => {
+    const prs = [
+      pr(1, 'stack/one', { state: 'merged' }),
+      pr(2, 'stack/two'),
+      pr(5, 'stack/one', { repo: 'other/app' }),
+      pr(6, 'stack/one', { baseRef: 'develop' }),
+      pr(7, 'stack/three', { headSha: 'f'.repeat(40) }),
+    ];
+    await _internals.markStacks(proj, prs);
+    expect(prs.map((p) => p.stackedOn?.number || null)).toEqual([null, null, null, null, null]);
+  });
 });
