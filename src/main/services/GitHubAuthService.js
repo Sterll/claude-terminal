@@ -500,6 +500,17 @@ function ssoRequirement(header) {
   }
 }
 
+/**
+ * A pull request's labels. The colour reaches the renderer's markup, so only
+ * what GitHub stores (six hex digits) is kept; anything else is dropped, and
+ * the label is drawn without a colour.
+ */
+function labelsOf(pr) {
+  return (pr.labels || [])
+    .filter((label) => typeof label?.name === 'string' && label.name)
+    .map((label) => ({ name: label.name, color: /^[0-9a-f]{6}$/i.test(label.color || '') ? label.color.toLowerCase() : null }));
+}
+
 /** Who a pull request still waits on for a review: users by login, teams by name. */
 function requestedReviewersOf(pr) {
   return [
@@ -543,6 +554,7 @@ async function getPullRequestsForBranch(owner, repo, headOwner, branch) {
         headRef: pr.head?.ref || null,
         baseRef: pr.base?.ref || null,
         requestedReviewers: requestedReviewersOf(pr),
+        labels: labelsOf(pr),
         mergedAt: pr.merged_at || null,
         updatedAt: pr.updated_at
       }));
@@ -598,6 +610,7 @@ async function getPullRequest(owner, repo, number) {
           baseRef: pr.base?.ref || null,
           mergeableState: pr.mergeable_state || null,
           requestedReviewers: requestedReviewersOf(pr),
+          labels: labelsOf(pr),
           mergedAt: pr.merged_at || null,
           updatedAt: pr.updated_at
         }
@@ -1252,6 +1265,7 @@ module.exports = {
   getPullRequestsForBranch,
   getPullRequest,
   ssoRequirement,
+  labelsOf,
   createPullRequest,
   parseGitHubRemote,
   getCheckRuns,

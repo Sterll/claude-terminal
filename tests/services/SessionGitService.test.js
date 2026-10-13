@@ -117,7 +117,7 @@ test('the pull request is looked up on the fork, under the fork\'s owner', async
   github.getPullRequestsForBranch.mockImplementation(async (owner) => ({
     authenticated: true,
     pullRequests: owner === 'bleleve'
-      ? [{ number: 57, title: 'ENG-142: session tab', state: 'open', draft: false, url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: 'abc123' }]
+      ? [{ number: 57, title: 'ENG-142: session tab', state: 'open', draft: false, url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: 'abc123', labels: [{ name: 'enhancement', color: 'a2eeef' }] }]
       : [],
   }));
   github.getCheckRuns.mockResolvedValue({ checkRuns: [
@@ -146,6 +146,7 @@ test('the pull request is looked up on the fork, under the fork\'s owner', async
     repo: 'bleleve/claude-terminal',
     mergeableState: 'blocked',
     requestedReviewers: ['grace'],
+    labels: [{ name: 'enhancement', color: 'a2eeef' }],
     checks: { total: 4, success: 1, failure: 1, pending: 1, skipped: 1, failing: [{ name: 'test', url: 'https://ci/test' }] },
     reviews: { approved: 1, changesRequested: 0 },
   });

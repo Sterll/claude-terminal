@@ -6135,6 +6135,20 @@ p.session-git-muted { margin: 0; }
 .session-git-detail-value:not(:has(> ul, > .session-git-pills)) { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
 .session-git-row-detail .session-git-failing { padding-left: 0; list-style: none; }
 
+/* GitHub labels, each in its own colour: set inline as --label-color, read
+   lightened so a dark label stays legible on the dark background. */
+.session-git-labels { display: flex; flex-wrap: wrap; gap: 6px; }
+.session-git-label {
+  --label-color: var(--text-muted);
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--label-color) 50%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--label-color) 18%, transparent);
+  color: color-mix(in srgb, var(--label-color) 60%, var(--text-primary));
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
 .session-git-verdict-line { display: flex; align-items: center; gap: 8px; }
 .session-git-verdict-line .session-git-verdict { max-width: none; font-size: var(--font-sm); }
 

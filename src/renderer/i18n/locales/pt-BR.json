@@ -1962,7 +1962,8 @@
         "approvedBy": "Aprovada por {users}",
         "changesBy": "Alterações solicitadas por {users}",
         "requestedFrom": "Solicitada a {users}",
-        "noReview": "Nenhuma revisão ainda"
+        "noReview": "Nenhuma revisão ainda",
+        "labels": "Rótulos"
       }
     },
     "filesChanged": "arquivos alterados",

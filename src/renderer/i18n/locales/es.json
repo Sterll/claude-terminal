@@ -1952,7 +1952,8 @@
         "approvedBy": "Aprobada por {users}",
         "changesBy": "Cambios solicitados por {users}",
         "requestedFrom": "Solicitada a {users}",
-        "noReview": "Sin revisión todavía"
+        "noReview": "Sin revisión todavía",
+        "labels": "Etiquetas"
       }
     },
     "filesChanged": "archivos modificados",

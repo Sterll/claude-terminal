@@ -231,6 +231,7 @@ function prSectionHtml(s, decorateTitle) {
         ${checksHtml(p.checks)}
         ${reviewsHtml(p.reviews)}
       </div>
+      ${labelsHtml(p.labels)}
       ${runningHtml(p.checks.running)}
       ${failingHtml(p)}
     </div>
@@ -354,6 +355,19 @@ function branchDetailHtml({ pr, ws }) {
   return parts.join('');
 }
 
+/**
+ * A pull request's GitHub labels, each in its own colour. The colour is
+ * checked again here (six hex digits) before it goes into a style attribute:
+ * main already drops anything else, but this is the line that writes it.
+ */
+function labelsHtml(labels) {
+  if (!labels?.length) return '';
+  return `<div class="session-git-labels">${labels.map((label) => {
+    const color = /^[0-9a-f]{6}$/i.test(label.color || '') ? ` style="--label-color: #${label.color}"` : '';
+    return `<span class="session-git-label"${color}>${escapeHtml(label.name)}</span>`;
+  }).join('')}</div>`;
+}
+
 const detailLine = (label, html) => `<div class="session-git-detail-line"><span class="session-git-detail-label">${escapeHtml(label)}</span><div class="session-git-detail-value">${html}</div></div>`;
 
 function rowDetailHtml(row) {
@@ -364,6 +378,7 @@ function rowDetailHtml(row) {
       lines.push(detailLine(t('chat.git.detail.checks'), `<div class="session-git-pills">${checksHtml(pr.checks)}</div>${runningHtml(pr.checks.running)}${failingHtml(pr)}`));
     }
     if (pr.state === 'open') lines.push(detailLine(t('chat.git.detail.reviews'), reviewsDetailHtml(pr)));
+    if (pr.labels?.length) lines.push(detailLine(t('chat.git.detail.labels'), labelsHtml(pr.labels)));
     if (pr.stackedOn) {
       lines.push(detailLine(t('chat.git.detail.stack'), `<button type="button" class="session-git-link" data-action="open-pr" data-url="${escapeHtml(pr.stackedOn.url || '')}">#${pr.stackedOn.number}</button>`));
     }

@@ -1962,7 +1962,8 @@
         "approvedBy": "Approved by {users}",
         "changesBy": "Changes requested by {users}",
         "requestedFrom": "Requested from {users}",
-        "noReview": "No review yet"
+        "noReview": "No review yet",
+        "labels": "Labels"
       }
     },
     "filesChanged": "files changed",

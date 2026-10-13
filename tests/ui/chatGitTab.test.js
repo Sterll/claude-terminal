@@ -110,6 +110,13 @@ describe('gitTabHtml', () => {
     expect(el.querySelector('.session-git-pr-text .chip').textContent).toBe('ENG-142');
   });
 
+  test('the pull request\'s labels, under its checks and reviews', () => {
+    const pr = summary().pr.pullRequest;
+    const el = render(summary({ pr: { ...summary().pr, pullRequest: { ...pr, labels: [{ name: 'enhancement', color: 'a2eeef' }] } } }));
+    expect(el.querySelector('.session-git-pr .session-git-label').textContent).toBe('enhancement');
+    expect(render(summary()).querySelector('.session-git-labels')).toBeNull();
+  });
+
   test('an open pull request says where it stands in one line; push and Fix it keep their own place', () => {
     const pr = summary().pr.pullRequest;
     const dirty = render(summary({ ahead: 0, pr: { ...summary().pr, pullRequest: { ...pr, mergeableState: 'dirty', baseRef: 'main' } } }));
@@ -466,6 +473,24 @@ describe('a session that worked in its own worktrees', () => {
     expect(action('https://github.com/acme/app/pull/6')).toBe('address-review');
     expect(action('branch:/wt/local')).toBe('push');
     expect(action('https://github.com/acme/app/pull/2')).toBeNull();
+  });
+
+  test('an unfolded row shows its labels, each in its colour; a colour that is not hex is dropped, a name is escaped', () => {
+    const o = overviewOf();
+    o.createdPrs[0].pullRequest.labels = [
+      { name: 'bug', color: 'd73a4a' },
+      { name: '<b>needs</b> design', color: 'x"; background: red' },
+    ];
+    document.body.innerHTML = sessionHtml(o, { view: { filter: null, expanded: new Set(['https://github.com/acme/app/pull/3']), doneOpen: false, worktreesOpen: false } });
+    const row = document.querySelector('[data-key="https://github.com/acme/app/pull/3"]');
+    const labels = [...row.querySelectorAll('.session-git-label')];
+    expect(labels.map((l) => l.textContent)).toEqual(['bug', '<b>needs</b> design']);
+    expect(labels[0].getAttribute('style')).toBe('--label-color: #d73a4a');
+    expect(labels[1].hasAttribute('style')).toBe(false);
+    expect(row.querySelector('.session-git-label b')).toBeNull();
+    expect(row.textContent).toContain(t('chat.git.detail.labels'));
+    // No labels, no line.
+    expect(document.querySelector('[data-key="https://github.com/acme/app/pull/1"] .session-git-label')).toBeNull();
   });
 
   test('a pull request stacked on another says so, beside a verdict about something else', () => {

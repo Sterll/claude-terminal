@@ -1,7 +1,7 @@
 /** @jest-environment node */
 jest.mock('electron', () => ({ BrowserWindow: { getAllWindows: () => [] } }));
 jest.mock('keytar', () => ({}));
-const { parseGitHubRemote, configure, ssoRequirement } = require('../../src/main/services/GitHubAuthService');
+const { parseGitHubRemote, configure, ssoRequirement, labelsOf } = require('../../src/main/services/GitHubAuthService');
 afterEach(() => configure({ githubHostname: 'github.com' }));
 test('GitHub token eligibility requires the exact configured host', () => {
   for (const value of ['https://evil-github.com/a/b', 'https://evil.test/github.com/a/b', 'https://github.com@evil.test/a/b', 'git@evil-github.com:a/b', 'https://github.com:8443/a/b']) expect(parseGitHubRemote(value)).toBeNull();
@@ -22,3 +22,19 @@ test('the SSO page is only taken from a "required" header on the configured GitH
   expect(ssoRequirement('required; url=https://git.example.test:8443/orgs/acme/sso')).toEqual({ url: 'https://git.example.test:8443/orgs/acme/sso', org: 'acme' });
   expect(ssoRequirement('required; url=https://github.com/orgs/acme/sso')).toBeNull();
 });
+
+test('a label keeps its colour only as GitHub stores it: six hex digits, nothing that could leave a style attribute', () => {
+  expect(labelsOf({ labels: [
+    { name: 'bug', color: 'D73A4A' },
+    { name: 'needs review', color: 'fbca04"; background: url(https://evil.test)' },
+    { name: 'no colour' },
+    { name: '' },
+    null,
+  ] })).toEqual([
+    { name: 'bug', color: 'd73a4a' },
+    { name: 'needs review', color: null },
+    { name: 'no colour', color: null },
+  ]);
+  expect(labelsOf({})).toEqual([]);
+});
+

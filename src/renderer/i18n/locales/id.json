@@ -1962,7 +1962,8 @@
         "approvedBy": "Disetujui oleh {users}",
         "changesBy": "Perubahan diminta oleh {users}",
         "requestedFrom": "Diminta dari {users}",
-        "noReview": "Belum ada review"
+        "noReview": "Belum ada review",
+        "labels": "Label"
       }
     },
     "filesChanged": "file diubah",

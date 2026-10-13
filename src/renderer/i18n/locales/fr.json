@@ -1962,7 +1962,8 @@
         "approvedBy": "Approuvée par {users}",
         "changesBy": "Modifications demandées par {users}",
         "requestedFrom": "Demandée à {users}",
-        "noReview": "Pas encore de revue"
+        "noReview": "Pas encore de revue",
+        "labels": "Étiquettes"
       }
     },
     "filesChanged": "fichiers modifiés",

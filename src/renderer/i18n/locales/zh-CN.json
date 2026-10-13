@@ -1962,7 +1962,8 @@
         "approvedBy": "{users} 已批准",
         "changesBy": "{users} 请求修改",
         "requestedFrom": "已请求 {users}",
-        "noReview": "还没有审查"
+        "noReview": "还没有审查",
+        "labels": "标签"
       }
     },
     "filesChanged": "文件已更改",
