@@ -4724,9 +4724,15 @@ class TerminalManager extends BaseComponent {
     };
   }
 
-  // Respond to a pending permission on a chat tab programmatically.
-  // action: 'allow' | 'deny' | 'always-allow'; message optional (used for deny).
-  respondPermissionForTab(tabId, { action = 'allow', message = '', requestId = null } = {}) {
+  // Deny a pending permission on a chat tab programmatically (the MCP
+  // `chat_respond_permission` tool); message optional, sent as feedback.
+  // Granting is refused here as well as in the tool: anything can drop a
+  // trigger file, and an approval from outside the app is one the user
+  // never saw. See the header of resources/mcp-servers/tools/tabs.js.
+  respondPermissionForTab(tabId, { action = 'deny', message = '', requestId = null } = {}) {
+    if (action !== 'deny') {
+      return { ok: false, error: `Action "${action}" refused: a permission can only be granted by the user, in the app` };
+    }
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
     const { data } = found;
@@ -4749,18 +4755,11 @@ class TerminalManager extends BaseComponent {
     }
     if (!card) return { ok: false, error: 'Permission card not found in DOM' };
 
-    const btnSelector = (() => {
-      if (action === 'allow') return '.chat-perm-btn[data-action="allow"], .chat-plan-btn[data-action="allow"]';
-      if (action === 'always-allow') return '.chat-perm-btn[data-action="always-allow"]';
-      if (action === 'deny') return '.chat-perm-btn[data-action="deny"], .chat-plan-btn[data-action="deny"]';
-      return null;
-    })();
-    if (!btnSelector) return { ok: false, error: `Unsupported action: ${action}` };
-    const btn = card.querySelector(btnSelector);
-    if (!btn) return { ok: false, error: `Button for action "${action}" not found` };
+    const btn = card.querySelector('.chat-perm-btn[data-action="deny"], .chat-plan-btn[data-action="deny"]');
+    if (!btn) return { ok: false, error: 'Deny button not found' };
 
-    // For deny: prefill the feedback input then click twice (first shows input, second sends).
-    if (action === 'deny' && message) {
+    // With a message: prefill the feedback input then click twice (first shows input, second sends).
+    if (message) {
       try { btn.click(); } catch (_) {}
       const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
       if (feedbackInput) feedbackInput.value = String(message);

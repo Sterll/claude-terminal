@@ -18,7 +18,13 @@
  * - Phase 1 ships `list`, `send`, `status`, `close`.
  * - Phase 2 ships `wait`, `wait_any`, `read_output`, `chat_respond_permission`
  *   for full orchestration (subscribe-based waits, buffered output reads,
- *   programmatic permission responses).
+ *   programmatic permission refusals).
+ * - `chat_respond_permission` can deny, never grant. An approval sent from
+ *   here is one the user never saw: the calling session's own prompt shows
+ *   a tab id and a verb, not the command being approved, and `always-allow`
+ *   could fall back to `bypassPermissions` on the other tab. Same rule as
+ *   `skipPermissions` being read-only in settings.js. The renderer refuses
+ *   it again, since anything can drop a file in `tabs/triggers/`.
  *
  * Example orchestration
  * ---------------------
@@ -222,20 +228,20 @@ const tools = [
   },
   {
     name: 'chat_respond_permission',
-    description: 'Respond to a pending permission request on a chat tab programmatically (allow / deny / always-allow). Only works when the tab status is `awaiting_permission`. For deny, `message` is sent back to the agent as feedback.',
+    description: 'Deny a pending permission request on a chat tab, optionally telling the agent why. Only works when the tab status is `awaiting_permission`. Granting is not possible over MCP: the user approves in the app.',
     inputSchema: {
       type: 'object',
       properties: {
         tabId: { type: 'string', description: 'Stable tab identifier of the chat tab' },
         action: {
           type: 'string',
-          enum: ['allow', 'deny', 'always-allow'],
-          description: 'Decision to send back to the agent',
+          enum: ['deny'],
+          description: 'Always `deny` (the default). Kept for callers that already pass it.',
         },
-        message: { type: 'string', description: 'Optional feedback message (used when action=deny).' },
+        message: { type: 'string', description: 'Optional feedback sent back to the agent with the denial.' },
         requestId: { type: 'string', description: 'Optional explicit permission requestId (defaults to the current pending one).' },
       },
-      required: ['tabId', 'action'],
+      required: ['tabId'],
     },
   },
 ];
@@ -346,19 +352,19 @@ async function handle(name, args) {
 
     if (name === 'chat_respond_permission') {
       if (!args.tabId) return fail('Missing required parameter: tabId');
-      if (!args.action) return fail('Missing required parameter: action');
-      if (!['allow', 'deny', 'always-allow'].includes(args.action)) {
-        return fail(`Invalid action "${args.action}". Must be allow | deny | always-allow.`);
+      const action = args.action || 'deny';
+      if (action !== 'deny') {
+        return fail(`Action "${action}" is not available over MCP: a permission can only be granted by the user, in the app. Use action "deny" to refuse it.`);
       }
       const requestId = writeTrigger('permission', {
         tabId: args.tabId,
-        action: args.action,
+        action,
         message: args.message || '',
         permissionRequestId: args.requestId || null,
       });
       const resp = await awaitResponse(requestId);
       if (!resp.ok) return fail(`chat_respond_permission failed: ${resp.error || 'unknown error'}`);
-      return ok(`Permission ${args.action} sent to tab ${args.tabId}.`);
+      return ok(`Permission denied on tab ${args.tabId}.`);
     }
 
     return fail(`Unknown tabs tool: ${name}`);
