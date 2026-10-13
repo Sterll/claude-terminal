@@ -9,7 +9,13 @@
  * Everything comes from one read-only call (`git.sessionSummary`, served by
  * SessionGitService). It is fetched when the tab is shown, every 30 s while it
  * stays shown and the window is focused, and shortly after a tool result,
- * since a tool is what commits and pushes. Hidden, it costs nothing.
+ * since a tool is what commits and pushes.
+ *
+ * The pull requests' checks are this session's CI, so they are also told to
+ * the tab button (`onCiStatus`), which shows them without the tab open. That
+ * is the one thing read while hidden, and only for the session on screen:
+ * every 15 s while a check runs, at most every 30 s after a tool result
+ * (it may have pushed). A session in a background tab costs nothing.
  *
  * A session that worked in its own worktrees shows those instead
  * (`git.sessionOverview`, read from its transcript): a card per worktree with
@@ -26,6 +32,7 @@ const { escapeHtml } = require('../../../utils');
 const { formatRelativeTimeIntl } = require('../../../utils/format');
 
 const POLL_MS = 30_000;
+const TICK_MS = 15_000;
 const STALE_DEBOUNCE_MS = 1500;
 const FRESH_MS = 10_000;
 
@@ -68,6 +75,80 @@ function checksHtml(checks) {
     checks.failure ? `<span class="session-git-pill fail">✕ ${escapeHtml(t('chat.git.checksFailed', { count: checks.failure }))}</span>` : '',
     checks.pending ? `<span class="session-git-pill warn">◷ ${escapeHtml(t('chat.git.checksPending', { count: checks.pending }))}</span>` : '',
   ].join('');
+}
+
+/** Every pull request a summary shows: the folder's, or each worktree's and the ones the session created. */
+function pullRequestsOf(s) {
+  if (!s?.isRepo) return [];
+  const entries = s.mode === 'session' ? [...s.workspaces.map((ws) => ws.pr), ...s.createdPrs] : [s.pr];
+  return entries.map((entry) => entry?.pullRequest).filter(Boolean);
+}
+
+/**
+ * Where this session's CI stands, over its open pull requests: failing as
+ * soon as one check fails, else running while one runs, else passed. Null
+ * without an open pull request that has checks.
+ */
+function ciStatus(s) {
+  const totals = { success: 0, failure: 0, pending: 0 };
+  for (const pr of pullRequestsOf(s)) {
+    if (pr.state !== 'open' || !pr.checks) continue;
+    totals.success += pr.checks.success;
+    totals.failure += pr.checks.failure;
+    totals.pending += pr.checks.pending;
+  }
+  const state = totals.failure ? 'failure' : totals.pending ? 'pending' : totals.success ? 'success' : null;
+  return state ? { state, ...totals } : null;
+}
+
+/** "✕ 1 failed · ◷ 2 running", the tab button's tooltip. */
+function ciStatusText(ci) {
+  if (!ci) return '';
+  return [
+    ci.failure ? `✕ ${t('chat.git.checksFailed', { count: ci.failure })}` : '',
+    ci.pending ? `◷ ${t('chat.git.checksPending', { count: ci.pending })}` : '',
+    ci.success ? `✓ ${t('chat.git.checksOk', { count: ci.success })}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * What goes into the composer for a failed check: which check, which pull
+ * request, and the end of its log. In English, like every prompt the app
+ * writes for Claude. Not sent: the user reads it and sends it.
+ */
+function fixPrompt({ pr, check, logs, dir = null }) {
+  const branch = pr.headRef ? ` (branch \`${pr.headRef}\`)` : '';
+  const lines = [`The CI check "${check.name}" failed on pull request #${pr.number}${branch} of ${pr.repo}.`];
+  if (dir) lines.push(`The branch is checked out in \`${dir}\`.`);
+  lines.push('');
+  if (logs) {
+    const fence = logs.includes('```') ? '````' : '```';
+    lines.push('The end of its log:', fence, logs.trimEnd(), fence);
+  } else {
+    lines.push(`Its log could not be retrieved: ${check.url || 'see the pull request'}.`);
+  }
+  lines.push('', 'Find the cause and fix it.');
+  return lines.join('\n');
+}
+
+function runningHtml(running) {
+  if (!running?.length) return '';
+  return `<ul class="session-git-running">${running.map((c) => `
+    <li>
+      <span class="session-git-spinner" aria-hidden="true"></span>
+      <button type="button" class="session-git-link" data-action="open-check" data-url="${escapeHtml(c.url || '')}">${escapeHtml(c.name)}</button>
+      ${c.step ? `<span class="session-git-muted" title="${escapeHtml(c.step.name || '')}">${c.step.number}/${c.step.total}${c.step.name ? ` · ${escapeHtml(c.step.name)}` : ''}</span>` : ''}
+    </li>`).join('')}</ul>`;
+}
+
+/** Failed checks; an open pull request's Actions jobs get a button that hands the log to this session. */
+function failingHtml(p) {
+  if (!p.checks.failing.length) return '';
+  return `<ul class="session-git-failing">${p.checks.failing.map((c, i) => `
+    <li>
+      <button type="button" class="session-git-link" data-action="open-check" data-index="${i}" data-url="${escapeHtml(c.url || '')}">${escapeHtml(c.name)}</button>
+      ${c.jobId && p.state === 'open' ? `<button type="button" class="session-git-fix" data-action="fix-check" data-pr-url="${escapeHtml(p.url || '')}" data-index="${i}">${escapeHtml(t('ci.fixIt'))}</button>` : ''}
+    </li>`).join('')}</ul>`;
 }
 
 function reviewsHtml(reviews) {
@@ -122,8 +203,8 @@ function prSectionHtml(s, decorateTitle, { heading = true } = {}) {
         ${checksHtml(p.checks)}
         ${reviewsHtml(p.reviews)}
       </div>
-      ${p.checks.failing.length ? `<ul class="session-git-failing">${p.checks.failing.map((c, i) => `
-        <li><button type="button" class="session-git-link" data-action="open-check" data-index="${i}" data-url="${escapeHtml(c.url || '')}">${escapeHtml(c.name)}</button></li>`).join('')}</ul>` : ''}
+      ${runningHtml(p.checks.running)}
+      ${failingHtml(p)}
     </div>
   </section>`;
 }
@@ -232,6 +313,9 @@ function sessionHtml(o, { decoratePrTitle = null } = {}) {
  * @param {(opts: object) => void} deps.showToast
  * @param {(title: string) => string} [deps.decoratePrTitle]
  * @param {(summary: object) => void} [deps.onSummary] every summary read: a hook for the features that read branches and PR titles
+ * @param {(ci: object|null) => void} [deps.onCiStatus] the session's CI, see ciStatus(), each time it changes
+ * @param {() => boolean} [deps.isOnScreen] whether the session is the one on screen: only then is it read while hidden
+ * @param {(text: string) => void} [deps.fillComposer] puts a prompt in this session's composer
  */
 function createGitTab(deps) {
   const { api, panelEl } = deps;
@@ -242,12 +326,15 @@ function createGitTab(deps) {
   let destroyed = false;
   let available = false;
   let seq = 0;
+  let inFlight = 0;
   let pollTimer = null;
   let staleTimer = null;
+  let ciKey = '';
 
   async function load() {
     if (destroyed) return;
     const mine = ++seq;
+    inFlight++;
     let res;
     try {
       const sessionId = deps.getSessionId?.() || null;
@@ -256,11 +343,14 @@ function createGitTab(deps) {
         : await api.git.sessionSummary({ projectPath: deps.getCwd() });
     } catch (err) {
       res = { isRepo: false, error: err.message };
+    } finally {
+      inFlight--;
     }
     if (destroyed || mine !== seq) return;
     summary = res;
     loadedAt = Date.now();
     stale = false;
+    reportCi();
     if (summary?.mode === 'session') {
       // A reader of branches and titles gets every one the session has.
       for (const ws of summary.workspaces) deps.onSummary?.(ws);
@@ -273,8 +363,25 @@ function createGitTab(deps) {
     if (summary?.isRepo && !available) {
       available = true;
       deps.onAvailable?.();
+      pollTimer = setInterval(tick, TICK_MS);
     }
     if (visible) render();
+  }
+
+  function reportCi() {
+    const ci = ciStatus(summary);
+    const key = ci ? `${ci.state}:${ci.success}:${ci.failure}:${ci.pending}` : '';
+    if (key === ciKey) return;
+    ciKey = key;
+    deps.onCiStatus?.(ci);
+  }
+
+  /** Shown: every 30 s. Hidden: only the session on screen, while a check runs or after a tool result. */
+  function tick() {
+    if (destroyed || inFlight || !document.hasFocus()) return;
+    const due = Date.now() - loadedAt >= POLL_MS - TICK_MS / 2;
+    const running = ciKey.startsWith('pending');
+    if (visible ? running || due : deps.isOnScreen?.() && (running || (stale && due))) load();
   }
 
   function render() {
@@ -298,6 +405,24 @@ function createGitTab(deps) {
     return card ? summary.workspaces[Number(card.dataset.ws)] || null : null;
   }
 
+  async function fixCheck(button) {
+    const pr = pullRequestsOf(summary).find((p) => p.url === button.dataset.prUrl);
+    const check = pr?.checks.failing[Number(button.dataset.index)];
+    if (!check?.jobId || !deps.fillComposer) return;
+    const ws = targetOf(button);
+    button.disabled = true;
+    let logs = null;
+    try {
+      const res = await api.github.jobLogs(`https://${new URL(pr.url).host}/${pr.repo}`, check.jobId);
+      logs = res?.logs || null;
+    } catch {
+      // No log: the prompt points at the check instead.
+    }
+    if (destroyed) return;
+    button.disabled = false;
+    deps.fillComposer(fixPrompt({ pr, check, logs, dir: summary.mode === 'session' ? ws?.dir || null : null }));
+  }
+
   async function push(button) {
     const target = targetOf(button);
     if (!target?.branch) return;
@@ -319,6 +444,7 @@ function createGitTab(deps) {
     switch (el.dataset.action) {
       case 'refresh': load(); break;
       case 'push': push(el); break;
+      case 'fix-check': fixCheck(el); break;
       case 'open-git': deps.openGitScreen(); break;
       case 'connect-github': deps.openSettings('github'); break;
       // Every link carries its own URL: the same handler serves each worktree card.
@@ -341,16 +467,10 @@ function createGitTab(deps) {
       visible = true;
       render();
       if (stale || Date.now() - loadedAt > FRESH_MS) load();
-      clearInterval(pollTimer);
-      pollTimer = setInterval(() => {
-        if (visible && document.hasFocus()) load();
-      }, POLL_MS);
     },
 
     hide() {
       visible = false;
-      clearInterval(pollTimer);
-      pollTimer = null;
     },
 
     /** A tool just finished: it may have committed, pushed or edited. */
@@ -373,4 +493,4 @@ function createGitTab(deps) {
   };
 }
 
-module.exports = { createGitTab, gitTabHtml, sessionHtml };
+module.exports = { createGitTab, gitTabHtml, sessionHtml, ciStatus, ciStatusText, fixPrompt };

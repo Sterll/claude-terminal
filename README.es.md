@@ -267,7 +267,7 @@ npm install
 - Autenticación OAuth Device Flow (segura, sin copiar y pegar tokens)
 - **Soporte de GitHub Enterprise**: conexión a instancias autoalojadas de GitHub Enterprise
 - **Búsqueda de repositorios en el asistente de clonado**: busca repos de GitHub por nombre sin salir de la aplicación
-- **Píldora de estado CI/CD**: estado en vivo de la última ejecución mostrado en la barra de cabecera de la terminal, con un botón para saltar directamente al paso que falló
+- **CI de la sesión**: la pestaña Git de cada sesión de chat sigue los checks de sus propias pull requests, con el paso en curso de cada job y un punto en el botón de la pestaña. Fix it coloca el log de un job fallido en el compositor de esa sesión
 - Consulta de ejecuciones de CI/CD por repositorio
 - Ver, crear y revisar pull requests desde la aplicación; soporte multi-forja (GitHub, GitLab)
 - Token almacenado de forma segura mediante keytar (Administrador de credenciales de Windows, Llavero de macOS, libsecret en Linux)

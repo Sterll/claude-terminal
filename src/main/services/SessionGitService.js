@@ -25,6 +25,7 @@ const CONFLICT_CODES = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
 const MAX_WORKSPACES = 6;
 const MAX_DIRS = 100;
 const TOP_CACHE_MS = 5 * 60 * 1000;
+const MAX_PROGRESS_JOBS = 4;
 
 /** `git log` lines as commits. */
 function parseLog(output) {
@@ -106,19 +107,48 @@ async function findBase(cwd, remote, branch) {
   return best ? best.base : candidates[0];
 }
 
+/**
+ * Counts by outcome, plus the checks still running and the ones that failed.
+ * A check GitHub Actions ran carries its job id: its steps and its log are
+ * read through it. Another app's check (a linter bot, a deploy) has neither.
+ */
 function summarizeChecks(checkRuns) {
-  const checks = { total: 0, success: 0, failure: 0, pending: 0, skipped: 0, failing: [] };
+  const checks = { total: 0, success: 0, failure: 0, pending: 0, skipped: 0, failing: [], running: [] };
   for (const run of checkRuns || []) {
     checks.total++;
-    if (run.status !== 'completed') checks.pending++;
-    else if (['success', 'neutral'].includes(run.conclusion)) checks.success++;
+    const jobId = run.app === 'github-actions' && run.id ? run.id : null;
+    if (run.status !== 'completed') {
+      checks.pending++;
+      checks.running.push({ name: run.name, url: run.url || null, jobId, step: null });
+    } else if (['success', 'neutral'].includes(run.conclusion)) checks.success++;
     else if (['skipped', 'cancelled', 'stale'].includes(run.conclusion)) checks.skipped++;
     else {
       checks.failure++;
-      checks.failing.push({ name: run.name, url: run.url || null });
+      checks.failing.push({ name: run.name, url: run.url || null, jobId });
     }
   }
   return checks;
+}
+
+/**
+ * Which step each running job is on, shown as "5/8". One request per job, so
+ * only the first few: a matrix can run dozens.
+ */
+async function addStepProgress(owner, repo, checks) {
+  const jobs = checks.running.filter((c) => c.jobId).slice(0, MAX_PROGRESS_JOBS);
+  await Promise.all(jobs.map(async (check) => {
+    const res = await github.getWorkflowJob(owner, repo, check.jobId);
+    const steps = res?.job?.steps || [];
+    const current = steps.find((st) => st.status === 'in_progress') || steps.find((st) => st.status !== 'completed');
+    if (current) check.step = { number: current.number, total: steps.length, name: current.name };
+  }));
+  return checks;
+}
+
+async function checksOf(owner, repo, headSha) {
+  if (!headSha) return summarizeChecks([]);
+  const res = await github.getCheckRuns(owner, repo, headSha);
+  return addStepProgress(owner, repo, summarizeChecks(res.checkRuns));
 }
 
 /** Each reviewer's latest decision; plain comments do not override a decision. */
@@ -180,7 +210,7 @@ async function findPullRequest(cwd, branch, remote, base) {
 
   const { repo, pr } = found;
   const [checks, reviews] = await Promise.all([
-    pr.headSha ? github.getCheckRuns(repo.owner, repo.repo, pr.headSha) : { checkRuns: [] },
+    checksOf(repo.owner, repo.repo, pr.headSha),
     github.getPullRequestReviews(repo.owner, repo.repo, pr.number),
   ]);
   return {
@@ -189,7 +219,7 @@ async function findPullRequest(cwd, branch, remote, base) {
     pullRequest: {
       ...pr,
       repo: `${repo.owner}/${repo.repo}`,
-      checks: summarizeChecks(checks.checkRuns),
+      checks,
       reviews: summarizeReviews(reviews.reviews),
     },
   };
@@ -381,13 +411,13 @@ async function createdPullRequest(p) {
   }
   const pr = res.pullRequest;
   const [checks, reviews] = await Promise.all([
-    pr.headSha ? github.getCheckRuns(p.owner, p.repo, pr.headSha) : { checkRuns: [] },
+    checksOf(p.owner, p.repo, pr.headSha),
     github.getPullRequestReviews(p.owner, p.repo, pr.number),
   ]);
   return {
     ...base,
     authenticated: true,
-    pullRequest: { ...pr, repo, checks: summarizeChecks(checks.checkRuns), reviews: summarizeReviews(reviews.reviews) },
+    pullRequest: { ...pr, repo, checks, reviews: summarizeReviews(reviews.reviews) },
   };
 }
 
@@ -433,5 +463,5 @@ async function overview({ projectPath, sessionId = null } = {}, { activity = ses
 module.exports = {
   summary,
   overview,
-  _internals: { parseLog, parseRemotes, remoteHost, summarizeChecks, summarizeReviews, workspacesOf, topCache },
+  _internals: { parseLog, parseRemotes, remoteHost, summarizeChecks, addStepProgress, summarizeReviews, workspacesOf, topCache },
 };

@@ -266,7 +266,7 @@ npm install
 - OAuth Device Flow 认证（安全，无需复制粘贴令牌）
 - **支持 GitHub Enterprise**：可连接自建的 GitHub Enterprise 实例
 - **克隆向导中的仓库搜索**：不离开应用即可按名称搜索 GitHub 仓库
-- **CI/CD 状态胶囊**：在终端标题栏内联显示最新工作流运行的实时状态，并有一个按钮直接跳到失败的步骤
+- **会话 CI**：每个聊天会话的 Git 标签页跟踪其自身 pull request 的检查，显示每个运行中作业所处的步骤，并在标签按钮上显示一个圆点。Fix it 会把失败作业的日志放入该会话的输入框
 - 按仓库查看 CI/CD 工作流运行
 - 在应用内查看、创建和评审 pull request；支持多平台（GitHub、GitLab）
 - 令牌通过 keytar 安全存储（Windows 凭据管理器、macOS 钥匙串、Linux libsecret）

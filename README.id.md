@@ -267,7 +267,7 @@ npm install
 - Autentikasi OAuth Device Flow (aman, tanpa salin-tempel token)
 - **Dukungan GitHub Enterprise**: terhubung ke instans GitHub Enterprise yang di-host sendiri
 - **Pencarian repositori di wizard clone**: cari repo GitHub berdasarkan nama tanpa keluar dari aplikasi
-- **Pil status CI/CD**: status langsung dari run terbaru ditampilkan di bilah header terminal, dengan tombol untuk langsung melompat ke langkah yang gagal
+- **CI sesi**: tab Git setiap sesi chat mengikuti check dari pull request miliknya sendiri, dengan langkah yang sedang berjalan pada setiap job dan titik pada tombol tab. Fix it menaruh log job yang gagal di composer sesi tersebut
 - Lihat run CI/CD per repositori
 - Lihat, buat, dan tinjau pull request dari aplikasi; dukungan multi-forge (GitHub, GitLab)
 - Token disimpan dengan aman lewat keytar (Windows Credential Manager, macOS Keychain, libsecret di Linux)

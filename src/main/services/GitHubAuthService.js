@@ -692,6 +692,53 @@ async function getWorkflowJobs(owner, repo, runId) {
 }
 
 /**
+ * One workflow job and its steps. A check run GitHub Actions reports has the
+ * job's id, so a running check's progress is read from here.
+ */
+async function getWorkflowJob(owner, repo, jobId) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, job: null };
+
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/actions/jobs/${jobId}`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `workflow-job:${owner}/${repo}/${jobId}`
+    });
+
+    if (response.status === 200) {
+      const job = response.data;
+      return {
+        authenticated: true,
+        job: {
+          id: job.id,
+          name: job.name,
+          status: job.status,
+          conclusion: job.conclusion,
+          steps: (job.steps || []).map(step => ({
+            number: step.number,
+            name: step.name,
+            status: step.status,
+            conclusion: step.conclusion
+          }))
+        }
+      };
+    }
+
+    return { authenticated: true, job: null, error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching workflow job:', e);
+    return { authenticated: true, job: null, error: e.message };
+  }
+}
+
+/**
  * Get logs for a specific job (follows 302 redirect to S3)
  */
 async function getJobLogs(owner, repo, jobId) {
@@ -754,7 +801,9 @@ async function getCheckRuns(owner, repo, ref) {
         conclusion: cr.conclusion,
         startedAt: cr.started_at,
         completedAt: cr.completed_at,
-        url: cr.html_url
+        url: cr.html_url,
+        // 'github-actions' for a workflow job, whose check run id is its job id
+        app: cr.app?.slug || null
       }));
       return { authenticated: true, checkRuns, total: response.data.total_count };
     }
@@ -1179,6 +1228,7 @@ module.exports = {
   getTokenForGit,
   getWorkflowRuns,
   getWorkflowJobs,
+  getWorkflowJob,
   getJobLogs,
   getPullRequests,
   getPullRequestsForBranch,

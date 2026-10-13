@@ -17,6 +17,7 @@ jest.mock('../../src/main/services/GitHubAuthService', () => ({
   },
   getPullRequestsForBranch: jest.fn(),
   getCheckRuns: jest.fn(),
+  getWorkflowJob: jest.fn(),
   getPullRequestReviews: jest.fn(),
 }));
 
@@ -78,6 +79,7 @@ afterAll(() => {
 beforeEach(() => {
   github.getPullRequestsForBranch.mockReset().mockResolvedValue({ authenticated: true, pullRequests: [] });
   github.getCheckRuns.mockReset().mockResolvedValue({ checkRuns: [] });
+  github.getWorkflowJob.mockReset().mockResolvedValue({ authenticated: true, job: null });
   github.getPullRequestReviews.mockReset().mockResolvedValue({ reviews: [] });
 });
 
@@ -197,6 +199,50 @@ test('a detached HEAD has no branch and no upstream', async () => {
   git(work, 'worktree', 'add', '-q', '--detach', detached, 'HEAD~1');
   const s = await summary(detached);
   expect(s).toMatchObject({ detached: true, branch: null, upstream: null, ahead: 0, behind: 0 });
+});
+
+test('a running Actions job says which step it is on; its failures carry the job for the log', async () => {
+  github.getPullRequestsForBranch.mockResolvedValue({
+    authenticated: true,
+    pullRequests: [{ number: 57, title: 'x', state: 'open', draft: false, url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: 'abc123' }],
+  });
+  github.getCheckRuns.mockResolvedValue({ checkRuns: [
+    { id: 11, name: 'e2e', status: 'in_progress', conclusion: null, app: 'github-actions', url: 'https://ci/e2e' },
+    { id: 12, name: 'lint', status: 'queued', conclusion: null, app: 'github-actions', url: 'https://ci/lint' },
+    { id: 13, name: 'deploy-preview', status: 'in_progress', conclusion: null, app: 'vercel', url: 'https://vercel' },
+    { id: 14, name: 'test', status: 'completed', conclusion: 'failure', app: 'github-actions', url: 'https://ci/test' },
+    { id: 15, name: 'codecov', status: 'completed', conclusion: 'failure', app: 'codecov', url: 'https://codecov' },
+  ] });
+  github.getWorkflowJob.mockImplementation(async (owner, repo, id) => ({
+    authenticated: true,
+    job: id === 11
+      ? { id, steps: [
+        { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success' },
+        { number: 2, name: 'Run smoke', status: 'in_progress', conclusion: null },
+        { number: 3, name: 'Post', status: 'queued', conclusion: null },
+      ] }
+      : { id, steps: [] }, // queued: no steps yet
+  }));
+
+  const s = await summary(work);
+  const { checks } = s.pr.pullRequest;
+  expect(github.getWorkflowJob.mock.calls.map((c) => c[2]).sort()).toEqual([11, 12]); // never another app's check
+  expect(checks.running).toEqual([
+    { name: 'e2e', url: 'https://ci/e2e', jobId: 11, step: { number: 2, total: 3, name: 'Run smoke' } },
+    { name: 'lint', url: 'https://ci/lint', jobId: 12, step: null },
+    { name: 'deploy-preview', url: 'https://vercel', jobId: null, step: null },
+  ]);
+  expect(checks.failing).toEqual([
+    { name: 'test', url: 'https://ci/test', jobId: 14 },
+    { name: 'codecov', url: 'https://codecov', jobId: null },
+  ]);
+});
+
+test('step progress is read for a few jobs only: a matrix can run dozens', async () => {
+  const runs = Array.from({ length: 10 }, (_, i) => ({ id: 100 + i, name: `test (${i})`, status: 'in_progress', app: 'github-actions' }));
+  const checks = await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs));
+  expect(github.getWorkflowJob).toHaveBeenCalledTimes(4);
+  expect(checks.running).toHaveLength(10);
 });
 
 describe('helpers', () => {

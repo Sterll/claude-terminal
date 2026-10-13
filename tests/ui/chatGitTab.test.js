@@ -6,7 +6,7 @@
 
 'use strict';
 
-const { createGitTab, gitTabHtml, sessionHtml } = require('../../src/renderer/ui/components/chat/gitTab');
+const { createGitTab, gitTabHtml, sessionHtml, ciStatus, ciStatusText, fixPrompt } = require('../../src/renderer/ui/components/chat/gitTab');
 const { t } = require('../../src/renderer/i18n');
 
 const SESSION_START = Date.parse('2026-10-09T08:00:00Z');
@@ -79,6 +79,32 @@ describe('gitTabHtml', () => {
     expect(el.querySelector('[data-action="open-check"]').textContent).toBe('test');
   });
 
+  test('running checks name the step their job is on', () => {
+    const pr = summary().pr.pullRequest;
+    const el = render(summary({ pr: { ...summary().pr, pullRequest: { ...pr, checks: { ...pr.checks, running: [
+      { name: 'e2e', url: 'https://ci/e2e', jobId: 11, step: { number: 5, total: 8, name: 'Run <smoke>' } },
+      { name: 'deploy-bot', url: null, jobId: null, step: null },
+    ] } } } }));
+    const rows = [...el.querySelectorAll('.session-git-running li')];
+    expect(rows.map((r) => r.querySelector('[data-action="open-check"]').textContent)).toEqual(['e2e', 'deploy-bot']);
+    expect(rows[0].textContent).toContain('5/8 · Run <smoke>');
+    expect(rows[0].querySelector('smoke')).toBeNull();
+    expect(rows[1].querySelector('.session-git-muted')).toBeNull();
+  });
+
+  test('a failed Actions job of an open pull request can be handed to the session; another app\'s check cannot', () => {
+    const pr = summary().pr.pullRequest;
+    const failing = [{ name: 'test', url: 'https://ci/test', jobId: 42 }, { name: 'codecov', url: 'https://codecov', jobId: null }];
+    const open = render(summary({ pr: { ...summary().pr, pullRequest: { ...pr, checks: { ...pr.checks, failure: 2, failing } } } }));
+    const fixes = [...open.querySelectorAll('[data-action="fix-check"]')];
+    expect(fixes).toHaveLength(1);
+    expect(fixes[0].closest('li').textContent).toContain('test');
+    expect(fixes[0].dataset).toMatchObject({ prUrl: 'https://github.com/acme/app/pull/57', index: '0' });
+
+    const merged = render(summary({ pr: { ...summary().pr, pullRequest: { ...pr, state: 'merged', checks: { ...pr.checks, failing } } } }));
+    expect(merged.querySelector('[data-action="fix-check"]')).toBeNull();
+  });
+
   test('the PR title can be decorated (chips) without losing escaping elsewhere', () => {
     const el = render(summary(), { decoratePrTitle: (title) => `<span class="chip">${title.slice(0, 7)}</span>` });
     expect(el.querySelector('.session-git-pr-text .chip').textContent).toBe('ENG-142');
@@ -98,6 +124,57 @@ describe('gitTabHtml', () => {
     expect(el.textContent).toContain(t(key, params));
     if (key !== 'chat.git.prNone') expect(el.textContent).not.toContain(t('chat.git.prNone'));
     if (action) expect(el.querySelector(`[data-action="${action}"]`)).not.toBeNull();
+  });
+});
+
+describe('the session\'s CI', () => {
+  const pr = (over = {}) => ({ ...summary().pr.pullRequest, ...over });
+  const checks = (success, failure, pending) => ({ total: success + failure + pending, success, failure, pending, skipped: 0, failing: [], running: [] });
+
+  test('failing wins over running, running over passed, nothing without checks', () => {
+    expect(ciStatus(summary())).toEqual({ state: 'failure', success: 1, failure: 1, pending: 1 });
+    expect(ciStatus(summary({ pr: { pullRequest: pr({ checks: checks(2, 0, 1) }) } })).state).toBe('pending');
+    expect(ciStatus(summary({ pr: { pullRequest: pr({ checks: checks(3, 0, 0) }) } })).state).toBe('success');
+    expect(ciStatus(summary({ pr: { pullRequest: pr({ checks: checks(0, 0, 0) }) } }))).toBeNull();
+    expect(ciStatus(summary({ pr: null }))).toBeNull();
+    expect(ciStatus({ isRepo: false })).toBeNull();
+  });
+
+  test('only open pull requests count: a merged one\'s red check is history', () => {
+    expect(ciStatus(summary({ pr: { pullRequest: pr({ state: 'merged' }) } }))).toBeNull();
+  });
+
+  test('a session with several worktrees adds up every pull request it shows', () => {
+    const s = {
+      isRepo: true,
+      mode: 'session',
+      workspaces: [{ pr: { pullRequest: pr({ checks: checks(1, 0, 2) }) } }, { pr: null }, { pr: { pullRequest: pr({ state: 'closed', checks: checks(0, 4, 0) }) } }],
+      createdPrs: [{ pullRequest: pr({ checks: checks(2, 0, 0) }) }, { pullRequest: null }],
+    };
+    expect(ciStatus(s)).toEqual({ state: 'pending', success: 3, failure: 0, pending: 2 });
+  });
+
+  test('the tooltip spells the counts out, failures first', () => {
+    expect(ciStatusText({ state: 'failure', success: 3, failure: 1, pending: 2 })).toBe([
+      `✕ ${t('chat.git.checksFailed', { count: 1 })}`,
+      `◷ ${t('chat.git.checksPending', { count: 2 })}`,
+      `✓ ${t('chat.git.checksOk', { count: 3 })}`,
+    ].join(' · '));
+    expect(ciStatusText(null)).toBe('');
+  });
+
+  test('the fix prompt names the check, the pull request and where the branch is, then quotes the log', () => {
+    const text = fixPrompt({ pr: pr({ headRef: 'feat/x', repo: 'acme/app' }), check: { name: 'test', url: 'https://ci/test' }, logs: 'FAIL tests/a.test.js\n', dir: '/repo/.claude/worktrees/a' });
+    expect(text).toContain('The CI check "test" failed on pull request #57 (branch `feat/x`) of acme/app.');
+    expect(text).toContain('checked out in `/repo/.claude/worktrees/a`');
+    expect(text).toContain('```\nFAIL tests/a.test.js\n```');
+  });
+
+  test('a log that itself holds a fence gets a longer one; no log points at the check', () => {
+    expect(fixPrompt({ pr: pr(), check: { name: 'docs' }, logs: 'see ```js``` above' })).toContain('````\nsee ```js``` above\n````');
+    const none = fixPrompt({ pr: pr(), check: { name: 'test', url: 'https://ci/test' }, logs: null });
+    expect(none).toContain('could not be retrieved: https://ci/test');
+    expect(none).not.toContain('```');
   });
 });
 
@@ -223,6 +300,86 @@ describe('createGitTab', () => {
     panelEl.querySelector('[data-action="authorize-sso"]').click();
     expect(api.dialog.openExternal.mock.calls).toEqual([[url]]);
     tab.destroy();
+  });
+
+  test('the CI status goes to the tab button, only when it changes', async () => {
+    const onCiStatus = jest.fn();
+    const tab = createGitTab({ ...deps, onCiStatus });
+    await tab.probe();
+    await tab.probe();
+    expect(onCiStatus.mock.calls).toEqual([[{ state: 'failure', success: 1, failure: 1, pending: 1 }]]);
+    api.git.sessionSummary.mockResolvedValue(summary({ pr: null }));
+    await tab.probe();
+    expect(onCiStatus).toHaveBeenLastCalledWith(null);
+    tab.destroy();
+  });
+
+  test('Fix it hands the job\'s log to this session\'s composer', async () => {
+    const pr = summary().pr.pullRequest;
+    api.git.sessionSummary.mockResolvedValue(summary({ pr: { ...summary().pr, pullRequest: { ...pr, headRef: 'feat/x', repo: 'acme/app', checks: { ...pr.checks, failing: [{ name: 'test', url: 'https://ci/test', jobId: 42 }] } } } }));
+    api.github = { jobLogs: jest.fn(async () => ({ success: true, logs: 'Expected 2, received 3' })) };
+    const fillComposer = jest.fn();
+    const tab = createGitTab({ ...deps, fillComposer });
+    await tab.probe();
+    tab.show();
+    panelEl.querySelector('[data-action="fix-check"]').click();
+    await flush();
+    expect(api.github.jobLogs).toHaveBeenCalledWith('https://github.com/acme/app', 42);
+    expect(fillComposer).toHaveBeenCalledTimes(1);
+    expect(fillComposer.mock.calls[0][0]).toContain('The CI check "test" failed on pull request #57');
+    expect(fillComposer.mock.calls[0][0]).toContain('Expected 2, received 3');
+    tab.destroy();
+  });
+
+  describe('read while hidden', () => {
+    const running = () => summary({ pr: { ...summary().pr, pullRequest: { ...summary().pr.pullRequest, checks: { total: 1, success: 0, failure: 0, pending: 1, skipped: 0, failing: [], running: [] } } } });
+    let onScreen;
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(document, 'hasFocus').mockReturnValue(true);
+      onScreen = true;
+    });
+    afterEach(() => jest.restoreAllMocks());
+
+    test('the session on screen follows a running check every 15 s', async () => {
+      api.git.sessionSummary.mockResolvedValue(running());
+      const tab = createGitTab({ ...deps, isOnScreen: () => onScreen });
+      await tab.probe();
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(2);
+      onScreen = false; // another tab, another screen
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(2);
+      tab.destroy();
+    });
+
+    test('settled checks are not polled; a tool result is picked up, at most every 30 s', async () => {
+      api.git.sessionSummary.mockResolvedValue(summary());
+      const tab = createGitTab({ ...deps, isOnScreen: () => onScreen });
+      await tab.probe();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(1);
+      tab.markStale();
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(2);
+      tab.markStale();
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(2); // read 15 s ago
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(3);
+      tab.destroy();
+    });
+
+    test('an unfocused window reads nothing', async () => {
+      api.git.sessionSummary.mockResolvedValue(running());
+      document.hasFocus.mockReturnValue(false);
+      const tab = createGitTab({ ...deps, isOnScreen: () => true });
+      await tab.probe();
+      await jest.advanceTimersByTimeAsync(60_000);
+      expect(api.git.sessionSummary).toHaveBeenCalledTimes(1);
+      tab.destroy();
+    });
   });
 
   test('a summary that arrives after destroy is dropped', async () => {

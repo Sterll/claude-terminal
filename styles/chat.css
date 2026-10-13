@@ -62,6 +62,25 @@
   background: var(--accent-dim);
   color: var(--accent-hover);
 }
+/* The session's CI on the Git tab button: its pull requests' checks (chat/gitTab.js). */
+.chat-tab-ci {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.chat-tab-ci[hidden] { display: none; }
+.chat-tab-ci.success { background: var(--success); }
+.chat-tab-ci.failure { background: var(--danger); }
+.chat-tab-ci.pending { width: 9px; height: 9px; }
+.chat-tab-ci.pending,
+.session-git-spinner {
+  box-sizing: border-box;
+  border: 1.5px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
 
 /* ── Session changes panel ── */
 .chat-changes-panel {
@@ -5845,6 +5864,31 @@ p.session-git-muted { margin: 0; }
   padding-left: 18px;
   font-size: var(--font-sm);
 }
+.session-git-failing li { padding: 1px 0; }
+
+/* Checks still running, each with the step its job is on. */
+.session-git-running {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-sm);
+}
+.session-git-running li { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+.session-git-running .session-git-muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-git-spinner { flex: none; width: 10px; height: 10px; }
+
+.session-git-fix {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-hover);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+.session-git-fix:hover { background: var(--accent-dim); }
+.session-git-fix:disabled { opacity: 0.6; cursor: progress; }
 
 .session-git-count {
   color: var(--text-muted);
