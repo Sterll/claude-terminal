@@ -16,6 +16,13 @@
  *
  * Every change is broadcast as `issue-links-changed` so the chat tab and the
  * Tickets screen follow without polling.
+ *
+ * Detection runs in main and can finish after the tab moved: a prompt scanned
+ * under `tab:<id>` may only be suggested once its tracker answered, by which
+ * time the rekey has happened. Each rekey is remembered, and a write to a key
+ * that moved lands on the key it moved to, where the tab now listens. A
+ * provisional entry that never moved (its tab closed before its first
+ * message) is dropped after a week: nothing will ever read it again.
  */
 
 const fsp = require('fs').promises;
@@ -29,6 +36,9 @@ const STATUSES = ['linked', 'suggested', 'dismissed'];
 const SOURCES = ['manual', 'mention', 'start', 'tool', 'prompt', 'branch', 'pr'];
 const KEY = /^[A-Za-z0-9:_.-]{1,128}$/;
 const MAX_EVIDENCE = 300;
+const PROVISIONAL = 'tab:';
+const PROVISIONAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_ALIASES = 500;
 
 function cleanKey(key) {
   return typeof key === 'string' && KEY.test(key) ? key : null;
@@ -51,6 +61,25 @@ function cleanLink(raw) {
  */
 function createIssueLinkService({ storePath, now = () => new Date().toISOString(), broadcast = () => {} }) {
   let queue = Promise.resolve();
+  const aliases = new Map(); // provisional key → the session id it moved to
+
+  /** Where writes to `key` go: the key it was rekeyed to, if it was. */
+  function resolveKey(key) {
+    let current = key;
+    for (let hops = 0; hops < 5 && aliases.has(current); hops++) current = aliases.get(current);
+    return current;
+  }
+
+  /** Provisional entries that never moved and have not changed for a week belong to no tab. */
+  function pruneProvisional(store) {
+    const cutoff = Date.parse(now()) - PROVISIONAL_TTL_MS;
+    if (!Number.isFinite(cutoff)) return;
+    for (const [key, session] of Object.entries(store.sessions)) {
+      if (!key.startsWith(PROVISIONAL)) continue;
+      const at = Date.parse(session?.updatedAt);
+      if (!Number.isFinite(at) || at < cutoff) delete store.sessions[key];
+    }
+  }
   function exclusive(fn) {
     const run = queue.then(fn, fn);
     queue = run.catch(() => {});
@@ -75,6 +104,7 @@ function createIssueLinkService({ storePath, now = () => new Date().toISOString(
     if (!parsed || typeof parsed.sessions !== 'object' || Array.isArray(parsed.sessions)) {
       throw new Error(`Refusing to modify ${path.basename(storePath)}: it has no sessions map`);
     }
+    pruneProvisional(parsed);
     return parsed;
   }
 
@@ -87,9 +117,11 @@ function createIssueLinkService({ storePath, now = () => new Date().toISOString(
 
   /** Read-modify-write one session; `fn` returns true when it changed something. */
   function mutate(sessionKey, fn) {
-    const key = cleanKey(sessionKey);
-    if (!key) return Promise.reject(new Error('Invalid session key'));
+    const cleaned = cleanKey(sessionKey);
+    if (!cleaned) return Promise.reject(new Error('Invalid session key'));
     return exclusive(async () => {
+      // Resolved here, in the queue: a rekey queued ahead of this write has run by now.
+      const key = resolveKey(cleaned);
       const store = await readStore();
       const session = store.sessions[key] || { links: [] };
       const changed = fn(session);
@@ -186,6 +218,9 @@ function createIssueLinkService({ storePath, now = () => new Date().toISOString(
       const b = cleanKey(to);
       if (!a || !b || a === b) return Promise.resolve(false);
       return exclusive(async () => {
+        // Remembered even when nothing is stored yet: the tab's first detection may still be in flight.
+        aliases.set(a, b);
+        if (aliases.size > MAX_ALIASES) aliases.delete(aliases.keys().next().value);
         const store = await readStore();
         const moving = store.sessions[a];
         if (!moving) return false;
@@ -201,7 +236,11 @@ function createIssueLinkService({ storePath, now = () => new Date().toISOString(
       });
     },
 
-    /** A fork starts with its parent's links; the parent keeps them. */
+    /**
+     * A fork starts with its parent's links; the parent keeps them. A ticket
+     * the fork already has (detected under its new id first) keeps the fork's
+     * own status.
+     */
     copy(from, to) {
       const a = cleanKey(from);
       const b = cleanKey(to);
@@ -209,8 +248,14 @@ function createIssueLinkService({ storePath, now = () => new Date().toISOString(
       return exclusive(async () => {
         const store = await readStore();
         const source = store.sessions[a];
-        if (!source || store.sessions[b]) return false;
-        store.sessions[b] = { projectId: source.projectId || null, links: source.links.map((l) => ({ ...l })), updatedAt: now() };
+        if (!source) return false;
+        const target = store.sessions[b] || { projectId: null, links: [] };
+        const adding = source.links.filter((l) => !target.links.some((x) => x.ref === l.ref));
+        if (!adding.length) return false;
+        target.links.push(...adding.map((l) => ({ ...l })));
+        if (!target.projectId) target.projectId = source.projectId || null;
+        target.updatedAt = now();
+        store.sessions[b] = target;
         await writeStore(store);
         broadcast(b);
         return true;

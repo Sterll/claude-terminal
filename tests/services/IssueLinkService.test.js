@@ -92,6 +92,50 @@ test('a fork copies its parent\'s links, and the parent keeps them', async () =>
   expect(await links.copy('parent', 'child')).toBe(false); // never overwrites a session
 });
 
+test('a fork already holding a detection gets its parent\'s links beside it', async () => {
+  await links.link('parent', ENG142);
+  await links.link('parent', ENG155);
+  await links.suggest('child', { ...ENG155, source: 'tool' });
+  expect(await links.copy('parent', 'child')).toBe(true);
+  const list = await links.get('child');
+  expect(statusOf(list, ENG142.ref)).toBe('linked');
+  expect(statusOf(list, ENG155.ref)).toBe('suggested'); // the fork's own status is kept
+});
+
+test('a detection that finishes after the rekey lands on the real session id', async () => {
+  // The tab moved before its first prompt's tracker lookup answered.
+  expect(await links.rekey('tab:chat-1', 'sess-real')).toBe(false); // nothing stored yet, still remembered
+  broadcast.mockClear();
+  expect(await links.suggest('tab:chat-1', { ...ENG142, source: 'prompt' })).toBe(true);
+  expect(statusOf(await links.get('sess-real'), ENG142.ref)).toBe('suggested');
+  expect(broadcast).toHaveBeenCalledWith('sess-real');
+  expect(broadcast).not.toHaveBeenCalledWith('tab:chat-1');
+  const stored = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+  expect(stored.sessions['tab:chat-1']).toBeUndefined(); // no orphan entry
+});
+
+test('a write queued before the rekey is moved with the rest', async () => {
+  const pending = links.suggest('tab:chat-2', { ...ENG142, source: 'prompt' });
+  await links.rekey('tab:chat-2', 'sess-two');
+  await pending;
+  expect(statusOf(await links.get('sess-two'), ENG142.ref)).toBe('suggested');
+  expect(JSON.parse(fs.readFileSync(storePath, 'utf8')).sessions['tab:chat-2']).toBeUndefined();
+});
+
+test('a provisional entry that never moved is dropped after a week', async () => {
+  fs.writeFileSync(storePath, JSON.stringify({
+    version: 1,
+    sessions: {
+      'tab:old': { links: [{ ...ENG142, status: 'linked' }], updatedAt: '2026-09-01T00:00:00.000Z' },
+      'tab:recent': { links: [{ ...ENG142, status: 'linked' }], updatedAt: '2026-10-08T00:00:00.000Z' },
+      'sess-old': { links: [{ ...ENG142, status: 'linked' }], updatedAt: '2026-01-01T00:00:00.000Z' },
+    },
+  }));
+  await links.link('sess-1', ENG155);
+  const stored = JSON.parse(fs.readFileSync(storePath, 'utf8'));
+  expect(Object.keys(stored.sessions).sort()).toEqual(['sess-1', 'sess-old', 'tab:recent']);
+});
+
 test('counts are per ticket, linked only', async () => {
   await links.link('a', ENG142);
   await links.link('b', ENG142);
