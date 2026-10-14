@@ -26,7 +26,7 @@ let readCredentials;
 let httpsGet;
 
 /** A service whose data directory is a throwaway, over a mocked store and API. */
-function load(limits = [{ kind: 'session', percent: 42, resets_at: '2026-01-01T00:00:00Z' }]) {
+function load(limits = [{ kind: 'session', percent: 42, resets_at: '2099-01-01T00:00:00Z' }]) {
   readCredentials = jest.fn().mockResolvedValue({
     claudeAiOauth: { accessToken: 'token-a', expiresAt: Date.now() + HOUR }
   });
@@ -84,8 +84,8 @@ describe('usage.json', () => {
 
   test('carries the buckets the MCP tool renders, not token counts', async () => {
     const usage = load([
-      { kind: 'session', percent: 42, resets_at: '2026-01-01T00:00:00Z' },
-      { kind: 'weekly_all', percent: 7, resets_at: '2026-01-05T00:00:00Z' },
+      { kind: 'session', percent: 42, resets_at: '2099-01-01T00:00:00Z' },
+      { kind: 'weekly_all', percent: 7, resets_at: '2099-01-05T00:00:00Z' },
     ]);
     await usage.fetchUsage();
 

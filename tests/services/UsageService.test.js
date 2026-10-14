@@ -9,6 +9,9 @@
  * than a silent blank bar.
  */
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { readBuckets } = require('../../src/main/services/UsageService');
 
 /** A response captured from /api/oauth/usage, trimmed to the fields we read. */
@@ -404,6 +407,214 @@ describe('OAuth token cache', () => {
     });
   });
 
+  /**
+   * A token that ran out is not a store that refused. It is what an account
+   * looks like once nothing has used it for a few hours, which is exactly what
+   * happens to one that hit its limit: the user moves to another account, the
+   * CLI stops renewing this one's token, and it expires. Treated as a refusal
+   * it climbed the ladder and was given up on overnight, so going back to the
+   * account the next morning left its chip on the last figure ever fetched.
+   */
+  describe('an expired token is not a refusal', () => {
+    const MINUTE = 60 * 1000;
+    const expiredCreds = () =>
+      ({ claudeAiOauth: { accessToken: 'expired', refreshToken: 'r', expiresAt: Date.now() - 1000 } });
+
+    test('rechecks on a flat interval instead of climbing the ladder', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockImplementation(async () => expiredCreds());
+        let at = start;
+        // A refusal would wait 5, 10, 20, 40, 60... and stop after eight.
+        for (let i = 0; i < 12; i++) {
+          await usage.fetchUsage();
+          at += 5 * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+
+        expect(readCredentials).toHaveBeenCalledTimes(12);
+        expect(httpsGet).not.toHaveBeenCalled();
+        expect(usage.getUsageData().gaveUp).toBe(false);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('still does not reopen the store on every poll', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockImplementation(async () => expiredCreds());
+        await usage.fetchUsage();
+        clock.mockReturnValue(start + 4 * MINUTE);
+        await usage.fetchUsage();
+
+        expect(readCredentials).toHaveBeenCalledTimes(1);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('picks up the token the CLI renewed, without a click', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockImplementation(async () => expiredCreds());
+        // Idle long enough that a refusal would have been given up on.
+        let at = start;
+        for (let i = 0; i < 10; i++) {
+          await usage.fetchUsage();
+          at += 5 * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+
+        readCredentials.mockResolvedValue(validCreds('renewed'));
+        await usage.fetchUsage();
+
+        expect(httpsGet.mock.calls.at(-1)[0].headers.Authorization).toBe('Bearer renewed');
+        expect(usage.getUsageData().error).toBeNull();
+      } finally { clock.mockRestore(); }
+    });
+
+    test('a store that refused before starts the ladder over once it answers', async () => {
+      const usage = load();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        readCredentials.mockResolvedValue(null);
+        await usage.fetchUsage();
+        clock.mockReturnValue(start + 6 * MINUTE);
+        await usage.fetchUsage();
+        // Two refusals behind it: a third would wait twenty minutes.
+        clock.mockReturnValue(start + 17 * MINUTE);
+        readCredentials.mockImplementation(async () => expiredCreds());
+        await usage.fetchUsage();
+        const reads = readCredentials.mock.calls.length;
+        expect(reads).toBe(3);
+
+        clock.mockReturnValue(start + 23 * MINUTE);
+        await usage.fetchUsage();
+
+        expect(readCredentials.mock.calls.length).toBe(reads + 1);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('says the token will renew rather than asking for a login', async () => {
+      const usage = load();
+      readCredentials.mockImplementation(async () => expiredCreds());
+      await usage.fetchUsage();
+
+      const { error, stale } = usage.getUsageData();
+      expect(stale).toBe(true);
+      expect(error).toMatch(/renews/);
+      expect(error).not.toMatch(/\/login/);
+    });
+  });
+
+  /**
+   * On darwin the readers swallow a refused Keychain read and fall back to
+   * ~/.claude/.credentials.json, or to an account's seed file, which
+   * AccountManager rewrites from a snapshot whose token is usually long expired.
+   * Read as "the store answered with an expired token", that fallback reset the
+   * ladder, undid a give-up already reached and reopened the Keychain every five
+   * minutes for good. Only the Keychain itself answering can mean "expired".
+   * These run the real credential readers over a faked /usr/bin/security.
+   */
+  describe('on darwin, only the Keychain answering means expired', () => {
+    const MINUTE = 60 * 1000;
+    const KEYCHAIN_MODULE = '../../src/main/utils/macKeychain';
+    const realPlatform = process.platform;
+    const expiredCreds = () =>
+      ({ claudeAiOauth: { accessToken: 'expired', refreshToken: 'r', expiresAt: Date.now() - 1000 } });
+    let configDir;
+    let getPassword;
+
+    /** UsageService over the real claudeCredentials, the Keychain faked. */
+    function loadOverKeychain() {
+      load();
+      jest.resetModules();
+      jest.dontMock(CREDENTIALS_MODULE);
+      jest.doMock(KEYCHAIN_MODULE, () => ({ getPassword, setPassword: jest.fn(), deletePassword: jest.fn() }));
+      return require('../../src/main/services/UsageService');
+    }
+
+    beforeEach(() => {
+      Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+      configDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-usage-creds-'));
+      process.env.CLAUDE_CONFIG_DIR = configDir;
+      // The fallback file holds a token that ran out long ago.
+      fs.writeFileSync(path.join(configDir, '.credentials.json'), JSON.stringify(expiredCreds()));
+      getPassword = jest.fn();
+    });
+
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+      delete process.env.CLAUDE_CONFIG_DIR;
+      fs.rmSync(configDir, { recursive: true, force: true });
+      jest.dontMock(KEYCHAIN_MODULE);
+    });
+
+    test('a refused Keychain behind an expired file climbs the ladder and gives up', async () => {
+      getPassword.mockRejectedValue(new Error('User canceled the operation.'));
+      const usage = loadOverKeychain();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        let at = start;
+        // Every tick lands past the longest step, so only the give-up stops it.
+        for (let i = 0; i < 12; i++) {
+          await usage.fetchUsage();
+          at += 61 * MINUTE;
+          clock.mockReturnValue(at);
+        }
+
+        expect(getPassword).toHaveBeenCalledTimes(8);
+        expect(httpsGet).not.toHaveBeenCalled();
+        const { gaveUp, error } = usage.getUsageData();
+        expect(gaveUp).toBe(true);
+        expect(error).not.toMatch(/renews/);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('a refused Keychain does not reopen on a flat five minutes', async () => {
+      getPassword.mockRejectedValue(new Error('User canceled the operation.'));
+      const usage = loadOverKeychain();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        let at = start;
+        for (let i = 0; i < 12; i++) {
+          await usage.fetchUsage();
+          at += 5 * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+
+        // 5, 10, 20 then 40 minutes apart: four reads in the first hour.
+        expect(getPassword).toHaveBeenCalledTimes(4);
+      } finally { clock.mockRestore(); }
+    });
+
+    test('a Keychain that answers with an expired token is rechecked on the flat interval', async () => {
+      getPassword.mockImplementation(async () => JSON.stringify(expiredCreds()));
+      const usage = loadOverKeychain();
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        let at = start;
+        for (let i = 0; i < 12; i++) {
+          await usage.fetchUsage();
+          at += 5 * MINUTE + 1000;
+          clock.mockReturnValue(at);
+        }
+
+        expect(getPassword).toHaveBeenCalledTimes(12);
+        const { gaveUp, error } = usage.getUsageData();
+        expect(gaveUp).toBe(false);
+        expect(error).toMatch(/renews/);
+      } finally { clock.mockRestore(); }
+    });
+  });
+
   test('re-reads once when the API refuses the token, then stops', async () => {
     const usage = load([401]);
     readCredentials.mockResolvedValue(validCreds());
@@ -612,5 +823,125 @@ describe('staleness by age', () => {
     } finally {
       Date.now = realNow;
     }
+  });
+});
+
+/**
+ * Figures past their window's reset.
+ *
+ * Within a window usage only goes up, so its last figure says nothing about
+ * the window after it. An account that ran out at night kept reading 100% the
+ * next morning, against 0% in Claude Desktop, for as long as nothing could
+ * fetch a newer figure: its token had expired from disuse, and the endpoint
+ * answers 429 often enough on its own.
+ */
+describe('figures past their reset', () => {
+  const { asOfNow } = require('../../src/main/services/UsageService');
+  const HOUR = 3600 * 1000;
+  const NOW = Date.parse('2026-10-09T07:00:00Z');
+  const sample = () => ({
+    timestamp: '2026-10-08T20:00:00Z',
+    buckets: [
+      { id: 'session', type: 'session', label: null, labelKey: 'ui.session', utilization: 100, resetsAt: '2026-10-08T23:00:00Z' },
+      { id: 'weekly', type: 'weekly', label: null, labelKey: 'ui.weekly', utilization: 40, resetsAt: '2026-10-11T06:00:00Z' },
+      { id: 'scoped:Fable', type: 'scoped', label: 'Fable', labelKey: null, utilization: 0, resetsAt: null }
+    ],
+    extraUsage: null
+  });
+
+  test('reports a window that has reset the way the API reports an idle one', () => {
+    const [session] = asOfNow(sample(), NOW).buckets;
+    expect(session).toEqual({
+      id: 'session', type: 'session', label: null, labelKey: 'ui.session', utilization: 0, resetsAt: null
+    });
+  });
+
+  test('leaves a window that has not reset, and one with no reset time, alone', () => {
+    const [, weekly, fable] = asOfNow(sample(), NOW).buckets;
+    expect(weekly).toEqual(sample().buckets[1]);
+    expect(fable).toEqual(sample().buckets[2]);
+  });
+
+  test('never rewrites what was fetched', () => {
+    const data = sample();
+    asOfNow(data, NOW);
+    expect(data).toEqual(sample());
+  });
+
+  test('hands back the same object when nothing has reset', () => {
+    const data = sample();
+    expect(asOfNow(data, Date.parse('2026-10-08T21:00:00Z'))).toBe(data);
+  });
+
+  test('passes through figures it cannot read', () => {
+    expect(asOfNow(null, NOW)).toBeNull();
+    expect(asOfNow({ buckets: null }, NOW)).toEqual({ buckets: null });
+  });
+
+  describe('as served', () => {
+    const CREDENTIALS_MODULE = '../../src/main/utils/claudeCredentials';
+
+    afterEach(() => {
+      jest.dontMock(CREDENTIALS_MODULE);
+      jest.dontMock('https');
+      jest.resetModules();
+    });
+
+    /** The account fills its session at `start`, then the endpoint starts answering 429. */
+    function load(start) {
+      const statuses = [200];
+      jest.resetModules();
+      jest.doMock(CREDENTIALS_MODULE, () => ({
+        ...jest.requireActual(CREDENTIALS_MODULE),
+        readCredentials: jest.fn().mockResolvedValue({
+          claudeAiOauth: { accessToken: 'token-a', expiresAt: start + 24 * HOUR }
+        })
+      }));
+      jest.doMock('https', () => ({
+        get: (options, callback) => {
+          const statusCode = statuses.length ? statuses.shift() : 429;
+          const body = statusCode === 200
+            ? JSON.stringify({
+              limits: [
+                { kind: 'session', percent: 100, resets_at: new Date(start + HOUR).toISOString() },
+                { kind: 'weekly_all', percent: 40, resets_at: new Date(start + 72 * HOUR).toISOString() }
+              ]
+            })
+            : JSON.stringify({ error: { type: 'rate_limit_error', message: 'Rate limited.' } });
+          const res = {
+            statusCode,
+            on: (event, fn) => {
+              if (event === 'data') fn(body);
+              if (event === 'end') fn();
+              return res;
+            }
+          };
+          callback(res);
+          return { on: jest.fn(), destroy: jest.fn() };
+        }
+      }));
+      return require('../../src/main/services/UsageService');
+    }
+
+    test('a full session reads empty once it has reset, even when no fetch succeeds', async () => {
+      const start = Date.now();
+      const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+      try {
+        const usage = load(start);
+        await usage.fetchUsage();
+        expect(usage.getUsageData().data.buckets[0].utilization).toBe(100);
+
+        clock.mockReturnValue(start + 2 * HOUR);
+        const refreshed = await usage.refreshUsage();
+        const served = usage.getUsageData();
+
+        for (const data of [refreshed, served.data]) {
+          expect(data.buckets.map(b => [b.id, b.utilization])).toEqual([['session', 0], ['weekly', 40]]);
+        }
+        // Still badged: nothing confirmed these figures, the clock did.
+        expect(served.stale).toBe(true);
+        expect(served.error).toMatch(/429/);
+      } finally { clock.mockRestore(); }
+    });
   });
 });

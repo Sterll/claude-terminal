@@ -38,7 +38,8 @@ jest.mock('../../src/main/utils/claudeCredentials', () => ({
   readCredentialsForDir: jest.fn(async (dir) => ({
     claudeAiOauth: { accessToken: `tok-${dir.split('/').pop()}`, expiresAt: 4102444800000 }
   })),
-  tokenFromCredentials: jest.fn((creds) => creds?.claudeAiOauth?.accessToken ?? null)
+  tokenFromCredentials: jest.fn((creds) => creds?.claudeAiOauth?.accessToken ?? null),
+  auditKeychainReads: async (fn) => ({ value: await fn(), keychainFailed: false })
 }));
 
 // Which store an account authenticates from is AccountManager's decision, not
@@ -56,7 +57,7 @@ jest.mock('../../src/main/windows/MainWindow', () => ({ isMainWindowVisible: () 
 
 const UsageService = require('../../src/main/services/UsageService');
 
-const usageBody = (utilization, resetsAt = '2026-10-01T00:00:00Z') => JSON.stringify({
+const usageBody = (utilization, resetsAt = '2099-10-01T00:00:00Z') => JSON.stringify({
   five_hour: { utilization, resets_at: resetsAt }
 });
 
@@ -147,9 +148,9 @@ describe('limit notifications', () => {
     const alerts = [];
     UsageService.onLimit(a => alerts.push(a));
 
-    mockBodyByToken.set('tok-acct-max', usageBody(0.97, '2026-10-01T00:00:00Z'));
+    mockBodyByToken.set('tok-acct-max', usageBody(0.97, '2099-10-01T00:00:00Z'));
     await UsageService.fetchUsage('acct-max');
-    mockBodyByToken.set('tok-acct-max', usageBody(0.99, '2026-10-02T00:00:00Z'));
+    mockBodyByToken.set('tok-acct-max', usageBody(0.99, '2099-10-02T00:00:00Z'));
     await UsageService.fetchUsage('acct-max');
 
     expect(alerts).toHaveLength(2);
