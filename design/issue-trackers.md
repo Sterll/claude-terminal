@@ -123,7 +123,7 @@ Where detection looks (`IssueDetectionService`):
 | Branch | the session's branch name contains a key |
 | Pull request | the title of the PR for the session's branch contains a key |
 
-Chat sessions are read from ChatService's event stream, terminal sessions from the `PostToolUse` and `UserPromptSubmit` hooks. A key is only suggested once the tracker confirms the ticket exists. Suggestions from one moment are gathered into one card, shown at the end of a turn, never in the middle of Claude's answer; a card left unanswered changes nothing, the suggestions stay listed in the session's Tickets tab.
+Chat sessions are read from ChatService's event stream, terminal sessions from the `PostToolUse` and `UserPromptSubmit` hooks. Chat sessions load the user's hooks too, so a hook event whose session ChatService runs is skipped (`ChatService.ownsCliSession`). Ticket content handed to Claude (an `@tickets` mention, the draft of a session started from a ticket) is fenced in a `<ticket key="...">` block that says it is tracker data, not instructions, and detection never reads inside that fence. A key is only suggested once the tracker confirms the ticket exists. Suggestions from one moment are gathered into one card, shown at the end of a turn, never in the middle of Claude's answer; a card left unanswered changes nothing, the suggestions stay listed in the session's Tickets tab.
 
 Two connections of the same provider that both have a ticket with the same key collide on one ref (`linear:ENG-142`); the first connection that confirms the ticket wins. Rare enough to leave for now.
 
