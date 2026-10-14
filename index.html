@@ -135,6 +135,13 @@
           </svg>
           <span data-i18n="ui.tabGit">Git</span>
         </button>
+        <button class="nav-tab" data-tab="tickets" title="Tickets" data-i18n-title="ui.tooltipTickets">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.5a2.5 2.5 0 0 0 0 5V16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.5a2.5 2.5 0 0 0 0-5z"/>
+            <path d="M15 6v12" stroke-dasharray="2 2.5"/>
+          </svg>
+          <span data-i18n="ui.tabTickets">Tickets</span>
+        </button>
         <button class="nav-tab" data-tab="session-replay" title="Session Replay" data-i18n-title="ui.tooltipSessionReplay">
           <svg viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
@@ -810,6 +817,9 @@
       </div>
 
       <!-- Error Log Tab -->
+      <div class="tab-content" id="tab-tickets">
+        <div id="tickets-panel-root"></div>
+      </div>
       <div class="tab-content" id="tab-errorlog">
         <div id="errorlog-panel-root"></div>
       </div>

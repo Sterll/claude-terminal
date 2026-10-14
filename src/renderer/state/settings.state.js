@@ -103,7 +103,9 @@ const defaultSettings = {
   chromeBridgeEnabled: false, // Opt-in: let chat sessions drive Chrome via the Claude browser extension
   // Every tab is pinned by default: the grouped sidebar fits without overflow,
   // so the More menu is now opt-in rather than the default state.
-  pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'cost', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
+  pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'tickets', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'cost', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],
+  // Last filters of the Tickets screen (connection, status, people, grouping...). Never a key.
+  ticketsView: null,
   activeTab: 'claude', // Last active sidebar tab (restored on restart)
   // Version this profile last ran. Null on a profile older than the What's new
   // panel, which is why an existing project list is what tells an upgrade from
@@ -203,6 +205,11 @@ function _migrateSettings(saved) {
       const after = saved.pinnedTabs.indexOf('timetracking');
       saved.pinnedTabs.splice(after === -1 ? saved.pinnedTabs.length : after + 1, 0, 'cost');
     }
+    // Tickets is new too, and belongs under Git.
+    if (!saved.pinnedTabs.includes('tickets')) {
+      const after = saved.pinnedTabs.indexOf('git');
+      saved.pinnedTabs.splice(after === -1 ? saved.pinnedTabs.length : after + 1, 0, 'tickets');
+    }
   }
 
   // Same for a custom nav order. _applyTabsOrder re-inserts the tabs it knows
@@ -216,6 +223,10 @@ function _migrateSettings(saved) {
   if (Array.isArray(saved.tabsOrder) && saved.tabsOrder.length && !saved.tabsOrder.includes('cost')) {
     const after = saved.tabsOrder.indexOf('timetracking');
     saved.tabsOrder.splice(after === -1 ? saved.tabsOrder.length : after + 1, 0, 'cost');
+  }
+  if (Array.isArray(saved.tabsOrder) && saved.tabsOrder.length && !saved.tabsOrder.includes('tickets')) {
+    const after = saved.tabsOrder.indexOf('git');
+    saved.tabsOrder.splice(after === -1 ? saved.tabsOrder.length : after + 1, 0, 'tickets');
   }
 }
 

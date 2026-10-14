@@ -2368,3 +2368,31 @@ body.hide-tab-mode-toggle .tab-mode-toggle {
   width: 14px;
   height: 14px;
 }
+
+/* ── Tickets of the active terminal-mode Claude session (terminal/ticketsButton.js) ── */
+.terminal-tickets-btn { position: relative; }
+.terminal-tickets-btn[hidden] { display: none; }
+.terminal-tickets-btn .chat-tab-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 14px;
+  padding: 0 4px;
+  font-size: var(--font-2xs);
+  line-height: 14px;
+}
+.terminal-tickets-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 560px;
+  max-width: calc(100vw - 16px);
+  max-height: 60vh;
+  display: flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.terminal-tickets-popover[hidden] { display: none; }
+.terminal-tickets-popover .session-tickets-panel { flex: 1; padding: 12px 14px 16px; }

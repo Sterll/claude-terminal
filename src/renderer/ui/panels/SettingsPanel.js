@@ -14,6 +14,7 @@ const { t, setLanguage, getCurrentLanguage, getAvailableLanguages } = require('.
 const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
 const { getProjectsForAccount } = require('../../state/projects.state');
 const { buildAccountUsageHtml } = require('../components/accountUsage');
+const { mountTicketsSettings } = require('../components/ticketsSettings');
 
 // ── Settings search ──
 //
@@ -1008,6 +1009,7 @@ class SettingsPanel extends BasePanel {
           <button class="settings-tab ${initialTab === 'claude' ? 'active' : ''}" data-tab="claude">${t('settings.tabClaude')}</button>
           <button class="settings-tab ${initialTab === 'github' ? 'active' : ''}" data-tab="github">${t('settings.tabGitHub')}</button>
           <button class="settings-tab ${initialTab === 'ssh' ? 'active' : ''}" data-tab="ssh">${t('ssh.settings.tab')}</button>
+          <button class="settings-tab ${initialTab === 'tickets' ? 'active' : ''}" data-tab="tickets">${t('settings.tabTickets')}</button>
           <button class="settings-tab ${initialTab === 'themes' ? 'active' : ''}" data-tab="themes">${t('settings.tabThemes')}</button>
           <button class="settings-tab ${initialTab === 'shortcuts' ? 'active' : ''}" data-tab="shortcuts">${t('settings.tabShortcuts')}</button>
           <button class="settings-tab ${initialTab === 'library' ? 'active' : ''}" data-tab="library">${t('settings.tabLibrary')}</button>
@@ -1842,6 +1844,14 @@ class SettingsPanel extends BasePanel {
               </div>
             </div>
           </div>
+          <!-- Tickets Tab -->
+          <div class="settings-panel ${initialTab === 'tickets' ? 'active' : ''}" data-panel="tickets">
+            <div class="settings-group" data-section="tickets">
+              <div class="settings-group-title">${t('tickets.settings.title')}</div>
+              <p class="tickets-settings-intro">${t('tickets.settings.intro')}</p>
+              <div class="tickets-settings" id="tickets-settings-root"></div>
+            </div>
+          </div>
           <!-- Themes Tab -->
           <div class="settings-panel ${initialTab === 'themes' ? 'active' : ''}" data-panel="themes">
             <div class="settings-group">
@@ -2204,6 +2214,13 @@ class SettingsPanel extends BasePanel {
       }
     }
     setupGitHubAuth();
+
+    // Tickets tab: provider cards fill in once their data arrives, so a slow
+    // keychain read never delays opening the settings.
+    const ticketsRoot = document.getElementById('tickets-settings-root');
+    if (ticketsRoot) {
+      mountTicketsSettings(ticketsRoot, { api: self.api }).catch((e) => console.error('[Settings] Tickets tab:', e));
+    }
 
     // GitHub Enterprise settings
     const gheApiUrlInput = document.getElementById('settings-github-api-url');

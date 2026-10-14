@@ -44,6 +44,8 @@ const { createAttachmentTray } = require('./chat/attachmentTray');
 const { createRemoteChat } = require('./chat/remoteSession');
 const { createProjectMentions } = require('./chat/projectMentions');
 const projectFs = require('../../utils/projectFs');
+const { createTicketsTab } = require('./chat/ticketsTab');
+const { createTicketsWiring } = require('./chat/ticketsWiring');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
@@ -100,7 +102,7 @@ class ChatView extends BaseComponent {
 
   createChatView(wrapperEl, project, options = {}) {
     const api = this._api;
-  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, onRunInTerminal = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null } = options;
+  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, onRunInTerminal = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null, draftPrompt = null, initialTickets = null } = options;
   let sessionId = null;
   let destroyed = false;
 
@@ -273,6 +275,10 @@ class ChatView extends BaseComponent {
           <span class="chat-tab-ci" role="img" hidden></span>
           <span class="chat-tab-badge attention" data-badge="git" hidden>0</span>
         </button>
+        <button class="chat-tab" data-tab="tickets" hidden>
+          <span class="chat-tab-label">${escapeHtml(t('chat.tabTickets') || 'Tickets')}</span>
+          <span class="chat-tab-badge" data-badge="tickets" hidden>0</span>
+        </button>
         <button class="chat-tab" data-tab="artifacts">
           <span class="chat-tab-label">${escapeHtml(t('chat.tabDocuments') || 'Documents')}</span>
           <span class="chat-tab-badge" data-badge="artifacts" hidden>0</span>
@@ -317,6 +323,7 @@ class ChatView extends BaseComponent {
       </div>
       <div class="chat-changes-panel" hidden></div>
       <div class="session-git-panel" hidden></div>
+      <div class="session-tickets-panel" hidden></div>
       <!-- Documents is itself a two-column screen: the list of what this
            conversation produced on the left, the preview of the selected one on
            the right. Both live inside the tab, so leaving the tab takes the
@@ -484,10 +491,56 @@ class ChatView extends BaseComponent {
       }
       inputEl.focus();
     },
+    // The branch name and the PR title may name tickets: detection suggests them.
+    onSummary: (summary) => observeGitForTickets(summary),
   });
   // Not read until the chat is first on screen: tabs restored in the
   // background do not each read a transcript, git and GitHub at startup.
   if (!project.isCloud) gitTab.probeWhenOnScreen(chatView);
+
+  // The tickets this session works on (chat/ticketsTab.js). Shown once a
+  // tracker is connected. Keyed by the CLI session id; a new tab has none yet,
+  // so it starts provisional and moves when the CLI names the session.
+  const ticketsPanelEl = chatView.querySelector('.session-tickets-panel');
+  const ticketsTabBtn = chatView.querySelector('.chat-tab[data-tab="tickets"]');
+  const ticketsTab = createTicketsTab({
+    api,
+    panelEl: ticketsPanelEl,
+    tabBtn: ticketsTabBtn,
+    badgeEl: ticketsTabBtn.querySelector('.chat-tab-badge'),
+    // Provisional until the CLI names the session; only needs to be unique per tab.
+    // A fork is a new session: it starts provisional too and copies its parent's links.
+    initialKey: (!forkSession && resumeSessionId) || `tab:${terminalId ?? Math.random().toString(36).slice(2, 10)}`,
+    parentKey: forkSession ? resumeSessionId : null,
+    getProjectId: () => project?.id || null,
+    onAvailable: () => {
+      ticketsTabBtn.hidden = false;
+      tabbarEl.hidden = false;
+    },
+    showToast: (opts) => require('./Toast').showToast(opts),
+    buildRecap: () => ticketsWiring.buildRecap(),
+  });
+  ticketsTab.probe();
+  for (const ticket of Array.isArray(initialTickets) ? initialTickets : []) {
+    ticketsTab.linkTicket(ticket, 'start');
+  }
+
+  // Suggestion cards, the Git tab's branch and PR title, the recap (chat/ticketsWiring.js).
+  const ticketsWiring = createTicketsWiring({
+    api,
+    ticketsTab,
+    getGitSummary: () => gitTab.getSummary(),
+    getProject: () => project,
+    getEditedFiles: () => [...sessionFileTally.keys()],
+    showCard: (card) => {
+      messagesEl.appendChild(card);
+      scrollToBottom();
+    },
+    isStreaming: () => isStreaming,
+  });
+  function observeGitForTickets(summary) {
+    ticketsWiring.observeGit(summary);
+  }
   const artifactsBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="artifacts"]');
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
@@ -2656,6 +2709,7 @@ class ChatView extends BaseComponent {
     else if (type === 'context' && data?.name) label = `@context:${data.name}`;
     else if (type === 'tab' && data?.name) label = `@tab:${data.name}`;
     else if (type === 'conversation' && data?.firstPrompt) label = `@conversation:${data.firstPrompt.slice(0, 40)}${data.firstPrompt.length > 40 ? '…' : ''}`;
+    else if (typeof data?.chipLabel === 'string') label = data.chipLabel;
     else label = `@${type}`;
     let icon = getMentionIcon(type);
     // Use project emoji if available
@@ -3033,6 +3087,20 @@ class ChatView extends BaseComponent {
             content = `[Error resolving workspace: ${e.message}]`;
           }
           break;
+        }
+        default: {
+          // A MentionSourceRegistry source may compute its chip's content.
+          try {
+            const source = require('../../services/MentionSourceRegistry').get(mention.type);
+            if (source?.resolve) {
+              content = await source.resolve(mention.data, {
+                project,
+                linkTicket: (ticket, how) => ticketsTab.linkTicket(ticket, how),
+              });
+            }
+          } catch (e) {
+            content = `[Error resolving ${mention.label}: ${e.message}]`;
+          }
         }
       }
 
@@ -3477,6 +3545,9 @@ class ChatView extends BaseComponent {
     // Resolve mentions to text content
     const resolvedMentions = mentions.length > 0 ? await resolveMentions(mentions) : [];
     if (destroyed) return;
+    // What the user typed may name a ticket. After the mentions, so a ticket
+    // cited with @tickets is already linked and not suggested again.
+    if (text && api.issueLinks?.observeText) api.issueLinks.observeText(ticketsTab.getKey(), text, 'prompt').catch(() => {});
 
     // Prepare images payload (without dataUrl to reduce IPC size)
     const imagesPayload = images.map(({ base64, mediaType }) => ({ base64, mediaType }));
@@ -4801,9 +4872,12 @@ class ChatView extends BaseComponent {
     messagesEl.hidden = tab !== 'conversation';
     changesPanelEl.hidden = tab !== 'changes';
     gitPanelEl.hidden = tab !== 'git';
+    ticketsPanelEl.hidden = tab !== 'tickets';
     artifactsPanelEl.hidden = tab !== 'artifacts';
     if (tab === 'git') gitTab.show();
     else gitTab.hide();
+    if (tab === 'tickets') ticketsTab.show();
+    else ticketsTab.hide();
     if (tab === 'changes') renderChangesPanel();
     if (tab === 'artifacts') renderArtifactsPanel();
   }
@@ -6568,7 +6642,10 @@ class ChatView extends BaseComponent {
     // happily queues the next message, and the permission-mode picker beside
     // them stayed live the whole time. They are enabled now; a pick made
     // mid-turn is held and pushed to the SDK when the turn ends.
-    if (!streaming && turnEnded) flushPendingSelection();
+    if (!streaming && turnEnded) {
+      flushPendingSelection();
+      ticketsWiring.flushCards();
+    }
 
     if (streaming) {
       elapsedTimer.start();
@@ -7574,6 +7651,8 @@ class ChatView extends BaseComponent {
     // Capture real SDK session UUID (needed for fork/resume)
     if (msg.session_id && msg.session_id !== sdkSessionId) {
       sdkSessionId = msg.session_id;
+      // The session's ticket links follow it to its real id.
+      ticketsTab.onSessionId(msg.session_id);
       // Its transcript now has a name: the Git tab can say where it worked.
       gitTab.markStale();
       // The CLI's id is what a restored tab resumes on, so it has to name this
@@ -9064,6 +9143,9 @@ class ChatView extends BaseComponent {
       }
       setInputText(initialPrompt);
       handleSend();
+    } else if (draftPrompt) {
+      // Prefilled, not sent: the user reads it and adds their own instructions.
+      setInputText(draftPrompt);
     }
   }, 100);
 
@@ -9093,6 +9175,8 @@ class ChatView extends BaseComponent {
       artifactRegistry.flush();
       transcriptPruner?.destroy();
       gitTab.destroy();
+      ticketsTab.destroy();
+      ticketsWiring.destroy();
       scrollResizeObserver?.disconnect();
       scrollChildrenObserver.disconnect();
       contextSuggestions.reset();

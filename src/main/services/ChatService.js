@@ -389,6 +389,20 @@ class ChatService {
   }
 
   /**
+   * Whether a CLI session id is one of this service's live chat sessions.
+   * Chat sessions load the user's settings, so the app's own Claude hooks
+   * fire for them as well; a hook consumer that already follows chat through
+   * this service asks here to skip the duplicate.
+   */
+  ownsCliSession(cliSessionId) {
+    if (!cliSessionId) return false;
+    for (const session of this.sessions.values()) {
+      if (session.sdkSessionId === cliSessionId || session.resumedCliSessionId === cliSessionId) return true;
+    }
+    return false;
+  }
+
+  /**
    * Subscribe to every chat event this service dispatches, as raw
    * `(channel, data)` pairs — the same stream the renderer window receives.
    *
@@ -682,7 +696,8 @@ class ChatService {
     // A retry under the same handle must release the previous query first.
     this.closeSession(sessionId);
     const abortController = new AbortController();
-    const session = { abortController, cwd, projectId };
+    // A plain resume keeps the CLI's id; until `init` confirms it, this is the only record of it.
+    const session = { abortController, cwd, projectId, resumedCliSessionId: (resumeSessionId && !forkSession) ? resumeSessionId : null };
     this.sessions.set(sessionId, session);
     this._send('chat-initializing', { sessionId });
 

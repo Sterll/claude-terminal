@@ -34,6 +34,7 @@ const { registerTelemetryHandlers } = require('./telemetry.ipc');
 const { registerExplorerHandlers } = require('./explorer.ipc');
 const { registerTimeHandlers } = require('./time.ipc');
 const { registerVoiceHandlers } = require('./voice.ipc');
+const { registerIssueTrackerHandlers } = require('./issue-trackers.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
 const { registerWorkspaceHandlers } = require('./workspace.ipc');
 const { registerKnowledgeHandlers } = require('./knowledge.ipc');
@@ -90,6 +91,7 @@ function registerAllHandlers(mainWindow) {
   registerExplorerHandlers(mainWindow);
   registerTimeHandlers();
   registerVoiceHandlers();
+  registerIssueTrackerHandlers();
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
   registerKnowledgeHandlers();

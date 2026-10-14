@@ -182,6 +182,20 @@ describe('loadSettings', () => {
     expect(order.indexOf('cost')).toBe(order.indexOf('timetracking') + 1);
   });
 
+  test('slots the new Tickets tab under Git in a saved pin list and nav order', async () => {
+    window.electron_nodeModules.fs.promises.access.mockResolvedValue(undefined);
+    window.electron_nodeModules.fs.promises.readFile.mockResolvedValue(
+      JSON.stringify({ pinnedTabs: ['claude', 'git', 'memory'], tabsOrder: ['claude', 'dashboard', 'git', 'memory'] })
+    );
+
+    await loadSettings();
+
+    const pinned = getSetting('pinnedTabs');
+    expect(pinned.indexOf('tickets')).toBe(pinned.indexOf('git') + 1);
+    const order = getSetting('tabsOrder');
+    expect(order.indexOf('tickets')).toBe(order.indexOf('git') + 1);
+  });
+
   test('handles missing file gracefully', async () => {
     const enoent = Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
     window.electron_nodeModules.fs.promises.access.mockRejectedValue(enoent);
