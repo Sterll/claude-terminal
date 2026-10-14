@@ -413,10 +413,22 @@ describe('starting a session from a ticket', () => {
     { id: 'p-acme', name: 'acme-app', path: '/repo/acme' },
   ];
 
-  async function startSetup() {
+  async function startSetup({ branchName = null, branches = { local: [], remote: [] } } = {}) {
     await setup();
     panel._reset();
-    api.git = { createBranch: jest.fn(async () => ({ success: true })), checkout: jest.fn(async () => ({ success: true })) };
+    api.git = {
+      branches: jest.fn(async () => branches),
+      createBranch: jest.fn(async () => ({ success: true })),
+      checkout: jest.fn(async () => ({ success: true })),
+    };
+    if (branchName) {
+      // The fake tracker names no branch: this one does.
+      const getIssue = api.issueTrackers.getIssue;
+      api.issueTrackers.getIssue = async (...args) => {
+        const res = await getIssue(...args);
+        return res.ok ? { ...res, issue: { ...res.issue, branchName } } : res;
+      };
+    }
     deps.getProjects = () => ({ projects: PROJECTS, openedProjectId: 'p-acme' });
     deps.startSession = jest.fn();
     panel.init(deps);
@@ -455,6 +467,27 @@ describe('starting a session from a ticket', () => {
     expect(opts.draftPrompt).toContain('Repository: acme/site');
     expect(opts.draftPrompt).not.toContain('Team:'); // the repository is not called a team
     expect(root.querySelector('.issues-start')).toBeNull();
+  });
+
+  test("the tracker's branch is created when git does not have it", async () => {
+    await startSetup({ branchName: 'ada/2-docs', branches: { local: ['main'], remote: ['main'] } });
+    root.querySelector('[data-action="start-confirm"]').click();
+    await flush();
+    expect(api.git.branches).toHaveBeenCalledWith({ projectPath: '/repo/acme' });
+    expect(api.git.createBranch).toHaveBeenCalledWith({ projectPath: '/repo/acme', branch: 'ada/2-docs' });
+    expect(api.git.checkout).not.toHaveBeenCalled();
+    expect(deps.showToast).not.toHaveBeenCalled();
+  });
+
+  test('an existing branch, local or on the remote, is checked out, whatever language git speaks', async () => {
+    for (const branches of [{ local: ['main', 'ada/2-docs'], remote: [] }, { local: ['main'], remote: ['ada/2-docs'] }]) {
+      await startSetup({ branchName: 'ada/2-docs', branches });
+      root.querySelector('[data-action="start-confirm"]').click();
+      await flush();
+      expect(api.git.checkout).toHaveBeenCalledWith({ projectPath: '/repo/acme', branch: 'ada/2-docs' });
+      expect(api.git.createBranch).not.toHaveBeenCalled();
+      fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+    }
   });
 
   test('Escape closes the options without starting anything', async () => {

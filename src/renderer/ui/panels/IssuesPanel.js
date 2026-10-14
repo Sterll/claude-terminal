@@ -724,10 +724,13 @@ async function confirmStart() {
   if (!project) return;
 
   if (wantBranch && issue.branchName) {
-    let res = await deps.api.git.createBranch({ projectPath: project.path, branch: issue.branchName });
-    if (!res?.success && /already exists/i.test(res?.error || '')) {
-      res = await deps.api.git.checkout({ projectPath: project.path, branch: issue.branchName });
-    }
+    // Checked out when it exists, here or on the remote, created otherwise.
+    // Asked of git rather than read from its error, whose wording is localised.
+    const branches = await deps.api.git.branches({ projectPath: project.path }).catch(() => null);
+    const known = branches && !branches.error ? [...(branches.local || []), ...(branches.remote || [])] : [];
+    const res = known.includes(issue.branchName)
+      ? await deps.api.git.checkout({ projectPath: project.path, branch: issue.branchName })
+      : await deps.api.git.createBranch({ projectPath: project.path, branch: issue.branchName });
     if (!res?.success) {
       deps.showToast({ type: 'warning', title: t('tickets.start.branchFailed'), message: res?.error || '' });
     }
