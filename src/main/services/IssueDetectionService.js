@@ -11,7 +11,10 @@
  * - What the user types: prompts of terminal sessions arrive through the
  *   UserPromptSubmit hook, prompts of chat sessions from the renderer, which
  *   is the only side that knows the typed text apart from the resolved
- *   mentions appended to it.
+ *   mentions appended to it. Chat sessions load the user's hooks too, so
+ *   their hook events are skipped: the prompt there carries every resolved
+ *   mention (a cited ticket's sub-issues included), and their tool calls
+ *   already come from ChatService.
  * - The session's branch name and pull request title, from the renderer's
  *   Git tab, through `observeText`.
  *
@@ -41,8 +44,18 @@ const MAX_PENDING_TOOLS = 200;
  * @param {object} deps.trackers IssueTrackerService
  * @param {object} deps.links IssueLinkService
  * @param {{ get: Function }} deps.registry adapter registry
+ * @param {(cliSessionId: string) => boolean} [deps.isChatSession] whether ChatService runs that session
+ * @param {number} [deps.hookSettleMs] how long a prompt hook waits for a new chat session to be named
+ * @param {(ms: number) => Promise<void>} [deps.wait]
  */
-function createIssueDetectionService({ trackers, links, registry }) {
+function createIssueDetectionService({
+  trackers,
+  links,
+  registry,
+  isChatSession = () => false,
+  hookSettleMs = 1500,
+  wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
   async function connections() {
     try {
       return (await trackers.listConnections()).filter((c) => c.available);
@@ -127,15 +140,23 @@ function createIssueDetectionService({ trackers, links, registry }) {
     });
   }
 
-  /** A Claude hook event, from a terminal session. */
-  function onHookEvent(event) {
+  /** A Claude hook event, from a terminal session. Chat sessions' own are skipped. */
+  async function onHookEvent(event) {
     const stdin = event?.stdin;
     const sessionKey = typeof stdin?.session_id === 'string' ? stdin.session_id : null;
-    if (!sessionKey) return;
-    if (event.hook === 'PostToolUse') {
-      observeToolCall(sessionKey, { name: stdin.tool_name, input: stdin.tool_input, result: stdin.tool_response }).catch(() => {});
-    } else if (event.hook === 'UserPromptSubmit' && typeof stdin.prompt === 'string') {
-      observeText(sessionKey, stdin.prompt, 'prompt').catch(() => {});
+    try {
+      if (!sessionKey || isChatSession(sessionKey)) return;
+      if (event.hook === 'PostToolUse') {
+        await observeToolCall(sessionKey, { name: stdin.tool_name, input: stdin.tool_input, result: stdin.tool_response });
+      } else if (event.hook === 'UserPromptSubmit' && typeof stdin.prompt === 'string') {
+        // A new chat's first prompt can reach its hook before the CLI's init
+        // names the session to ChatService: asked again once it has.
+        await wait(hookSettleMs);
+        if (isChatSession(sessionKey)) return;
+        await observeText(sessionKey, stdin.prompt, 'prompt');
+      }
+    } catch {
+      // Detection never fails hook delivery.
     }
   }
 
@@ -151,6 +172,14 @@ function service() {
       trackers: require('./IssueTrackerService'),
       links: require('./IssueLinkService'),
       registry: require('../issue-trackers/_registry'),
+      // Required on use: ChatService loads the SDK and Electron, and nothing here needs them sooner.
+      isChatSession: (id) => {
+        try {
+          return require('./ChatService').ownsCliSession(id);
+        } catch {
+          return false;
+        }
+      },
     });
   }
   return _service;

@@ -35,7 +35,7 @@ beforeEach(async () => {
     fetch: fixture.fetch,
   });
   links = createIssueLinkService({ storePath: path.join(dir, 'issue-links.json') });
-  detection = createIssueDetectionService({ trackers, links, registry });
+  detection = createIssueDetectionService({ trackers, links, registry, wait: async () => {} });
   conn = await trackers.connect('fake', fixture.secret);
 });
 
@@ -138,6 +138,28 @@ describe('terminal sessions (hooks)', () => {
     detection.onHookEvent({ hook: 'UserPromptSubmit', stdin: { session_id: 'term-1', prompt: 'continue on #2 please' } });
     await waitForLinks('term-1', 2);
     expect(await statuses('term-1')).toEqual({ 'fake:#1': 'suggested', 'fake:#2': 'suggested' });
+  });
+
+  test("a chat session's own hook events are skipped: ChatService and the renderer report it", async () => {
+    const getIssue = jest.spyOn(trackers, 'getIssue');
+    const chat = createIssueDetectionService({ trackers, links, registry, wait: async () => {}, isChatSession: (id) => id === 'chat-sdk' });
+    await chat.onHookEvent({ hook: 'UserPromptSubmit', stdin: { session_id: 'chat-sdk', prompt: 'work on #1, sub-issue of #2' } });
+    await chat.onHookEvent({ hook: 'PostToolUse', stdin: { session_id: 'chat-sdk', tool_name: 'mcp__fake__get_issue', tool_input: { number: 1 }, tool_response: {} } });
+    expect(await links.get('chat-sdk')).toEqual([]);
+    expect(getIssue).not.toHaveBeenCalled();
+  });
+
+  test("a prompt hook that beats the chat session's name is checked again before it is read", async () => {
+    let named = false;
+    const chat = createIssueDetectionService({
+      trackers,
+      links,
+      registry,
+      isChatSession: (id) => named && id === 'chat-new',
+      wait: async () => { named = true; }, // init arrives while the hook waits
+    });
+    await chat.onHookEvent({ hook: 'UserPromptSubmit', stdin: { session_id: 'chat-new', prompt: 'continue on #2 please' } });
+    expect(await links.get('chat-new')).toEqual([]);
   });
 
   test('an event without a session is ignored', () => {

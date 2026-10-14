@@ -524,3 +524,19 @@ describe('normalizeBackgroundTasks', () => {
 
   });
 });
+
+describe('ownsCliSession', () => {
+  afterEach(() => {
+    chatService.sessions.delete('chat-owns-1');
+    chatService.sessions.delete('chat-owns-2');
+  });
+
+  test('knows a live session by the id the CLI named it, or the one it resumes', () => {
+    chatService.sessions.set('chat-owns-1', { sdkSessionId: 'cli-a' });
+    chatService.sessions.set('chat-owns-2', { sdkSessionId: null, resumedCliSessionId: 'cli-b' });
+    expect(chatService.ownsCliSession('cli-a')).toBe(true);
+    expect(chatService.ownsCliSession('cli-b')).toBe(true);
+    expect(chatService.ownsCliSession('cli-terminal')).toBe(false);
+    expect(chatService.ownsCliSession(null)).toBe(false);
+  });
+});
