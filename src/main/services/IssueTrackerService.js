@@ -39,12 +39,15 @@ const METADATA_TTL_MS = 10 * 60 * 1000;
 
 const keychainAccount = (connectionId) => `issue-tracker:${connectionId}`;
 
-/** Show enough of a key to recognise it, never the whole thing. */
+/**
+ * Enough of a key to tell two apart: its last four characters, and nothing
+ * of a key too short for four to be a small part of it.
+ */
 function maskKey(key) {
   if (!key) return null;
   const str = String(key);
-  if (str.length <= 12) return '••••';
-  return `${str.slice(0, 8)}••••${str.slice(-4)}`;
+  if (str.length < 16) return '••••';
+  return `••••${str.slice(-4)}`;
 }
 
 /** The credential store, loaded lazily so nothing native loads until it is used. */
@@ -87,6 +90,9 @@ function createIssueTrackerService({
 }) {
   const clients = new Map();
   const metadataCache = new Map();
+  // The listing runs on every prompt and tool call: the credential store is
+  // read once per connection for its mask, not each time.
+  const maskCache = new Map();
   let queue = Promise.resolve();
 
   /** Store mutations run one after the other: each is a whole-file read-modify-write. */
@@ -134,9 +140,20 @@ function createIssueTrackerService({
     return def;
   }
 
+  /** A credential store that cannot be read (or keytar failing to load) costs the mask, not the list. */
+  async function maskFor(connectionId) {
+    if (maskCache.has(connectionId)) return maskCache.get(connectionId);
+    try {
+      const masked = maskKey(await secrets.get(keychainAccount(connectionId)));
+      maskCache.set(connectionId, masked);
+      return masked;
+    } catch {
+      return null; // not cached: the next listing tries again
+    }
+  }
+
   async function publicConnection(entry) {
-    // A credential store that cannot be read (or keytar failing to load) costs the mask, not the list.
-    const maskedKey = await Promise.resolve().then(() => secrets.get(keychainAccount(entry.id))).then(maskKey, () => null);
+    const maskedKey = await maskFor(entry.id);
     const def = trackers.get(entry.provider);
     return {
       id: entry.id,
@@ -162,6 +179,7 @@ function createIssueTrackerService({
   function forget(connectionId) {
     clients.delete(connectionId);
     metadataCache.delete(connectionId);
+    maskCache.delete(connectionId);
   }
 
   /** The stored connection and its client, built once and reused. */
@@ -197,14 +215,16 @@ function createIssueTrackerService({
     /**
      * Check a key with the provider, then store it. Connecting a workspace
      * that is already connected replaces its key instead of adding a twin.
+     * The provider is asked before the store is taken, so a slow one holds
+     * no other write behind it.
      */
-    connect(providerId, secret) {
-      return exclusive(async () => {
-        const def = providerOf(providerId);
-        const key = String(secret || '').trim();
-        if (!key) throw trackerError('AUTH', 'The API key is empty');
-        const { user, workspace } = await identify(def, key);
+    async connect(providerId, secret) {
+      const def = providerOf(providerId);
+      const key = String(secret || '').trim();
+      if (!key) throw trackerError('AUTH', 'The API key is empty');
+      const { user, workspace } = await identify(def, key);
 
+      return exclusive(async () => {
         const store = await readStore();
         const existing = store.connections.find((c) => c.provider === def.id && c.workspace?.id === workspace.id);
         const entry = {
@@ -244,18 +264,21 @@ function createIssueTrackerService({
       });
     },
 
-    /** Re-check a stored key and refresh the names it reports. */
-    test(connectionId) {
+    /** Re-check a stored key and refresh the names it reports. The provider is asked outside the store's queue. */
+    async test(connectionId) {
+      const before = (await readStore()).connections.find((c) => c.id === connectionId);
+      if (!before) throw trackerError('NOT_FOUND', `No connection ${connectionId}`);
+      const secret = await secrets.get(keychainAccount(connectionId));
+      if (!secret) throw trackerError('AUTH', 'No API key is stored for this connection');
+      const { user, workspace } = await identify(providerOf(before.provider), secret);
+      if (workspace.id !== before.workspace.id) {
+        throw trackerError('AUTH', `This key now belongs to ${workspace.name}, not ${before.workspace.name}`);
+      }
       return exclusive(async () => {
         const store = await readStore();
+        // Disconnected while the provider answered: nothing left to refresh.
         const entry = store.connections.find((c) => c.id === connectionId);
         if (!entry) throw trackerError('NOT_FOUND', `No connection ${connectionId}`);
-        const secret = await secrets.get(keychainAccount(connectionId));
-        if (!secret) throw trackerError('AUTH', 'No API key is stored for this connection');
-        const { user, workspace } = await identify(providerOf(entry.provider), secret);
-        if (workspace.id !== entry.workspace.id) {
-          throw trackerError('AUTH', `This key now belongs to ${workspace.name}, not ${entry.workspace.name}`);
-        }
         Object.assign(entry, { user, workspace });
         await writeStore(store);
         return publicConnection(entry);

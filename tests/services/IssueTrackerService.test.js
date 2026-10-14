@@ -11,6 +11,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
+const { setImmediate: realImmediate } = require('timers');
 const { createIssueTrackerService, maskKey } = require('../../src/main/services/IssueTrackerService');
 const { describeTrackers } = require('../../src/main/issue-trackers/_registry');
 const fake = require('../issue-trackers/fake.tracker');
@@ -195,10 +196,47 @@ describe('listProviders and listConnections', () => {
     const [conn] = await service.listConnections();
     expect(conn).toMatchObject({ id: 'jira-1', providerName: 'jira', available: false });
   });
+
+  test('the credential store is read once per connection for its mask, again after a reconnect', async () => {
+    const conn = await service.connect('fake', fixture.secret);
+    // A fresh process: nothing cached yet.
+    const fresh = createIssueTrackerService({ storePath, secrets, registry, fetch });
+    const get = jest.spyOn(secrets, 'get');
+    await fresh.listConnections();
+    await fresh.listConnections();
+    expect(get.mock.calls.filter(([account]) => account === `issue-tracker:${conn.id}`)).toHaveLength(1);
+
+    await fresh.connect('fake', fixture.secret);
+    get.mockClear();
+    await fresh.listConnections();
+    expect(get).not.toHaveBeenCalled(); // the reconnect re-read it
+  });
+
+  test('a credential store that fails costs the mask, and is asked again next time', async () => {
+    const conn = await service.connect('fake', fixture.secret);
+    const fresh = createIssueTrackerService({ storePath, secrets, registry, fetch });
+    jest.spyOn(secrets, 'get').mockRejectedValueOnce(new Error('locked'));
+    expect((await fresh.listConnections())[0].maskedKey).toBeNull();
+    expect((await fresh.listConnections())[0]).toMatchObject({ id: conn.id, maskedKey: maskKey(fixture.secret) });
+  });
 });
 
-test('maskKey shows the start and the end only', () => {
-  expect(maskKey('api_abcdefghijklmnop1234')).toBe('api_abcd••••1234');
+test('a slow provider holds no other store write behind it', async () => {
+  const conn = await service.connect('fake', fixture.secret);
+  let release;
+  const slow = { ...fake, id: 'fake-two', createClient: () => ({ whoAmI: () => new Promise((r) => { release = r; }) }) };
+  const blocking = createIssueTrackerService({ storePath, secrets, registry: { get: (id) => ({ fake, 'fake-two': slow })[id] || null, describe: () => [] }, fetch });
+  const pending = blocking.connect('fake-two', 'any-key-long-enough');
+  await new Promise((r) => realImmediate(r));
+  await expect(blocking.disconnect(conn.id)).resolves.toBeUndefined(); // not queued behind the request
+  release({ user: { id: 'u2', name: 'Grace' }, workspace: { id: 'w2', name: 'w2' } });
+  await pending;
+  expect(readStore().connections.map((c) => c.provider)).toEqual(['fake-two']);
+});
+
+test('maskKey shows the last four characters only, and nothing of a short key', () => {
+  expect(maskKey('api_abcdefghijklmnop1234')).toBe('••••1234');
+  expect(maskKey('abcdefghijklm')).toBe('••••'); // 13 characters: four would be most of it
   expect(maskKey('short')).toBe('••••');
   expect(maskKey(null)).toBeNull();
 });
