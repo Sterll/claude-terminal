@@ -16,18 +16,22 @@
  * it — so a regression cannot hide behind a passing happy path.
  */
 
-/** api mock: `on*` captures its callback, everything else resolves to a bare success. */
-function makeApiMock(listeners) {
-  const ns = () => new Proxy({}, {
+/**
+ * api mock: `on*` captures its callback, everything else resolves to a bare
+ * success and is recorded in `calls` as `{ ns, method, args }`.
+ */
+function makeApiMock(listeners, calls = []) {
+  const ns = (nsName) => new Proxy({}, {
     get: (_t, method) => (...args) => {
       if (typeof method === 'string' && method.startsWith('on')) {
         listeners[method] = args[0];
         return () => {};
       }
+      calls.push({ ns: nsName, method, args });
       return Promise.resolve({ success: true, messages: [] });
     }
   });
-  return new Proxy({}, { get: () => ns() });
+  return new Proxy({}, { get: (_t, nsName) => ns(nsName) });
 }
 
 // jsdom ships no crypto.randomUUID; the send path tags each user message with one.
@@ -44,7 +48,7 @@ Object.defineProperty(global, 'crypto', {
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = function () {};
 
 describe('chat transcript rendering (characterization)', () => {
-  let listeners, wrapper, view, sessionId;
+  let listeners, calls, wrapper, view, sessionId;
 
   const emit = (message) => listeners.onMessage({ sessionId, message });
   const streamEvent = (event) => emit({ type: 'stream_event', event });
@@ -62,7 +66,8 @@ describe('chat transcript rendering (characterization)', () => {
   beforeEach(async () => {
     jest.resetModules();
     listeners = {};
-    window.electron_api = makeApiMock(listeners);
+    calls = [];
+    window.electron_api = makeApiMock(listeners, calls);
     document.body.innerHTML = '';
     wrapper = document.createElement('div');
     document.body.appendChild(wrapper);
@@ -189,11 +194,40 @@ describe('chat transcript rendering (characterization)', () => {
     });
 
     it('parks the SDK permission suggestions on the card', () => {
-      // "Always Allow" reads these back to write a granular rule rather than
-      // falling through to bypassPermissions.
+      // "Always Allow" reads these back to write the SDK's own granular rule
+      // rather than a blanket one for the whole tool.
       request({ suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash' }] }] });
 
       expect(JSON.parse(permCard().dataset.suggestions)).toHaveLength(1);
+    });
+
+    describe('what Always Allow sends back', () => {
+      const answer = () => {
+        const call = calls.find(c => c.ns === 'chat' && c.method === 'respondPermission');
+        return call && call.args[0];
+      };
+
+      it('forwards the SDK suggestions when there are some', () => {
+        const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Bash', ruleContent: 'rm:*' }], behavior: 'allow', destination: 'session' }];
+        request({ suggestions });
+        permCard().querySelector('[data-action="always-allow"]').click();
+
+        expect(answer()).toMatchObject({ requestId: 'req-1', result: { behavior: 'allow', updatedPermissions: suggestions } });
+      });
+
+      it('allows only this tool for the session when there are none', () => {
+        // The security clause. This used to send a setMode to
+        // bypassPermissions, so approving one tool turned off every later
+        // prompt in the session, for every tool.
+        request({ toolName: 'mcp__srv__deploy', input: {} });
+        permCard().querySelector('[data-action="always-allow"]').click();
+
+        const { result } = answer();
+        expect(result.updatedPermissions).toEqual([
+          { type: 'addRules', rules: [{ toolName: 'mcp__srv__deploy' }], behavior: 'allow', destination: 'session' },
+        ]);
+        expect(JSON.stringify(result)).not.toContain('bypassPermissions');
+      });
     });
 
     it('drops Always Allow when the user own ask rule forced the prompt', () => {

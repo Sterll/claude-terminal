@@ -3671,15 +3671,19 @@ class ChatView extends BaseComponent {
       const inputData = JSON.parse(card.dataset.toolInput || '{}');
       result = { behavior: 'allow', updatedInput: inputData };
       if (action === 'always-allow') {
-        // Use SDK suggestions for granular permissions (e.g. acceptEdits)
-        // Fallback to bypassPermissions only if no suggestions available
+        // Use SDK suggestions for granular permissions (e.g. acceptEdits).
+        // Without any, allow this one tool for the rest of the session. This
+        // used to switch the whole session to bypassPermissions, so approving
+        // one tool silently turned off every later prompt, for every tool.
         const suggestions = JSON.parse(card.dataset.suggestions || '[]');
+        const toolName = card.dataset.toolName;
         if (suggestions.length > 0) {
           result.updatedPermissions = suggestions;
-        } else {
+        } else if (toolName) {
           result.updatedPermissions = [{
-            type: 'setMode',
-            mode: 'bypassPermissions',
+            type: 'addRules',
+            rules: [{ toolName }],
+            behavior: 'allow',
             destination: 'session'
           }];
         }
