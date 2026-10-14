@@ -14,6 +14,7 @@ const path = require('path');
 const { createIssueDetectionService } = require('../../src/main/services/IssueDetectionService');
 const { createIssueTrackerService } = require('../../src/main/services/IssueTrackerService');
 const { createIssueLinkService } = require('../../src/main/services/IssueLinkService');
+const { ticketBlock } = require('../../src/shared/issue-trackers');
 const { describeTrackers } = require('../../src/main/issue-trackers/_registry');
 const fake = require('../issue-trackers/fake.tracker');
 const fixture = require('../issue-trackers/fixtures/fake.fixture');
@@ -95,6 +96,12 @@ describe('text', () => {
   test('a PR title and a prompt, only tickets that exist', async () => {
     expect(await detection.observeText('s1', 'Fix the crash (#1), docs in #2', 'pr', '#57')).toEqual(['fake:#1', 'fake:#2']);
     expect(await detection.observeText('s1', 'see #999999', 'prompt')).toEqual([]);
+  });
+
+  test('keys inside a pasted ticket are the tracker\'s: only what the user typed around it is read', async () => {
+    const draft = `Work on ticket #1. Here it is:\n\n${ticketBlock('#1', '# #1: Crash\nSub-issue of #2\n- #3 [Open] child')}\n\nAlso fix #2 while you are there`;
+    expect(await detection.observeText('s1', draft, 'prompt')).toEqual(['fake:#1', 'fake:#2']);
+    expect(await detection.observeText('s2', ticketBlock('#3', '# #3: Old flaky test'), 'prompt')).toEqual([]);
   });
 
   test('an unknown source is refused', async () => {

@@ -24,7 +24,7 @@
  * also fetches the title the confirmation card shows.
  */
 
-const { formatRef } = require('../../shared/issue-trackers');
+const { formatRef, stripTicketBlocks } = require('../../shared/issue-trackers');
 
 const SOURCES = ['tool', 'prompt', 'branch', 'pr'];
 
@@ -93,8 +93,11 @@ function createIssueDetectionService({
   }
 
   async function observeText(sessionKey, text, source, evidence = null) {
-    if (!sessionKey || typeof text !== 'string' || !text.trim() || !SOURCES.includes(source)) return [];
-    const scanned = text.slice(0, MAX_TEXT);
+    if (!sessionKey || typeof text !== 'string' || !SOURCES.includes(source)) return [];
+    // A ticket pasted into the prompt (a session started from it) names its
+    // parent and sub-issues: those keys are the tracker's, not the user's.
+    const scanned = stripTicketBlocks(text).slice(0, MAX_TEXT);
+    if (!scanned.trim()) return [];
     const suggested = [];
     for (const conn of await connections()) {
       const def = registry.get(conn.provider);

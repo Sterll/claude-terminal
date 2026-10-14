@@ -14,7 +14,7 @@
 const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
   + '<path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.5a2.5 2.5 0 0 0 0 5V16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.5a2.5 2.5 0 0 0 0-5z"/></svg>';
 
-const { PRIORITY_NAMES } = require('../../../shared/issue-trackers');
+const { PRIORITY_NAMES, ticketBlock } = require('../../../shared/issue-trackers');
 
 const CACHE_MS = 30_000;
 const DESCRIPTION_CHARS = 6000;
@@ -28,8 +28,16 @@ function t(key, params) {
 
 const bridge = () => (typeof window !== 'undefined' ? window.electron_api?.issueTrackers : null);
 
-/** The issue as Claude reads it: enough to work from without opening the tracker. */
+/**
+ * The issue as Claude reads it: enough to work from without opening the
+ * tracker. Fenced as tracker data (`ticketBlock`): anyone who can edit the
+ * ticket wrote it, so none of it is an instruction from the user.
+ */
 function issueAsText(issue) {
+  return ticketBlock(issue.key, issueBody(issue));
+}
+
+function issueBody(issue) {
   const lines = [`# ${issue.key}: ${issue.title}`];
   const facts = [`Status: ${issue.state.name}`];
   if (issue.priority != null) facts.push(`Priority: ${PRIORITY_NAMES[issue.priority] ?? issue.priority}`);
@@ -118,7 +126,7 @@ module.exports = {
     ctx.linkTicket?.({ ref: data.ref, connectionId: data.connectionId, title: data.title }, 'mention');
     const api = bridge();
     const res = api ? await api.getIssue(data.connectionId, data.key) : null;
-    if (!res?.ok) return `# ${data.key}: ${data.title}\n[Could not load the ticket: ${res?.error || 'tracker unavailable'}]`;
+    if (!res?.ok) return ticketBlock(data.key, `# ${data.key}: ${data.title}\n[Could not load the ticket: ${res?.error || 'tracker unavailable'}]`);
     return issueAsText(res.issue);
   },
 
