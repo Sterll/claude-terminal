@@ -205,6 +205,7 @@ describe('starting a session from a ticket', () => {
     await setup();
     panel._reset();
     api.git = {
+      branches: jest.fn(async () => ({ local: ['main'], remote: ['main'] })),
       createBranch: jest.fn(async () => ({ success: true })),
       checkout: jest.fn(async () => ({ success: true })),
       ...git,
@@ -241,10 +242,11 @@ describe('starting a session from a ticket', () => {
   });
 
   test('an existing branch is checked out instead of created', async () => {
-    await startSetup({ git: { createBranch: jest.fn(async () => ({ success: false, error: "fatal: a branch named 'x' already exists" })) } });
+    await startSetup({ git: { branches: jest.fn(async () => ({ local: ['main'], remote: ['main', 'ada/eng-151-persist-ticket-filters-per-screen'] })) } });
     root.querySelector('[data-action="start-confirm"]').click();
     await flush();
     expect(api.git.checkout).toHaveBeenCalledWith({ projectPath: '/repo/acme', branch: 'ada/eng-151-persist-ticket-filters-per-screen' });
+    expect(api.git.createBranch).not.toHaveBeenCalled();
     expect(deps.startSession).toHaveBeenCalled();
   });
 

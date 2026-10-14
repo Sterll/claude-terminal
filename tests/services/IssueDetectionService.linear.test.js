@@ -37,7 +37,7 @@ beforeEach(async () => {
     fetch: fixture.fetch,
   });
   links = createIssueLinkService({ storePath: path.join(dir, 'issue-links.json') });
-  detection = createIssueDetectionService({ trackers, links, registry });
+  detection = createIssueDetectionService({ trackers, links, registry, isChatSession: () => false });
   conn = await trackers.connect('linear', fixture.secret);
 });
 

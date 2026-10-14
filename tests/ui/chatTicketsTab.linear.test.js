@@ -104,7 +104,11 @@ describe('@tickets mention source', () => {
     expect(linkTicket).toHaveBeenCalledWith({ ref: 'linear:ENG-142', connectionId: conn.id, title: 'Session tickets tab' }, 'mention');
     // Priority in words and facets labelled like the rest: "Priority: 1" and
     // "project: Tickets" told Claude nothing it could use.
-    expect(text.split('\n').slice(0, 2)).toEqual([
+    // Fenced as tracker data (ticketBlock in shared/issue-trackers.js), then the ticket.
+    const lines = text.split('\n');
+    expect(lines[0]).toBe('<ticket key="ENG-142">');
+    const head = lines.indexOf('# ENG-142: Session tickets tab');
+    expect(lines.slice(head, head + 2)).toEqual([
       '# ENG-142: Session tickets tab',
       'Status: In Progress | Priority: Urgent | Assignee: Ada Lovelace | Team: Engineering | Project: Tickets | Cycle: Cycle 42 | Labels: feature',
     ]);
@@ -115,6 +119,7 @@ describe('@tickets mention source', () => {
 
   test('a ticket that cannot be loaded still sends something useful', async () => {
     const text = await issueSource.resolve({ ref: 'linear:ENG-99999', key: 'ENG-99999', title: 'Gone', connectionId: conn.id }, {});
-    expect(text).toMatch(/^# ENG-99999: Gone\n\[Could not load the ticket:/);
+    expect(text).toMatch(/^<ticket key="ENG-99999">\n[^\n]*\n\n# ENG-99999: Gone\n\[Could not load the ticket:/);
+    expect(text.trimEnd().endsWith('</ticket>')).toBe(true);
   });
 });
