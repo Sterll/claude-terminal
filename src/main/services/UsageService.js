@@ -591,7 +591,7 @@ async function fetchUsage(accountId, force = false) {
       try {
         const data = await fetchUsageFromAPI(token);
         entry.usageData = data;
-        entry.lastFetch = new Date();
+        entry.lastFetch = new Date(Date.now());
         entry.lastError = null;
         entry.isStale = false;
         console.log('[Usage] Fetched via API');
