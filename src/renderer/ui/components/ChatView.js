@@ -472,8 +472,16 @@ class ChatView extends BaseComponent {
     // wrote the code is the one with the context to fix it.
     fillComposer: (text) => {
       switchChatTab('conversation');
-      const current = getInputText().trim();
-      setInputText(current ? `${current}\n\n${text}` : text);
+      if (inputAdapter.isEmpty()) {
+        setInputText(text);
+      } else {
+        // After what is already there: setInputText would rewrite it as plain
+        // text and drop its @mention chips.
+        inputEl.appendChild(document.createTextNode(`\n\n${text}`));
+        updatePlaceholderVisibility();
+        placeCaretAtEnd();
+        autoResize();
+      }
       inputEl.focus();
     },
   });
