@@ -147,6 +147,66 @@ describe('mapping', () => {
     expect(issues.find((i) => i.key === 'ENG-151').parent.key).toBe('ENG-142');
   });
 
+  describe('sub-issue counts are exact or absent', () => {
+    // Answers SubIssues with one done child of ENG-142 per page, paged as pageInfoFor says; the rest goes to the fixture.
+    const subIssuesFetch = (pageInfoFor) => {
+      const sent = [];
+      const fetch = (url, init) => {
+        const body = JSON.parse(init.body);
+        if (body.operationName !== 'SubIssues') return fixture.fetch(url, init);
+        sent.push(body.variables);
+        const pageNo = body.variables.after ? Number(body.variables.after) : 0;
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({
+            data: { issues: { nodes: [{ parent: { id: 'i-eng-142' }, state: { type: 'completed' } }], pageInfo: pageInfoFor(pageNo) } },
+          }),
+        });
+      };
+      return { fetch, sent };
+    };
+    const list = async (fetch) => {
+      const { issues } = await linear.createClient({ secret: fixture.secret, fetch }).listIssues(normalizeQuery({ limit: 100 }), null);
+      return issues;
+    };
+
+    test('every page is counted', async () => {
+      const { fetch, sent } = subIssuesFetch((n) => ({ hasNextPage: n < 2, endCursor: n < 2 ? String(n + 1) : null }));
+      const issues = await list(fetch);
+      expect(sent).toHaveLength(3);
+      expect(issues.find((i) => i.key === 'ENG-142').subIssues).toEqual({ total: 3, done: 3 });
+    });
+
+    test('more children than the page budget leaves every count out', async () => {
+      const { fetch, sent } = subIssuesFetch((n) => ({ hasNextPage: true, endCursor: String(n + 1) }));
+      const issues = await list(fetch);
+      expect(sent).toHaveLength(4);
+      expect(issues.length).toBeGreaterThan(10);
+      expect(issues.every((i) => i.subIssues === null)).toBe(true);
+    });
+
+    test('a next page without a cursor is not read again from the start', async () => {
+      const { fetch, sent } = subIssuesFetch(() => ({ hasNextPage: true, endCursor: null }));
+      const issues = await list(fetch);
+      expect(sent.map((v) => v.after)).toEqual([null]);
+      expect(issues.every((i) => i.subIssues === null)).toBe(true);
+    });
+
+    test('the detail leaves out a count it only has the first page of', async () => {
+      const fetch = async (url, init) => {
+        const res = await fixture.fetch(url, init);
+        const body = await res.json();
+        if (body.data?.issue) body.data.issue.children.pageInfo = { hasNextPage: true };
+        return { ...res, json: async () => body };
+      };
+      const issue = await linear.createClient({ secret: fixture.secret, fetch }).getIssue('ENG-142');
+      expect(issue.children).toHaveLength(3);
+      expect(issue.subIssues).toBeNull();
+    });
+  });
+
   test('the detail counts its own sub-issues and its parent\'s', async () => {
     const parent = await client().getIssue('ENG-142');
     expect(parent.subIssues).toEqual({ total: 3, done: 1 });

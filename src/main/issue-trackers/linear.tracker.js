@@ -58,8 +58,10 @@ const ISSUE_FIELDS = `
     parent { id identifier title url state { id name color type } }
   }`;
 
-/** Sub-issue counts come 250 to a request, and stop there: 1000 children is plenty for one page. */
-const PROGRESS_PAGE = 250;
+/**
+ * Sub-issue counts come METADATA_PAGE to a request, for at most this many
+ * requests: past 1000 children on one page of issues, the counts are left out.
+ */
 const PROGRESS_MAX_PAGES = 4;
 
 const USER_FIELDS = 'id name avatarUrl';
@@ -152,8 +154,12 @@ async function request(ctx, operationName, query, variables = {}, { notFound = n
   return body.data;
 }
 
-/** Every node of a paged collection, up to METADATA_MAX_PAGES pages. */
-async function collect(ctx, operationName, field, nodeFields, filter) {
+/**
+ * Every node of a paged collection, up to `maxPages` pages. `complete` is
+ * false when the collection goes on past that, or when Linear says there is
+ * a next page without a cursor to reach it.
+ */
+async function collectPages(ctx, operationName, field, nodeFields, filter, maxPages = METADATA_MAX_PAGES) {
   // GraphQL rejects a declared variable that is never used, so $filter only
   // exists when there is one.
   const query = `query ${operationName}($first: Int!, $after: String${filter ? `, $filter: ${filter.type}` : ''}) {
@@ -164,16 +170,22 @@ async function collect(ctx, operationName, field, nodeFields, filter) {
   }`;
   const nodes = [];
   let after = null;
-  for (let page = 0; page < METADATA_MAX_PAGES; page++) {
+  for (let page = 0; page < maxPages; page++) {
     const variables = { first: METADATA_PAGE, after };
     if (filter) variables.filter = filter.value;
     const data = await request(ctx, operationName, query, variables);
     const conn = data[field] || {};
     nodes.push(...(conn.nodes || []));
-    if (!conn.pageInfo?.hasNextPage || !conn.pageInfo.endCursor) break;
+    if (!conn.pageInfo?.hasNextPage) return { nodes, complete: true };
+    if (!conn.pageInfo.endCursor) break;
     after = conn.pageInfo.endCursor;
   }
-  return nodes;
+  return { nodes, complete: false };
+}
+
+/** Every node of a paged collection, as far as METADATA_MAX_PAGES pages reach. */
+async function collect(ctx, operationName, field, nodeFields, filter) {
+  return (await collectPages(ctx, operationName, field, nodeFields, filter)).nodes;
 }
 
 // ── Mapping ──────────────────────────────────────────────────────────────────
@@ -197,9 +209,13 @@ function toState(state) {
 
 const isClosed = (type) => ['done', 'canceled'].includes(CATEGORY_BY_TYPE[type]);
 
-/** `{ total, done }` from a list of sub-issue nodes, null when there are none. */
-function progressOf(nodes) {
-  if (!nodes?.length) return null;
+/**
+ * `{ total, done }` from a connection of sub-issues, null when there are none,
+ * or when it holds only the first page of them: a partial count is not one.
+ */
+function progressOf(conn) {
+  const nodes = conn?.nodes;
+  if (!nodes?.length || conn.pageInfo?.hasNextPage) return null;
   return { total: nodes.length, done: nodes.filter((n) => isClosed(n.state?.type)).length };
 }
 
@@ -312,34 +328,31 @@ function createClient({ secret, fetch }) {
    * and how many are closed: all of them, not only the listed ones. Linear has
    * no count field, so this asks for the children themselves, which costs
    * a few points per child rather than a nested connection per listed issue.
-   * Decoration only: a failure leaves the counts out and the list stands.
+   * Decoration only: a failure, or more children than PROGRESS_MAX_PAGES
+   * reach, leaves the counts out and the list stands.
    */
   async function subIssueCounts(nodes) {
-    const counts = new Map();
     const ids = [...new Set(nodes.flatMap((n) => [n.id, n.parent?.id]).filter(Boolean))];
-    if (!ids.length) return counts;
+    if (!ids.length) return new Map();
+    let children;
     try {
-      let after = null;
-      for (let page = 0; page < PROGRESS_MAX_PAGES; page++) {
-        const data = await request(ctx, 'SubIssues', `query SubIssues($first: Int!, $after: String, $filter: IssueFilter) {
-          issues(first: $first, after: $after, filter: $filter) {
-            nodes { parent { id } state { type } }
-            pageInfo { hasNextPage endCursor }
-          }
-        }`, { first: PROGRESS_PAGE, after, filter: { parent: { id: { in: ids } } } });
-        for (const child of data.issues?.nodes || []) {
-          const id = child.parent?.id;
-          if (!id) continue;
-          const c = counts.get(id) || { total: 0, done: 0 };
-          c.total++;
-          if (isClosed(child.state?.type)) c.done++;
-          counts.set(id, c);
-        }
-        if (!data.issues?.pageInfo?.hasNextPage) break;
-        after = data.issues.pageInfo.endCursor;
-      }
+      const res = await collectPages(ctx, 'SubIssues', 'issues', 'parent { id } state { type }', {
+        type: 'IssueFilter', value: { parent: { id: { in: ids } } },
+      }, PROGRESS_MAX_PAGES);
+      // A partial count would be shown as the real one: none is better.
+      if (!res.complete) return new Map();
+      children = res.nodes;
     } catch {
       return new Map();
+    }
+    const counts = new Map();
+    for (const child of children) {
+      const id = child.parent?.id;
+      if (!id) continue;
+      const c = counts.get(id) || { total: 0, done: 0 };
+      c.total++;
+      if (isClosed(child.state?.type)) c.done++;
+      counts.set(id, c);
     }
     return counts;
   }
@@ -430,8 +443,8 @@ function createClient({ secret, fetch }) {
           ...IssueFields
           description
           comments(first: 100) { nodes { id body createdAt user { ${USER_FIELDS} } } }
-          children(first: 100) { nodes { ...IssueFields } }
-          parent { children(first: 100) { nodes { state { type } } } }
+          children(first: 100) { nodes { ...IssueFields } pageInfo { hasNextPage } }
+          parent { children(first: 100) { nodes { state { type } } pageInfo { hasNextPage } } }
         }
       }
       ${ISSUE_FIELDS}`, { id: key }, { notFound: 'Issue' });
@@ -441,8 +454,8 @@ function createClient({ secret, fetch }) {
         .map((c) => ({ id: c.id, body: c.body, createdAt: c.createdAt, author: toPerson(c.user) }))
         .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
       const issue = toIssue(node);
-      issue.subIssues = progressOf(node.children?.nodes);
-      if (issue.parent) issue.parent.subIssues = progressOf(node.parent.children?.nodes);
+      issue.subIssues = progressOf(node.children);
+      if (issue.parent) issue.parent.subIssues = progressOf(node.parent.children);
       return {
         ...issue,
         description: node.description || null,
