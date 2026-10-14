@@ -104,7 +104,7 @@ Every method is async. Failures reject with an `Error` whose `code` is one of `A
 
 A **query** (`normalizeQuery()`) is the only thing an adapter receives: `text`, `mine` (`assigned`, `created`, `subscribed`), `stateCategories`, `stateIds`, `assigneeIds` (with the special values `me` and `none`), `priorities`, `labelIds`, `facets`, `updatedSince`, `sort` and `limit`. Unknown values are dropped rather than rejected, so a saved filter from an older build degrades to "no filter" instead of to an error.
 
-Clauses combine with AND, except `stateCategories` and `stateIds`: together they are the one "Status" filter, and a state matches if its category **or** its id is selected. The filter bar offers whole categories and individual states in a single menu, and "To do, plus In Review" must not come back empty. Adapters only have to honour `sort: 'updated'` and `'created'` on the server; `'priority'` and `'due'` may be applied to the returned page.
+Clauses combine with AND, except `stateCategories` and `stateIds`: together they are the one "Status" filter, and a state matches if its category **or** its id is selected. The filter bar offers whole categories and individual states in a single menu, and "To do, plus In Review" must not come back empty. Every sort must hold across pages: "Load more" appends the next page as it comes, so a `'priority'` or `'due'` order applied to each page alone would restart at the top of every page. An adapter whose tracker cannot order by those on the server has to page them itself, the way the Linear adapter asks for one priority at a time and orders due dates from a list of ids.
 
 ---
 
