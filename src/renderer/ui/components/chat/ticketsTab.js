@@ -49,7 +49,8 @@ function sourceLabel(source) {
  * @param {HTMLElement} deps.tabBtn the tab button, shown once a tracker is connected
  * @param {HTMLElement|null} deps.badgeEl
  * @param {() => void} deps.onAvailable
- * @param {string} deps.initialKey `tab:<id>` for a new tab, the CLI session id for a resumed one
+ * @param {string} deps.initialKey `tab:<id>` for a new tab or a fork, the CLI session id for a resumed one
+ * @param {string|null} [deps.parentKey] a fork's parent session, whose links it copies once named
  * @param {() => string|null} deps.getProjectId
  * @param {(opts: object) => void} deps.showToast
  * @param {() => string} [deps.buildRecap] the session's recap, offered as a comment draft
@@ -57,6 +58,7 @@ function sourceLabel(source) {
 function createTicketsTab(deps) {
   const { api, panelEl } = deps;
   let key = deps.initialKey;
+  let parentKey = deps.parentKey || null;
   let connections = [];
   let providers = [];
   let links = [];
@@ -679,11 +681,20 @@ function createTicketsTab(deps) {
       closeMenu();
     },
 
-    /** The CLI named this session: its links follow (moved from a new tab, copied for a fork). */
+    /**
+     * The CLI named this session: its links follow (moved from a new tab,
+     * copied for a fork). A fork copies its parent's before its own
+     * provisional ones move in, so the parent never sees the fork's writes.
+     */
     async onSessionId(id) {
       if (!id || id === key) return;
       const previous = key;
       key = id;
+      if (parentKey) {
+        const parent = parentKey;
+        parentKey = null;
+        if (parent !== id) await api.issueLinks.copy(parent, id);
+      }
       if (previous.startsWith('tab:')) await api.issueLinks.rekey(previous, id);
       else await api.issueLinks.copy(previous, id);
       await refreshLinks();

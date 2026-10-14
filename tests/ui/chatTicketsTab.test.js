@@ -220,6 +220,21 @@ test('the provisional tab key moves to the CLI session id; a fork copies', async
   tab.destroy();
 });
 
+test('a forked tab writes under its own key, never into its parent\'s, and copies the parent once named', async () => {
+  await api.issueLinks.link('sess-parent', { ref: 'fake:#1', connectionId: conn.id, title: 'x' });
+  const tab = makeTab({ initialKey: 'tab:fork', parentKey: 'sess-parent' });
+  await tab.probe();
+  await tab.linkTicket({ ref: 'fake:#2', connectionId: conn.id, title: 'y' }, 'mention');
+  expect((await api.issueLinks.get('sess-parent')).links.map((l) => l.ref)).toEqual(['fake:#1']);
+
+  await tab.onSessionId('sess-fork');
+  expect(tab.getKey()).toBe('sess-fork');
+  expect((await api.issueLinks.get('sess-fork')).links.map((l) => l.ref).sort()).toEqual(['fake:#1', 'fake:#2']);
+  expect((await api.issueLinks.get('sess-parent')).links.map((l) => l.ref)).toEqual(['fake:#1']);
+  expect((await api.issueLinks.get('tab:fork')).links).toEqual([]);
+  tab.destroy();
+});
+
 test('a sub-ticket sits under its parent: shown for context while the parent is not linked, linked in one click', async () => {
   const tab = makeTab();
   await tab.probe();

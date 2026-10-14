@@ -509,7 +509,9 @@ class ChatView extends BaseComponent {
     tabBtn: ticketsTabBtn,
     badgeEl: ticketsTabBtn.querySelector('.chat-tab-badge'),
     // Provisional until the CLI names the session; only needs to be unique per tab.
-    initialKey: resumeSessionId || `tab:${terminalId ?? Math.random().toString(36).slice(2, 10)}`,
+    // A fork is a new session: it starts provisional too and copies its parent's links.
+    initialKey: (!forkSession && resumeSessionId) || `tab:${terminalId ?? Math.random().toString(36).slice(2, 10)}`,
+    parentKey: forkSession ? resumeSessionId : null,
     getProjectId: () => project?.id || null,
     onAvailable: () => {
       ticketsTabBtn.hidden = false;
