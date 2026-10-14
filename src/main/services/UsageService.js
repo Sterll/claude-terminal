@@ -389,6 +389,9 @@ function invalidateCredentials(accountId) {
     entry.tokenRead = null;
     entry.usageData = null;
     entry.lastFetch = null;
+    // The stream's clock goes with the figures it vouched for, or the incoming
+    // account's would pass for confirmed by the outgoing one's chat.
+    entry.streamedAt = 0;
     entry.isStale = false;
     entry.lastError = null;
     entry.lastLimitNotifiedReset = null;
@@ -631,10 +634,10 @@ async function fetchUsage(accountId, force = false) {
     }
 
     // PTY fallback removed — launching `claude --dangerously-skip-permissions` just
-    // to read usage data is a security risk. Serve cached data, flagged as stale,
-    // unless a chat session confirmed them since: an endpoint that would not
-    // answer says nothing about figures the API stated a minute ago.
-    entry.isStale = !(entry.streamedAt && Date.now() - entry.streamedAt < DATA_STALE_AFTER);
+    // to read usage data is a security risk. Serve cached data, flagged as stale.
+    // A chat session that confirmed them since is accounted for when the flag
+    // is read, in isEntryStale(), so this stays a plain record of the fetch.
+    entry.isStale = true;
     // Mirrored on the way out too: a consumer reading the file needs to see
     // that these figures stopped being confirmed, not just the last good ones.
     mirrorToDisk(entry);
@@ -677,6 +680,17 @@ function isoFromSeconds(seconds) {
 }
 
 /**
+ * The stored reset of one of an account's buckets, when it is still ahead.
+ * @param {Object} entry
+ * @param {string} bucketId
+ * @returns {string|null}
+ */
+function upcomingReset(entry, bucketId) {
+  const stored = entry.usageData?.buckets?.find(b => b.id === bucketId)?.resetsAt;
+  return stored && Date.parse(stored) > Date.now() ? stored : null;
+}
+
+/**
  * Fold the figures of a `rate_limit_event` into an account's usage.
  *
  * Only the session and weekly windows: a scoped limit comes under a name the
@@ -698,6 +712,7 @@ function applyRateLimitInfo(accountId, info) {
       resetsAt: isoFromSeconds(window.resetsAt)
     });
   }
+  const entry = entryFor(accountId);
   // A refusal names the window that ran out, which is full whatever the last
   // header put it at.
   const refused = info?.status === 'rejected' ? STREAM_WINDOWS[info.rateLimitType]?.id : null;
@@ -705,12 +720,15 @@ function applyRateLimitInfo(accountId, info) {
     const seen = observed.get(refused);
     observed.set(refused, {
       utilization: Math.max(seen?.utilization ?? 0, 100),
-      resetsAt: isoFromSeconds(info.resetsAt) ?? seen?.resetsAt ?? null
+      // An event that names neither reset must not erase the one already on
+      // hand: a full bar with no reset time reads as a limit that never lifts.
+      // Only a reset still ahead, though. One already past belongs to the
+      // window before this one, and asOfNow() would serve this refusal as 0%.
+      resetsAt: isoFromSeconds(info.resetsAt) ?? seen?.resetsAt ?? upcomingReset(entry, refused)
     });
   }
   if (!observed.size) return false;
 
-  const entry = entryFor(accountId);
   const buckets = (entry.usageData?.buckets || [])
     .map(b => (observed.has(b.id) ? { ...b, ...observed.get(b.id) } : b));
   // Before any fetch has landed there is nothing to update in place.
@@ -720,20 +738,25 @@ function applyRateLimitInfo(accountId, info) {
   buckets.unshift(...missing);
 
   const now = new Date();
-  const data = {
+  entry.usageData = {
     extraUsage: null,
     ...entry.usageData,
     timestamp: now.toISOString(),
     buckets,
     _source: 'stream'
   };
-  entry.usageData = data;
-  entry.lastFetch = now;
+  // `lastFetch` is left alone on purpose. It is what decides when the endpoint
+  // is asked again (usageForAccount, onWindowShow), and the stream confirms the
+  // session and weekly windows only: moving it would keep a scoped limit or the
+  // extra-usage balance from being refetched for as long as a chat is running.
+  // The stream keeps its own clock, which only the stale badge reads.
   entry.streamedAt = now.getTime();
-  entry.isStale = false;
-  mirrorToDisk();
-  if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
-  _maybeNotifyLimit(entry, data);
+  mirrorToDisk(entry);
+  // Served as of now, like every other read path: the buckets the stream did
+  // not touch can be from a window that has reset since the last fetch.
+  const served = asOfNow(entry.usageData);
+  if (_onUpdateCallback) _onUpdateCallback(served, entry.accountId);
+  _maybeNotifyLimit(entry, served);
   return true;
 }
 
@@ -839,10 +862,17 @@ function getUsageData(accountId) {
  * @returns {boolean}
  */
 function isEntryStale(entry) {
+  const now = Date.now();
+  // A chat session that reported the session and weekly windows recently
+  // vouches for them whatever the endpoint did since: one answering 429 says
+  // nothing about figures the API stated on a response a minute ago. Those are
+  // the bars the chip is read for, and its badge is one for the whole chip.
+  if (entry.streamedAt && now - entry.streamedAt <= DATA_STALE_AFTER) return false;
   if (entry.isStale) return true;
   // Never fetched is empty, not stale: there is nothing on screen to mistrust.
-  if (!entry.lastFetch) return false;
-  return Date.now() - entry.lastFetch.getTime() > DATA_STALE_AFTER;
+  // Figures that only ever came from the stream age out on its clock instead.
+  if (!entry.lastFetch) return !!entry.streamedAt;
+  return now - entry.lastFetch.getTime() > DATA_STALE_AFTER;
 }
 
 /**
@@ -1014,6 +1044,9 @@ function mirrorToDisk(entry) {
       accountId: entry.accountId,
       timestamp: entry.usageData?.timestamp || null,
       lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
+      // Apart from lastFetch, for the same reason as on the entry: the stream
+      // confirms two windows, the fetch all of them.
+      streamedAt: entry.streamedAt ? new Date(entry.streamedAt).toISOString() : null,
       stale: isEntryStale(entry),
       error: entry.lastError || null,
       buckets: data?.buckets || [],

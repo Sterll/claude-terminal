@@ -118,6 +118,19 @@ describe('usage_get', () => {
     expect(out).not.toContain('STALE');
   });
 
+  // A chat session reports the session and weekly windows on its own clock,
+  // which does not move lastFetch: while the endpoint answers 429, that clock
+  // is the one keeping the figures current.
+  test('figures a chat session reported recently are not stale on fetch age', async () => {
+    writeMirror(fresh({
+      lastFetch: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      streamedAt: new Date().toISOString(),
+    }));
+    const out = await runGet();
+
+    expect(out).not.toContain('STALE');
+  });
+
   test('says the file is missing rather than inventing an answer', async () => {
     const out = await runGet();
     expect(out).toContain('No usage data available');

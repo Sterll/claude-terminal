@@ -79,6 +79,12 @@ describe('rate limit figures from the chat stream', () => {
     expect(UsageService.applyRateLimitInfo).toHaveBeenCalledWith(null, RATE_LIMIT_INFO);
   });
 
+  test('a remote session keeps the host login figures off the machine-wide entry', async () => {
+    // Its accountId is null, which UsageService reads as this machine's login.
+    await drain([rateLimitEvent, okResult], { accountId: null, remote: { profileId: 'prof-1', host: 'example-host' } });
+    expect(UsageService.applyRateLimitInfo).not.toHaveBeenCalled();
+  });
+
   test('a failure to apply them does not end the session', async () => {
     UsageService.applyRateLimitInfo.mockImplementation(() => { throw new Error('boom'); });
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});

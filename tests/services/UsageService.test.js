@@ -962,8 +962,10 @@ describe('figures from the chat stream', () => {
   const CREDENTIALS_MODULE = '../../src/main/utils/claudeCredentials';
   const ACCOUNT_MANAGER = '../../src/main/services/AccountManager';
   const HOUR = 3600 * 1000;
-  const SESSION_RESET = 1791584400;
-  const WEEKLY_RESET = 1791698400;
+  // Relative to now, in unix seconds as on the wire: fixed dates ran into the
+  // past and turned into reset windows, which asOfNow() rightly reads as 0%.
+  const SESSION_RESET = Math.floor(Date.now() / 1000) + 2 * 3600;
+  const WEEKLY_RESET = Math.floor(Date.now() / 1000) + 3 * 24 * 3600;
 
   let dataDir;
 
@@ -1105,6 +1107,101 @@ describe('figures from the chat stream', () => {
       await usage.refreshUsage('acc-team');
       expect(usage.getUsageData('acc-team').stale).toBe(true);
     } finally { clock.mockRestore(); }
+  });
+
+  test('a refusal that names no reset keeps the one already on hand', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage('acc-team');
+    usage.applyRateLimitInfo('acc-team', { status: 'rejected', rateLimitType: 'five_hour' });
+
+    const session = usage.getUsageData('acc-team').data.buckets[0];
+    expect(session.utilization).toBe(100);
+    expect(session.resetsAt).toBe('2099-01-01T00:00:00Z');
+  });
+
+  test('a refusal that names no reset does not borrow one already past', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage('acc-team');
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2099-01-01T01:00:00Z'));
+    try {
+      usage.applyRateLimitInfo('acc-team', { status: 'rejected', rateLimitType: 'five_hour' });
+      // The fetched reset belongs to the window before: borrowed, this refusal
+      // would be served as an idle window.
+      const session = usage.getUsageData('acc-team').data.buckets[0];
+      expect(session.utilization).toBe(100);
+      expect(session.resetsAt).toBeNull();
+    } finally { clock.mockRestore(); }
+  });
+
+  test('mirrors the streamed figures for the MCP tools', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage(null);
+    usage.applyRateLimitInfo(null, event(0.71, 0.33));
+
+    const mirror = JSON.parse(fs.readFileSync(path.join(dataDir, 'usage.json'), 'utf8'));
+    expect(mirror.buckets.slice(0, 2).map(b => [b.id, b.utilization])).toEqual([['session', 71], ['weekly', 33]]);
+    expect(mirror.streamedAt).not.toBeNull();
+  });
+
+  test('pushes the figures as of now, not as stored', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage('acc-team');
+    const onUpdate = jest.fn();
+    usage.onUpdate(onUpdate);
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2099-01-03T00:00:00Z'));
+    try {
+      // Past the fetched session reset; the stream reports the weekly window only.
+      usage.applyRateLimitInfo('acc-team', {
+        unifiedWindows: { seven_day: { utilization: 0.5, resetsAt: Date.parse('2099-01-05T00:00:00Z') / 1000 } }
+      });
+    } finally { clock.mockRestore(); }
+
+    const pushed = onUpdate.mock.calls[0][0];
+    expect(pushed.buckets.find(b => b.id === 'session')).toMatchObject({ utilization: 0, resetsAt: null });
+    expect(pushed.buckets.find(b => b.id === 'weekly').utilization).toBe(50);
+  });
+
+  test('does not stand in for a fetch: lastFetch stays the fetch, and an old one is refetched', async () => {
+    const start = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      const usage = load([200, 200]);
+      await usage.fetchUsage('acc-team');
+      const fetchedAt = usage.getUsageData('acc-team').lastFetch;
+
+      clock.mockReturnValue(start + 6 * 60 * 1000);
+      usage.applyRateLimitInfo('acc-team', event(0.5, 0.3));
+      expect(usage.getUsageData('acc-team').lastFetch).toBe(fetchedAt);
+
+      // The scoped limit and the extra-usage balance were not on the stream,
+      // so figures older than the caller's bound are still asked for.
+      const served = await usage.usageForAccount('acc-team');
+      expect(served.lastFetch).not.toBe(fetchedAt);
+    } finally { clock.mockRestore(); }
+  });
+
+  test('figures only the stream ever reported age out on its clock', () => {
+    const start = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(start);
+    try {
+      const usage = load();
+      usage.applyRateLimitInfo(null, event(0.25, 0.35));
+      expect(usage.getUsageData(null).stale).toBe(false);
+      clock.mockReturnValue(start + 11 * 60 * 1000);
+      expect(usage.getUsageData(null).stale).toBe(true);
+    } finally { clock.mockRestore(); }
+  });
+
+  test('an account swap drops the stream clock along with the figures', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage(null);
+    usage.applyRateLimitInfo(null, event(0.5, 0.3));
+    usage.invalidateCredentials();
+
+    // The incoming account's first failed fetch is not vouched for by the
+    // outgoing account's chat.
+    await usage.fetchUsage(null);
+    expect(usage.getUsageData(null).stale).toBe(true);
   });
 
   test('a failed fetch with no stream behind it is still badged at once', async () => {

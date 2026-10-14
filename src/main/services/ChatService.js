@@ -1609,7 +1609,10 @@ class ChatService {
         // The plan's usage as the API stated it on this session's own
         // responses, which keeps the titlebar current while the usage endpoint
         // answers 429. Never allowed to end the session.
-        if (message.type === 'rate_limit_event') {
+        // Not for a remote session: it runs on the host's own login, and its
+        // accountId is null, so its figures would land on the machine-wide
+        // entry and overwrite this machine's with another login's.
+        if (message.type === 'rate_limit_event' && !session?.remote) {
           try {
             UsageService.applyRateLimitInfo(session?.accountId || null, message.rate_limit_info);
           } catch (err) {
