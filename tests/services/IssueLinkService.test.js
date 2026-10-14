@@ -136,6 +136,14 @@ test('a provisional entry that never moved is dropped after a week', async () =>
   expect(Object.keys(stored.sessions).sort()).toEqual(['sess-1', 'sess-old', 'tab:recent']);
 });
 
+test('every write keeps the previous file as .bak', async () => {
+  await links.link('sess-1', ENG142);
+  expect(fs.existsSync(`${storePath}.bak`)).toBe(false); // nothing to back up on the first write
+  await links.link('sess-1', ENG155);
+  const backup = JSON.parse(fs.readFileSync(`${storePath}.bak`, 'utf8'));
+  expect(backup.sessions['sess-1'].links.map((l) => l.ref)).toEqual([ENG142.ref]);
+});
+
 test('counts are per ticket, linked only', async () => {
   await links.link('a', ENG142);
   await links.link('b', ENG142);

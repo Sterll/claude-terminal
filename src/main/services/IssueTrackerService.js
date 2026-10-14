@@ -131,6 +131,11 @@ function createIssueTrackerService({
     await fsp.mkdir(path.dirname(storePath), { recursive: true });
     const tmp = `${storePath}.tmp`;
     await fsp.writeFile(tmp, JSON.stringify(store, null, 2), 'utf8');
+    try {
+      await fsp.copyFile(storePath, `${storePath}.bak`);
+    } catch (err) {
+      if (err.code !== 'ENOENT') console.warn(`[IssueTrackers] Could not back up ${path.basename(storePath)}: ${err.message}`);
+    }
     await fsp.rename(tmp, storePath);
   }
 

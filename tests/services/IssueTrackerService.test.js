@@ -129,6 +129,14 @@ describe('connect', () => {
   });
 });
 
+test('every store write keeps the previous file as .bak', async () => {
+  const conn = await service.connect('fake', fixture.secret);
+  expect(fs.existsSync(`${storePath}.bak`)).toBe(false); // nothing to back up on the first write
+  await service.disconnect(conn.id);
+  expect(JSON.parse(fs.readFileSync(`${storePath}.bak`, 'utf8')).connections.map((c) => c.id)).toEqual([conn.id]);
+  expect(readStore().connections).toEqual([]);
+});
+
 describe('disconnect', () => {
   test('removes the connection and its key', async () => {
     const conn = await service.connect('fake', fixture.secret);
