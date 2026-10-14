@@ -198,7 +198,8 @@ describe('transport', () => {
     ['HTTP 401 with an HTML body', respond(401, undefined), 'AUTH'],
     ['an authentication error', respond(400, { errors: [{ message: 'x', extensions: { type: 'authentication error' } }] }), 'AUTH'],
     ['a forbidden error', respond(400, { errors: [{ message: 'Forbidden', extensions: { type: 'forbidden' } }] }), 'PROVIDER'],
-    ['an entity not found', respond(200, { data: null, errors: [{ message: 'Entity not found: Issue', extensions: { type: 'invalid input' } }] }), 'NOT_FOUND'],
+    // whoAmI is about no one entity: a "not found" there is a failure, not a missing ticket.
+    ['an entity not found', respond(200, { data: null, errors: [{ message: 'Entity not found: Issue', extensions: { type: 'invalid input' } }] }), 'PROVIDER'],
     ['HTTP 500 without JSON', respond(500, undefined), 'PROVIDER'],
     ['a 200 without data', respond(200, {}), 'PROVIDER'],
   ])('maps %s', async (_label, fetch, code) => {
@@ -236,6 +237,29 @@ describe('transport', () => {
       throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.linear.app'), { code: 'ENOTFOUND' }) });
     });
     await expect(call(fetch)).rejects.toMatchObject({ code: 'NETWORK', message: 'Linear is unreachable (ENOTFOUND)' });
+  });
+
+  describe('NOT_FOUND only means the issue asked for is missing', () => {
+    const notFound = (message) => respond(200, { data: null, errors: [{ message, extensions: { type: 'invalid input' } }] });
+    const clientWith = (fetch) => linear.createClient({ secret: 'lin_api_x', fetch });
+
+    test('a missing issue, read, updated or commented on', async () => {
+      const fetch = notFound('Entity not found: Issue');
+      await expect(clientWith(fetch).getIssue('ENG-1')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(clientWith(fetch).updateIssue('ENG-1', { priority: 1 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      await expect(clientWith(fetch).addComment('ENG-1', 'x')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+    });
+
+    test('another entity missing from an update is a provider failure', async () => {
+      const fetch = notFound('Entity not found: WorkflowState');
+      await expect(clientWith(fetch).updateIssue('ENG-1', { stateId: 's-gone' })).rejects.toMatchObject({ code: 'PROVIDER' });
+    });
+
+    test('a list that fails with "not found" is a provider failure', async () => {
+      const fetch = notFound('Entity not found: Team');
+      await expect(clientWith(fetch).listIssues(normalizeQuery({}), null)).rejects.toMatchObject({ code: 'PROVIDER' });
+      await expect(clientWith(fetch).metadata()).rejects.toMatchObject({ code: 'PROVIDER' });
+    });
   });
 
   test('a rate limit carries how long to wait, from Retry-After', async () => {

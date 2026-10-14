@@ -87,12 +87,24 @@ function networkCode(err) {
   return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,39}$/.test(code) ? code : null;
 }
 
+/** A "not found" about `entity`: Linear words it "Entity not found: Issue". */
+function isNotFound(text, entity) {
+  if (!/not found|could not find/i.test(text)) return false;
+  const named = [...text.matchAll(/(?:entity not found:|could not find referenced)\s+([A-Za-z]+)/gi)].map((m) => m[1].toLowerCase());
+  return named.every((n) => n === entity.toLowerCase());
+}
+
 /**
  * One GraphQL round trip, with Linear's failures mapped onto ERROR_CODES.
  * Linear reports most errors as HTTP 400 with `extensions.type`, the strings
  * its own SDK switches on ("authentication error", "ratelimited", ...).
+ *
+ * `notFound` names the one entity the request is about ("Issue"). Only then
+ * is a "not found" error NOT_FOUND, and only when it does not name another
+ * entity: a list that fails, or an update whose state no longer exists, is
+ * not a missing issue.
  */
-async function request(ctx, operationName, query, variables = {}) {
+async function request(ctx, operationName, query, variables = {}, { notFound = null } = {}) {
   if (typeof ctx.secret !== 'string' || !WELL_FORMED_KEY.test(ctx.secret)) {
     throw trackerError('AUTH', 'The API key is malformed');
   }
@@ -129,7 +141,7 @@ async function request(ctx, operationName, query, variables = {}) {
     throw trackerError('RATE_LIMITED', 'Linear rate limit reached', { retryAfterMs: retryAfterMs(res.headers) });
   }
   if (first) {
-    if (/not found|could not find/i.test(`${message} ${first.message || ''}`)) {
+    if (notFound && isNotFound(`${message} ${first.message || ''}`, notFound)) {
       throw trackerError('NOT_FOUND', message || 'Not found in Linear');
     }
     throw trackerError('PROVIDER', `Linear: ${message || type || 'request failed'}`);
@@ -422,7 +434,7 @@ function createClient({ secret, fetch }) {
           parent { children(first: 100) { nodes { state { type } } } }
         }
       }
-      ${ISSUE_FIELDS}`, { id: key });
+      ${ISSUE_FIELDS}`, { id: key }, { notFound: 'Issue' });
       const node = data.issue;
       if (!node) throw trackerError('NOT_FOUND', `No Linear issue ${key}`);
       const comments = (node.comments?.nodes || [])
@@ -448,7 +460,7 @@ function createClient({ secret, fetch }) {
       const data = await request(ctx, 'IssueUpdate', `mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
         issueUpdate(id: $id, input: $input) { success issue { ...IssueFields } }
       }
-      ${ISSUE_FIELDS}`, { id: key, input });
+      ${ISSUE_FIELDS}`, { id: key, input }, { notFound: 'Issue' });
       if (!data.issueUpdate?.success || !data.issueUpdate.issue) throw trackerError('PROVIDER', `Linear did not update ${key}`);
       const node = data.issueUpdate.issue;
       return withProgress(toIssue(node), node, await subIssueCounts([node]));
@@ -457,7 +469,7 @@ function createClient({ secret, fetch }) {
     async addComment(key, body) {
       const data = await request(ctx, 'CommentCreate', `mutation CommentCreate($input: CommentCreateInput!) {
         commentCreate(input: $input) { success comment { id body createdAt user { ${USER_FIELDS} } } }
-      }`, { input: { issueId: key, body } });
+      }`, { input: { issueId: key, body } }, { notFound: 'Issue' });
       const comment = data.commentCreate?.comment;
       if (!data.commentCreate?.success || !comment) throw trackerError('PROVIDER', `Linear did not add the comment to ${key}`);
       return { id: comment.id, body: comment.body, createdAt: comment.createdAt, author: toPerson(comment.user) };
