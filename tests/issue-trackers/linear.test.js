@@ -25,6 +25,11 @@ describe('queries reach Linear with the right meaning', () => {
     expect(await keysOf({ text: 'eng-142' })).toEqual(['ENG-142']);
   });
 
+  test('text shaped like a key is still searched as text', async () => {
+    expect(await keysOf({ text: 'utf-8' })).toEqual(['ENG-139']);
+    expect(await keysOf({ text: 'UTF-8' })).toEqual(['ENG-139']);
+  });
+
   test('free text searches titles and descriptions', async () => {
     expect(await keysOf({ text: 'pruner' })).toEqual(['ENG-139']);
     expect(await keysOf({ text: 'live status' })).toEqual(['ENG-142']);

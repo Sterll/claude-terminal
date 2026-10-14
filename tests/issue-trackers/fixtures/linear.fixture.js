@@ -82,7 +82,10 @@ const ROWS = [
     ],
     subscribers: ['u-ada', 'u-grace'],
   }],
-  ['ENG-139', 'Transcript pruner loses its position on remount', 'progress', 2, 'u-ada', ['l-bug'], null, 'c-eng-42', { estimate: 2 }],
+  ['ENG-139', 'Transcript pruner loses its position on remount', 'progress', 2, 'u-ada', ['l-bug'], null, 'c-eng-42', {
+    estimate: 2,
+    description: 'Seen on a transcript with utf-8 file names.',
+  }],
   ['ENG-137', 'Measure before writing during tab drag', 'review', 2, 'u-ada', ['l-perf'], null, 'c-eng-42', { estimate: 1 }],
   ['ENG-151', 'Persist ticket filters per screen', 'todo', 2, 'u-ada', ['l-feature'], 'p-tickets', null, { parent: 'ENG-142' }],
   ['ENG-148', 'Import Linear custom views as presets', 'todo', 3, 'u-grace', ['l-feature'], 'p-tickets', 'c-eng-43', { creator: 'u-ada' }],

@@ -264,15 +264,14 @@ function buildIssueFilter(q) {
   const and = [];
 
   if (q.text) {
+    const text = [{ title: { containsIgnoreCase: q.text } }, { description: { containsIgnoreCase: q.text } }];
+    // Something shaped like a key finds that issue, and still searches the
+    // text: "utf-8" and "covid-19" are words before they are keys.
     const key = /^([A-Za-z][A-Za-z0-9]{0,9})-(\d{1,7})$/.exec(q.text);
-    if (key) {
-      and.push({ team: { key: { eqIgnoreCase: key[1] } }, number: { eq: Number(key[2]) } });
-    } else {
-      const text = [{ title: { containsIgnoreCase: q.text } }, { description: { containsIgnoreCase: q.text } }];
-      // "4504" is how people say XCP-4504 out loud: the number, in any team.
-      if (/^\d{1,7}$/.test(q.text)) text.unshift({ number: { eq: Number(q.text) } });
-      and.push({ or: text });
-    }
+    if (key) text.unshift({ team: { key: { eqIgnoreCase: key[1] } }, number: { eq: Number(key[2]) } });
+    // "4504" is how people say XCP-4504 out loud: the number, in any team.
+    else if (/^\d{1,7}$/.test(q.text)) text.unshift({ number: { eq: Number(q.text) } });
+    and.push({ or: text });
   }
 
   if (q.mine === 'assigned') and.push({ assignee: { isMe: { eq: true } } });
