@@ -814,7 +814,8 @@ async function getCheckRuns(owner, repo, ref) {
   try {
     const response = await httpsRequest({
       hostname: config.apiHostname,
-      path: `/repos/${owner}/${repo}/commits/${ref}/check-runs`,
+      // GitHub's default page is 30: a matrix build runs past that.
+      path: `/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=100`,
       method: 'GET',
       headers: {
         'Accept': 'application/vnd.github.v3+json',
@@ -1003,40 +1004,54 @@ async function closeIssue(owner, repo, issueNumber) {
   }
 }
 
+const REVIEWS_PER_PAGE = 100;
+const MAX_REVIEW_PAGES = 10;
+
 /**
- * Get reviews for a pull request
+ * Get reviews for a pull request, oldest first.
+ *
+ * Every page, not the first: GitHub lists reviews oldest first, so a pull
+ * request reviewed more than a page's worth of times would otherwise read
+ * each reviewer's decision from before the latest round. A page holding
+ * fewer than asked is the last one.
  */
 async function getPullRequestReviews(owner, repo, pullNumber) {
   const token = await getToken();
   if (!token) return { authenticated: false, reviews: [] };
 
   try {
-    const response = await httpsRequest({
-      hostname: config.apiHostname,
-      path: `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
-      method: 'GET',
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': 'Claude-Terminal'
-      },
-      etagKey: `pr-reviews:${owner}/${repo}/${pullNumber}`
-    });
+    const reviews = [];
+    for (let page = 1; page <= MAX_REVIEW_PAGES; page++) {
+      const response = await httpsRequest({
+        hostname: config.apiHostname,
+        path: `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews?per_page=${REVIEWS_PER_PAGE}&page=${page}`,
+        method: 'GET',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`,
+          'User-Agent': 'Claude-Terminal'
+        },
+        etagKey: `pr-reviews:${owner}/${repo}/${pullNumber}:${page}`
+      });
 
-    if (response.status === 200) {
-      const reviews = (response.data || []).map(r => ({
-        id: r.id,
-        user: r.user?.login,
-        avatarUrl: r.user?.avatar_url,
-        state: r.state,
-        body: r.body,
-        submittedAt: r.submitted_at,
-        htmlUrl: r.html_url
-      }));
-      return { authenticated: true, reviews };
+      if (response.status !== 200) {
+        return { authenticated: true, reviews: [], error: `API error: ${response.status}` };
+      }
+      const batch = Array.isArray(response.data) ? response.data : [];
+      for (const r of batch) {
+        reviews.push({
+          id: r.id,
+          user: r.user?.login,
+          avatarUrl: r.user?.avatar_url,
+          state: r.state,
+          body: r.body,
+          submittedAt: r.submitted_at,
+          htmlUrl: r.html_url
+        });
+      }
+      if (batch.length < REVIEWS_PER_PAGE) break;
     }
-
-    return { authenticated: true, reviews: [], error: `API error: ${response.status}` };
+    return { authenticated: true, reviews };
   } catch (e) {
     console.error('Error fetching PR reviews:', e);
     return { authenticated: true, reviews: [], error: e.message };
