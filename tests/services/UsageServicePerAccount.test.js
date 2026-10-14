@@ -38,7 +38,8 @@ jest.mock('../../src/main/utils/claudeCredentials', () => ({
   readCredentialsForDir: jest.fn(async (dir) => ({
     claudeAiOauth: { accessToken: `tok-${dir.split('/').pop()}`, expiresAt: 4102444800000 }
   })),
-  tokenFromCredentials: jest.fn((creds) => creds?.claudeAiOauth?.accessToken ?? null)
+  tokenFromCredentials: jest.fn((creds) => creds?.claudeAiOauth?.accessToken ?? null),
+  auditKeychainReads: async (fn) => ({ value: await fn(), keychainFailed: false })
 }));
 
 // Which store an account authenticates from is AccountManager's decision, not

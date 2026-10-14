@@ -171,3 +171,80 @@ describe('concurrent Keychain readers', () => {
     expect(await credentials.readAccessToken()).toBe('allowed');
   });
 });
+
+/**
+ * The readers fall back to a file when the Keychain refuses, which is right for
+ * a spawn and wrong for UsageService: an old expired token in that file reads
+ * like an idle account, and treating it as one reopened a refused Keychain
+ * every five minutes. auditKeychainReads lets that caller tell the two apart
+ * without changing what any reader returns.
+ */
+describe('auditKeychainReads', () => {
+  const keychainMock = () => require('../../src/main/utils/macKeychain').getPassword;
+  let seedDir;
+
+  beforeEach(() => {
+    setPlatform('darwin');
+    seedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-creds-seed-'));
+  });
+  afterEach(() => fs.rmSync(seedDir, { recursive: true, force: true }));
+
+  test('flags a refused Keychain read behind a file fallback, and returns the same payload', async () => {
+    fs.writeFileSync(credentials.getCredentialsPath(), JSON.stringify(oauth('sk-ant-oat01-old', Date.now() - 1000)));
+    keychainMock().mockRejectedValueOnce(new Error('User canceled the operation.'));
+
+    const { value, keychainFailed } = await credentials.auditKeychainReads(() => credentials.readCredentials());
+
+    expect(keychainFailed).toBe(true);
+    expect(value.claudeAiOauth.accessToken).toBe('sk-ant-oat01-old');
+  });
+
+  test('flags a refused Keychain read behind an account seed', async () => {
+    credentials.writeSeedForDir(seedDir, oauth('sk-ant-oat01-seed', Date.now() - 1000));
+    keychainMock().mockRejectedValueOnce(new Error('User canceled the operation.'));
+
+    const { value, keychainFailed } = await credentials.auditKeychainReads(() => credentials.readCredentialsForDir(seedDir));
+
+    expect(keychainFailed).toBe(true);
+    expect(value.claudeAiOauth.accessToken).toBe('sk-ant-oat01-seed');
+  });
+
+  test('does not flag a Keychain that answered, even with an expired token', async () => {
+    mockKeychain.set(KEY, JSON.stringify(oauth('sk-ant-oat01-expired', Date.now() - 1000)));
+
+    const { keychainFailed } = await credentials.auditKeychainReads(() => credentials.readCredentials());
+
+    expect(keychainFailed).toBe(false);
+  });
+
+  test('does not flag a Keychain that has no such item', async () => {
+    fs.writeFileSync(credentials.getCredentialsPath(), JSON.stringify(oauth('sk-ant-oat01-file')));
+
+    const { keychainFailed } = await credentials.auditKeychainReads(() => credentials.readCredentials());
+
+    expect(keychainFailed).toBe(false);
+  });
+
+  test('is scoped to its own call: a concurrent refused read elsewhere does not mark it', async () => {
+    mockKeychain.set(KEY, JSON.stringify(oauth('sk-ant-oat01-keychain')));
+    keychainMock().mockImplementationOnce(async () => { throw new Error('denied'); });
+
+    const [refused, answered] = await Promise.all([
+      credentials.auditKeychainReads(() => credentials.readCredentialsForDir(seedDir)),
+      credentials.auditKeychainReads(() => credentials.readCredentials())
+    ]);
+
+    expect(refused.keychainFailed).toBe(true);
+    expect(answered.keychainFailed).toBe(false);
+  });
+
+  test('never flags anything off darwin', async () => {
+    setPlatform('linux');
+    keychainMock().mockClear();
+
+    const { keychainFailed } = await credentials.auditKeychainReads(() => credentials.readCredentials());
+
+    expect(keychainFailed).toBe(false);
+    expect(keychainMock()).not.toHaveBeenCalled();
+  });
+});

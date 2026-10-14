@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const { AsyncLocalStorage } = require('async_hooks');
 
 const KEYCHAIN_SERVICE = 'Claude Code-credentials';
 
@@ -50,6 +51,38 @@ function readKeychain(service) {
   return read;
 }
 
+// Whether a Keychain read failed somewhere inside an audited call. The readers
+// below fall back to a file when the Keychain refuses, and that fallback is the
+// right answer for a spawn but the wrong one for a caller deciding how soon to
+// ask again: the file can hold an old expired token, which reads exactly like a
+// store that answered "expired", while the next attempt is one more password
+// dialog. Kept off the return values, so every existing caller sees the same
+// payload it always did, and scoped to the async call chain, so a concurrent
+// read for another account cannot mark this one.
+const keychainAudit = new AsyncLocalStorage();
+
+function noteKeychainFailure() {
+  const audit = keychainAudit.getStore();
+  if (audit) audit.failed = true;
+}
+
+/**
+ * Run a credential read and report whether any Keychain read inside it failed
+ * (refused, timed out, or answered with something that is not JSON), including
+ * one whose failure a reader swallowed by falling back to a file.
+ *
+ * Always false off darwin, where nothing reads the Keychain.
+ *
+ * @param {() => Promise<T>} fn
+ * @returns {Promise<{ value: T, keychainFailed: boolean }>}
+ * @template T
+ */
+async function auditKeychainReads(fn) {
+  const audit = { failed: false };
+  const value = await keychainAudit.run(audit, fn);
+  return { value, keychainFailed: audit.failed };
+}
+
 function readCredentialsFile() {
   const credPath = getCredentialsPath();
   if (!fs.existsSync(credPath)) return null;
@@ -82,6 +115,7 @@ async function readCredentials() {
       if (raw) return JSON.parse(raw);
     } catch (_) {
       // Keychain access denied or entry unreadable — fall through to the file.
+      noteKeychainFailure();
     }
   }
   return readCredentialsFile();
@@ -173,6 +207,7 @@ async function readCredentialsForDir(dir, { pruneSeed = false } = {}) {
       if (raw) credentials = JSON.parse(raw);
     } catch (_) {
       // Denied or unreadable — the seed below may still bootstrap the account.
+      noteKeychainFailure();
     }
     if (credentials) {
       // The successful read already proves the vault took over; probing it
@@ -276,6 +311,7 @@ module.exports = {
   readAccessToken,
   tokenFromCredentials,
   readTrustedDeviceToken,
+  auditKeychainReads,
   keychainServiceForDir,
   readCredentialsForDir,
   writeSeedForDir,

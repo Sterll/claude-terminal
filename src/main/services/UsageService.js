@@ -6,7 +6,7 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const { readCredentials, tokenFromCredentials } = require('../utils/claudeCredentials');
+const { readCredentials, tokenFromCredentials, auditKeychainReads } = require('../utils/claudeCredentials');
 
 // Per-account state.
 //
@@ -274,10 +274,18 @@ function startTokenRead(entry) {
     let expiresAt = null;
     let expired = false;
     try {
-      const creds = await readCredentialsFor(entry.accountId);
+      const { value: creds, keychainFailed } = await auditKeychainReads(() => readCredentialsFor(entry.accountId));
       token = tokenFromCredentials(creds);
       expiresAt = creds?.claudeAiOauth?.expiresAt ?? null;
-      expired = !token && !!creds?.claudeAiOauth?.accessToken;
+      // Only a store that actually answered can say its token ran out. On
+      // darwin a refused Keychain read is swallowed by the readers, which fall
+      // back to ~/.claude/.credentials.json or to an account's seed file, and
+      // AccountManager rewrites that seed from a snapshot whose token is often
+      // long expired. Taken at its word, that fallback looked like an idle
+      // account: the ladder was reset, the give-up undone, and the Keychain
+      // reopened every five minutes for good, one password dialog each time.
+      // Behind a refusal it is a refusal, and climbs the ladder like one.
+      expired = !keychainFailed && !token && !!creds?.claudeAiOauth?.accessToken;
     } catch (e) {
       // Store unreadable: Keychain access refused, or the file is malformed.
       // Treated as no token, and backed off, rather than retried on every tick.
