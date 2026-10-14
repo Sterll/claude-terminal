@@ -75,11 +75,27 @@ function retryAfterMs(headers) {
 }
 
 /**
+ * A key that can travel as a header value: printable ASCII, no whitespace.
+ * Anything else makes `fetch` throw an error that quotes the whole value, so
+ * a key pasted with a stray newline would end up in the log and the toast.
+ */
+const WELL_FORMED_KEY = /^[\x21-\x7E]+$/;
+
+/** A system error code such as ENOTFOUND, never free text that could quote the request. */
+function networkCode(err) {
+  const code = err?.cause?.code ?? err?.code;
+  return typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,39}$/.test(code) ? code : null;
+}
+
+/**
  * One GraphQL round trip, with Linear's failures mapped onto ERROR_CODES.
  * Linear reports most errors as HTTP 400 with `extensions.type`, the strings
  * its own SDK switches on ("authentication error", "ratelimited", ...).
  */
 async function request(ctx, operationName, query, variables = {}) {
+  if (typeof ctx.secret !== 'string' || !WELL_FORMED_KEY.test(ctx.secret)) {
+    throw trackerError('AUTH', 'The API key is malformed');
+  }
   let res;
   try {
     res = await ctx.fetch(ENDPOINT, {
@@ -88,7 +104,10 @@ async function request(ctx, operationName, query, variables = {}) {
       body: JSON.stringify({ operationName, query, variables }),
     });
   } catch (err) {
-    throw trackerError('NETWORK', `Linear is unreachable: ${err.message}`, { cause: err });
+    // Not err.message, and not err as the cause: a fetch error can quote the
+    // headers it was given, the key among them.
+    const code = networkCode(err);
+    throw trackerError('NETWORK', code ? `Linear is unreachable (${code})` : 'Linear is unreachable');
   }
 
   let body = null;

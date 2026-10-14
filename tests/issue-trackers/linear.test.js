@@ -205,6 +205,39 @@ describe('transport', () => {
     await expect(call(fetch)).rejects.toMatchObject({ code });
   });
 
+  test.each([
+    ['a newline', 'lin_api_secret0000\nextra'],
+    ['a NUL', 'lin_api_secret0000\0'],
+    ['an inner space', 'lin_api_secret0000 extra'],
+    ['a non-ASCII character', 'lin_api_secret0000é'],
+    ['an empty string', ''],
+  ])('a key with %s is refused before any request, without being quoted', async (_label, secret) => {
+    const fetch = jest.fn();
+    const err = await linear.createClient({ secret, fetch }).whoAmI().catch((e) => e);
+    expect(err).toMatchObject({ code: 'AUTH', message: 'The API key is malformed' });
+    if (secret) expect(err.message).not.toContain('secret0000');
+    expect(err.cause).toBeUndefined();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('a thrown fetch is reported without quoting what it was given', async () => {
+    const secret = 'lin_api_secret0000';
+    const fetch = jest.fn(async () => {
+      throw new TypeError(`Headers.append: "${secret}" is an invalid header value.`);
+    });
+    const err = await linear.createClient({ secret, fetch }).whoAmI().catch((e) => e);
+    expect(err).toMatchObject({ code: 'NETWORK', message: 'Linear is unreachable' });
+    expect(err.cause).toBeUndefined();
+    expect(JSON.stringify(err, Object.getOwnPropertyNames(err))).not.toContain(secret);
+  });
+
+  test('a network failure keeps its system code', async () => {
+    const fetch = jest.fn(async () => {
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND api.linear.app'), { code: 'ENOTFOUND' }) });
+    });
+    await expect(call(fetch)).rejects.toMatchObject({ code: 'NETWORK', message: 'Linear is unreachable (ENOTFOUND)' });
+  });
+
   test('a rate limit carries how long to wait, from Retry-After', async () => {
     const fetch = respond(400, { errors: [{ message: 'Rate limit exceeded', extensions: { type: 'ratelimited' } }] }, { 'retry-after': '30' });
     await expect(call(fetch)).rejects.toMatchObject({ code: 'RATE_LIMITED', retryAfterMs: 30_000 });
