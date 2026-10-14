@@ -99,7 +99,7 @@ const ROWS = [
   ['OPS-12', 'Rotate the relay certificates', 'progress', 2, 'u-margaret', [], null, 'c-ops-7', { dueDate: '2026-10-15' }],
   ['OPS-9', 'Nightly backup check', 'done', 3, 'u-margaret', ['l-docs'], null, null, { parent: 'OPS-12' }],
   ['DES-31', 'Ticket card density on small screens', 'todo', 3, 'u-grace', ['l-ux'], 'p-tickets', null, { dueDate: '2026-10-20' }],
-  ['DES-28', 'Empty state illustrations', 'backlog', 4, null, ['l-ux'], 'p-onboarding', null, {}],
+  ['DES-28', 'Empty state illustrations', 'backlog', 4, null, ['l-ux'], 'p-onboarding', null, { dueDate: '2026-10-12' }],
 ];
 
 const slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
@@ -226,6 +226,14 @@ function matchField(row, field, cond) {
       break;
     case 'priority':
       if (cond.in) return cond.in.includes(row.priority);
+      if (cond.eq !== undefined) return row.priority === cond.eq;
+      break;
+    case 'dueDate':
+      if (cond.null === true) return !row.dueDate;
+      if (cond.null === false) return !!row.dueDate;
+      break;
+    case 'id':
+      if (cond.in) return cond.in.includes(row.id);
       break;
     case 'labels':
       if (cond.some?.id?.in) return row.labelIds.some((id) => cond.some.id.in.includes(id));
@@ -294,13 +302,18 @@ function resolve(operationName, v) {
       return { projects: page(PROJECTS) };
     case 'Cycles':
       return { cycles: page(CYCLES.filter((c) => !v.filter?.endsAt?.gt || c.endsAt > v.filter.endsAt.gt)) };
-    case 'Issues': {
+    case 'Issues':
+    case 'DueDates': {
+      // Linear's orderBy knows createdAt and updatedAt; anything else is its default, updatedAt.
       const order = v.orderBy === 'createdAt' ? 'createdAt' : 'updatedAt';
       const all = issues.filter((row) => matches(row, v.filter)).sort((a, b) => b[order].localeCompare(a[order]));
       const start = v.after ? Number(v.after) : 0;
       const slice = all.slice(start, start + v.first);
       const more = start + v.first < all.length;
-      return { issues: { nodes: slice.map(issueNode), pageInfo: { hasNextPage: more, endCursor: more ? String(start + v.first) : null } } };
+      const nodes = operationName === 'Issues'
+        ? slice.map(issueNode)
+        : slice.map((row) => ({ id: row.id, dueDate: row.dueDate, updatedAt: row.updatedAt }));
+      return { issues: { nodes, pageInfo: { hasNextPage: more, endCursor: more ? String(start + v.first) : null } } };
     }
     case 'Issue': {
       const row = issues.find((r) => r.identifier === String(v.id).toUpperCase() || r.id === v.id);

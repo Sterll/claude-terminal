@@ -7,8 +7,11 @@
  * answer it without parsing GraphQL.
  *
  * Linear's `issues(sort:)` argument is marked internal in its schema, so only
- * `createdAt` and `updatedAt` are ordered by the server. The `priority` and
- * `due` sorts are applied to the page that came back.
+ * `createdAt` and `updatedAt` are ordered by the server (`orderBy`). The
+ * `priority` and `due` sorts are still exact across pages, never a reordered
+ * page: priority walks one priority at a time, each newest first, and due
+ * ranks every dated issue from a light scan before fetching a page of them.
+ * Those two carry their own cursor, a small JSON object.
  */
 
 'use strict';
@@ -43,6 +46,16 @@ const METADATA_MAX_PAGES = 8;
 
 /** Cycles that ended more than this long ago are not offered as a filter. */
 const CYCLE_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Linear's "no priority" is 0 and sorts last, as it does in Linear itself. */
+const PRIORITY_ORDER = [1, 2, 3, 4, 0];
+
+/**
+ * The due sort ranks every matching issue that has a due date, this many
+ * pages of METADATA_PAGE at most. Past that it refuses rather than rank a
+ * sample of them.
+ */
+const DUE_SCAN_MAX_PAGES = 8;
 
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9]{0,9}-\d{1,7}$/;
 
@@ -305,16 +318,33 @@ function buildIssueFilter(q) {
   return and.length ? { and } : null;
 }
 
-/** Linear's "no priority" is 0 and sorts last, as it does in Linear itself. */
-function sortPage(issues, sort) {
-  if (sort === 'priority') {
-    const rank = (p) => (p ? p : 5);
-    return issues.slice().sort((a, b) => rank(a.priority) - rank(b.priority));
+/** `filter` with one more clause, combined with AND like the rest. */
+function withClause(filter, clause) {
+  return { and: [...(filter?.and || []), clause] };
+}
+
+/** Earliest due date first; the same date, most recently updated first. */
+function byDueDate(a, b) {
+  return a.dueDate.localeCompare(b.dueDate)
+    || String(b.updatedAt).localeCompare(String(a.updatedAt))
+    || String(a.id).localeCompare(String(b.id));
+}
+
+/**
+ * The cursor of a `priority` or `due` page, which the adapter wrote itself.
+ * Anything else is refused rather than read as the first page, which would
+ * hand the same issues back a second time.
+ */
+function readCursor(cursor, sort) {
+  if (!cursor) return null;
+  let value = null;
+  try {
+    value = JSON.parse(cursor);
+  } catch {
+    // Falls through to the refusal below.
   }
-  if (sort === 'due') {
-    return issues.slice().sort((a, b) => (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
-  }
-  return issues;
+  if (!value || typeof value !== 'object' || value.s !== sort) throw trackerError('PROVIDER', 'Invalid page cursor');
+  return value;
 }
 
 // ── Client ───────────────────────────────────────────────────────────────────
@@ -354,6 +384,73 @@ function createClient({ secret, fetch }) {
       counts.set(id, c);
     }
     return counts;
+  }
+
+  /** One page of full issues, as Linear orders them. */
+  async function issuePage(filter, first, after, orderBy = 'updatedAt') {
+    const data = await request(ctx, 'Issues', `query Issues($first: Int!, $after: String, $filter: IssueFilter, $orderBy: PaginationOrderBy) {
+      issues(first: $first, after: $after, filter: $filter, orderBy: $orderBy) {
+        nodes { ...IssueFields }
+        pageInfo { hasNextPage endCursor }
+      }
+    }
+    ${ISSUE_FIELDS}`, { first, after: after || null, filter, orderBy });
+    const conn = data.issues || {};
+    return { nodes: conn.nodes || [], next: conn.pageInfo?.hasNextPage ? conn.pageInfo.endCursor || null : null };
+  }
+
+  /**
+   * Priority order across pages: every urgent issue, then every high one,
+   * and so on, each priority newest first. A page that empties one priority
+   * goes on with the next, so it is only short at the very end.
+   */
+  async function priorityPage(query, cursor) {
+    const base = buildIssueFilter(query);
+    const order = PRIORITY_ORDER.filter((p) => !query.priorities.length || query.priorities.includes(p));
+    let at = cursor ? order.indexOf(cursor.p) : 0;
+    if (at < 0) throw trackerError('PROVIDER', 'Invalid page cursor');
+    let after = cursor?.a || null;
+    const nodes = [];
+    while (at < order.length && nodes.length < query.limit) {
+      const page = await issuePage(withClause(base, { priority: { eq: order[at] } }), query.limit - nodes.length, after);
+      nodes.push(...page.nodes);
+      if (page.next) return { nodes, next: { s: 'priority', p: order[at], a: page.next } };
+      at++;
+      after = null;
+    }
+    return { nodes, next: at < order.length ? { s: 'priority', p: order[at], a: null } : null };
+  }
+
+  /**
+   * Due date order across pages: every dated issue, earliest first, then the
+   * undated ones, newest first. Linear cannot order by due date, so the dated
+   * ones are ranked from a scan of their ids and dates, and a page fetches
+   * its slice of that ranking.
+   */
+  async function duePage(query, cursor) {
+    const base = buildIssueFilter(query);
+    const nodes = [];
+    if (!cursor || cursor.d !== undefined) {
+      const offset = Number.isInteger(cursor?.d) && cursor.d >= 0 ? cursor.d : 0;
+      const scan = await collectPages(ctx, 'DueDates', 'issues', 'id dueDate updatedAt', {
+        type: 'IssueFilter', value: withClause(base, { dueDate: { null: false } }),
+      }, DUE_SCAN_MAX_PAGES);
+      if (!scan.complete) {
+        throw trackerError('PROVIDER', `More than ${DUE_SCAN_MAX_PAGES * METADATA_PAGE} issues with a due date match: narrow the filters to sort by due date`);
+      }
+      const ranked = scan.nodes.filter((n) => n.dueDate).sort(byDueDate);
+      const ids = ranked.slice(offset, offset + query.limit).map((n) => n.id);
+      if (ids.length) {
+        const page = await issuePage({ id: { in: ids } }, ids.length, null);
+        const byId = new Map(page.nodes.map((n) => [n.id, n]));
+        nodes.push(...ids.map((id) => byId.get(id)).filter(Boolean));
+      }
+      if (offset + query.limit < ranked.length) return { nodes, next: { s: 'due', d: offset + query.limit } };
+      if (ids.length >= query.limit) return { nodes, next: { s: 'due', u: null } };
+    }
+    const page = await issuePage(withClause(base, { dueDate: { null: true } }), query.limit - nodes.length, cursor?.u || null);
+    nodes.push(...page.nodes);
+    return { nodes, next: page.next ? { s: 'due', u: page.next } : null };
   }
 
   return {
@@ -415,24 +512,14 @@ function createClient({ secret, fetch }) {
     },
 
     async listIssues(query, cursor) {
-      const data = await request(ctx, 'Issues', `query Issues($first: Int!, $after: String, $filter: IssueFilter, $orderBy: PaginationOrderBy) {
-        issues(first: $first, after: $after, filter: $filter, orderBy: $orderBy) {
-          nodes { ...IssueFields }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-      ${ISSUE_FIELDS}`, {
-        first: query.limit,
-        after: cursor || null,
-        filter: buildIssueFilter(query),
-        orderBy: query.sort === 'created' ? 'createdAt' : 'updatedAt',
-      });
-      const conn = data.issues || {};
-      const nodes = conn.nodes || [];
-      const counts = await subIssueCounts(nodes);
+      let page;
+      if (query.sort === 'priority') page = await priorityPage(query, readCursor(cursor, 'priority'));
+      else if (query.sort === 'due') page = await duePage(query, readCursor(cursor, 'due'));
+      else page = await issuePage(buildIssueFilter(query), query.limit, cursor, query.sort === 'created' ? 'createdAt' : 'updatedAt');
+      const counts = await subIssueCounts(page.nodes);
       return {
-        issues: sortPage(nodes.map((n) => withProgress(toIssue(n), n, counts)), query.sort),
-        next: conn.pageInfo?.hasNextPage ? conn.pageInfo.endCursor || null : null,
+        issues: page.nodes.map((n) => withProgress(toIssue(n), n, counts)),
+        next: page.next && typeof page.next === 'object' ? JSON.stringify(page.next) : page.next,
       };
     },
 
@@ -563,5 +650,5 @@ module.exports = {
     fromToolCall,
   },
   // Exposed for the adapter's own tests, not part of the contract.
-  _internals: { buildIssueFilter, toIssue, sortPage, CATEGORY_BY_TYPE },
+  _internals: { buildIssueFilter, toIssue, CATEGORY_BY_TYPE },
 };

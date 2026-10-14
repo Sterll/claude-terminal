@@ -15,6 +15,7 @@ const linear = require('../../src/main/issue-trackers/linear.tracker');
 const fixture = require('./fixtures/linear.fixture');
 const { normalizeQuery } = require('../../src/shared/issue-trackers');
 
+const NOW_ISO = '2026-10-09T09:00:00.000Z';
 const client = () => linear.createClient({ secret: fixture.secret, fetch: fixture.fetch });
 const keysOf = async (raw) => (await client().listIssues(normalizeQuery({ limit: 100, ...raw }), null)).issues.map((i) => i.key).sort();
 
@@ -81,16 +82,86 @@ describe('queries reach Linear with the right meaning', () => {
     expect(second.issues.some((i) => seen.has(i.key))).toBe(false);
   });
 
-  test('priority sort puts urgent first and "no priority" last', async () => {
-    const { issues } = await client().listIssues(normalizeQuery({ sort: 'priority', limit: 100 }), null);
-    const priorities = issues.map((i) => i.priority);
-    expect(priorities[0]).toBe(1);
-    expect(priorities.slice(-2)).toEqual([0, 0]);
+});
+
+describe('priority and due sorts hold across pages', () => {
+  /** Every page of a query, `limit` at a time, with the requests they took. */
+  async function walk(raw, limit) {
+    const sent = [];
+    const spy = (url, init) => { sent.push(JSON.parse(init.body)); return fixture.fetch(url, init); };
+    const c = linear.createClient({ secret: fixture.secret, fetch: spy });
+    const pages = [];
+    let cursor = null;
+    do {
+      const page = await c.listIssues(normalizeQuery({ ...raw, limit }), cursor);
+      pages.push(page.issues);
+      cursor = page.next;
+    } while (cursor && pages.length < 50);
+    return { pages, keys: pages.flat().map((i) => i.key), sent };
+  }
+
+  const newestFirst = async (raw = {}) => (await client().listIssues(normalizeQuery({ limit: 100, ...raw }), null)).issues;
+  const rank = (p) => (p ? p : 5);
+
+  test('priority: urgent first, "no priority" last, each priority newest first, whatever the page size', async () => {
+    const all = await newestFirst();
+    const expected = all.slice().sort((a, b) => rank(a.priority) - rank(b.priority)).map((i) => i.key);
+    expect(expected[0]).toBe('ENG-142');
+    for (const limit of [1, 3, 4, 100]) {
+      const { keys, pages } = await walk({ sort: 'priority' }, limit);
+      expect(keys).toEqual(expected);
+      // Only the last page may be short: a page that empties one priority goes on with the next.
+      expect(pages.slice(0, -1).every((p) => p.length === limit)).toBe(true);
+    }
   });
 
-  test('due sort puts dated issues first', async () => {
-    const { issues } = await client().listIssues(normalizeQuery({ sort: 'due', limit: 100 }), null);
-    expect(issues.slice(0, 2).map((i) => i.key)).toEqual(['OPS-12', 'DES-31']);
+  test('priority: a priority filter only asks for the priorities it keeps', async () => {
+    const { keys, sent } = await walk({ sort: 'priority', priorities: [3, 1] }, 100);
+    expect(keys).toEqual(['ENG-142', 'ENG-117', 'ENG-148', 'ENG-128', 'ENG-121', 'OPS-9', 'DES-31']);
+    expect(sent.filter((r) => r.operationName === 'Issues').map((r) => r.variables.filter.and.at(-1))).toEqual([
+      { priority: { eq: 1 } },
+      { priority: { eq: 3 } },
+    ]);
+  });
+
+  test('due: dated issues earliest first, then the rest newest first, whatever the page size', async () => {
+    const undated = (await newestFirst()).filter((i) => !i.dueDate).map((i) => i.key);
+    const expected = ['DES-28', 'OPS-12', 'DES-31', ...undated];
+    for (const limit of [1, 2, 3, 4, 100]) {
+      const { keys, pages } = await walk({ sort: 'due' }, limit);
+      expect(keys).toEqual(expected);
+      expect(pages.slice(0, -1).every((p) => p.length === limit)).toBe(true);
+    }
+  });
+
+  test('due: filters apply to the dated and the undated issues alike', async () => {
+    const { keys } = await walk({ sort: 'due', facets: { team: ['t-des'] } }, 1);
+    expect(keys).toEqual(['DES-28', 'DES-31']);
+  });
+
+  test('due: too many dated issues to rank is refused, not ranked from a sample', async () => {
+    const fetch = (url, init) => {
+      const { operationName, variables } = JSON.parse(init.body);
+      if (operationName !== 'DueDates') return fixture.fetch(url, init);
+      const n = variables.after ? Number(variables.after) : 0;
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({
+          data: { issues: { nodes: [{ id: `i-${n}`, dueDate: '2026-10-10', updatedAt: NOW_ISO }], pageInfo: { hasNextPage: true, endCursor: String(n + 1) } } },
+        }),
+      });
+    };
+    const c = linear.createClient({ secret: fixture.secret, fetch });
+    await expect(c.listIssues(normalizeQuery({ sort: 'due' }), null)).rejects.toMatchObject({ code: 'PROVIDER' });
+  });
+
+  test('a cursor from another sort is refused rather than read as the first page', async () => {
+    const c = client();
+    const first = await c.listIssues(normalizeQuery({ sort: 'priority', limit: 2 }), null);
+    await expect(c.listIssues(normalizeQuery({ sort: 'due', limit: 2 }), first.next)).rejects.toMatchObject({ code: 'PROVIDER' });
+    await expect(c.listIssues(normalizeQuery({ sort: 'priority', limit: 2 }), 'not json')).rejects.toMatchObject({ code: 'PROVIDER' });
   });
 });
 
