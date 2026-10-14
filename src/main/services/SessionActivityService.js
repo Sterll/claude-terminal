@@ -31,6 +31,8 @@ const CHUNK_BYTES = 1 << 20;
 const MAX_PENDING = 200;
 const MAX_PRS = 50;
 const MAX_EDITS = 500;
+// Sessions whose read position is kept. One left out is read whole again.
+const MAX_SESSIONS = 50;
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const PR_URL_LINE = /^\s*https:\/\/([^/\s]+)\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)\s*$/;
 // "Entered worktree at <path> on branch <branch>. …": the path may hold spaces
@@ -124,7 +126,8 @@ function summarize(activity) {
  * @param {(projectPath: string) => Array<{ dir: string }>} [deps.dirsFor] where the project's transcripts live
  */
 function createSessionActivityService({ dirsFor = listProjectSessionDirs } = {}) {
-  const cache = new Map(); // sessionId → { file, offset, rest, activity }
+  const cache = new Map(); // sessionId → { file, offset, rest, activity }, least recently read first
+  const reading = new Map(); // sessionId → the read in progress, the next one waits for it
 
   async function locate(projectPath, sessionId) {
     for (const { dir } of dirsFor(projectPath)) {
@@ -150,11 +153,27 @@ function createSessionActivityService({ dirsFor = listProjectSessionDirs } = {})
   /**
    * What the session did, or null when it has no transcript yet (a tab the
    * CLI has not named, a session from another machine).
+   *
+   * One read of a session at a time: two at once shared the cached state,
+   * both read from the same offset and both added what they read to it, so
+   * the next read started past the end of what had been read.
    * @param {string} projectPath
    * @param {string} sessionId the CLI session id
    */
-  async function read(projectPath, sessionId) {
-    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId) || typeof projectPath !== 'string') return null;
+  function read(projectPath, sessionId) {
+    if (typeof sessionId !== 'string' || !SESSION_ID.test(sessionId) || typeof projectPath !== 'string') return Promise.resolve(null);
+    const next = (reading.get(sessionId) || Promise.resolve())
+      .catch(() => {})
+      .then(() => readNow(projectPath, sessionId));
+    reading.set(sessionId, next);
+    const settle = () => {
+      if (reading.get(sessionId) === next) reading.delete(sessionId);
+    };
+    next.then(settle, settle);
+    return next;
+  }
+
+  async function readNow(projectPath, sessionId) {
     const fresh = (file) => ({ file, offset: 0, rest: '', decoder: new StringDecoder('utf8'), activity: createActivity() });
     let state = cache.get(sessionId);
     let bytes = state ? await size(state.file) : null;
@@ -193,7 +212,9 @@ function createSessionActivityService({ dirsFor = listProjectSessionDirs } = {})
         await handle.close();
       }
     }
+    cache.delete(sessionId);
     cache.set(sessionId, state);
+    if (cache.size > MAX_SESSIONS) cache.delete(cache.keys().next().value);
     return summarize(state.activity);
   }
 

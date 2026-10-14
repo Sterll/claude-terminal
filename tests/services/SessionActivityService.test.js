@@ -131,6 +131,20 @@ describe('reading the file', () => {
     expect((await service.read('/p', SID)).dirs.map((d) => d.dir)).toEqual([P('/projets/équipe')]);
   });
 
+  test('two reads at once of one session take turns, so no range is read twice or skipped', async () => {
+    const file = path.join(projectDir, `${SID}.jsonl`);
+    fs.writeFileSync(file, line({ cwd: '/a', timestamp: at() }));
+    await service.read('/p', SID);
+    fs.appendFileSync(file, line({ cwd: '/b', timestamp: at() }));
+    const [first, second] = await Promise.all([service.read('/p', SID), service.read('/p', SID)]);
+    expect(first.dirs.map((d) => d.dir).sort()).toEqual([P('/a'), P('/b')]);
+    expect(second.dirs.map((d) => d.dir).sort()).toEqual([P('/a'), P('/b')]);
+    // Both had advanced the offset past /b: the next line, longer than it,
+    // was then read from its middle and lost.
+    fs.appendFileSync(file, line({ cwd: `/c/${'x'.repeat(200)}`, timestamp: at() }));
+    expect((await service.read('/p', SID)).dirs.map((d) => d.dir).sort()).toEqual([P('/a'), P('/b'), P(`/c/${'x'.repeat(200)}`)]);
+  });
+
   test('no transcript, or an id that is not one, reads as nothing', async () => {
     await expect(service.read('/p', SID)).resolves.toBeNull();
     await expect(service.read('/p', '../../etc/passwd')).resolves.toBeNull();
