@@ -115,9 +115,12 @@ const DATA_STALE_AFTER = 10 * 60 * 1000;
 
 function isStale(raw) {
   if (raw.stale) return true;
-  if (!raw.lastFetch) return true;
-  const t = new Date(raw.lastFetch).getTime();
-  if (isNaN(t)) return true;
+  // The newer of the last fetch and the last figures a chat session reported:
+  // while the usage endpoint answers 429, the stream is what keeps them current.
+  const t = Math.max(
+    ...[raw.lastFetch, raw.streamedAt].map(at => (at ? new Date(at).getTime() : NaN)).filter(Number.isFinite)
+  );
+  if (!Number.isFinite(t)) return true;
   return Date.now() - t > DATA_STALE_AFTER;
 }
 
