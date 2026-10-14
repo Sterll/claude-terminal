@@ -10,6 +10,7 @@ const { generateCommitMessage, generateMultiCommitMessages, generateSessionRecap
 const operations = require('../utils/cancellableOperation');
 const { generatePrDescription } = require('../utils/prDescriptionGenerator');
 const GitHubAuthService = require('../services/GitHubAuthService');
+const SessionGitService = require('../services/SessionGitService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 
 // Input validators
@@ -184,6 +185,24 @@ function registerGitHandlers() {
   });
 
   // Get current branch
+  // Everything the chat's Git tab shows about one folder, in one call (SessionGitService).
+  ipcMain.handle('git-session-summary', async (event, { projectPath }) => {
+    try {
+      return await SessionGitService.summary(projectPath);
+    } catch (err) {
+      return { isRepo: false, error: err.message };
+    }
+  });
+
+  // One session's own worktrees and pull requests (SessionGitService.overview).
+  ipcMain.handle('git-session-overview', async (event, { projectPath, sessionId }) => {
+    try {
+      return await SessionGitService.overview({ projectPath, sessionId });
+    } catch (err) {
+      return { isRepo: false, error: err.message };
+    }
+  });
+
   ipcMain.handle('git-current-branch', async (event, { projectPath }) => {
     try {
       return await getCurrentBranch(projectPath);

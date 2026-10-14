@@ -35,6 +35,7 @@ const { ensureBgTaskSubscription, ensureWakeupTicker } = require('./chat/liveCar
 const { extractResultText, parseResultJson, parseCreatedTaskId } = require('./chat/resultParsing');
 const { createContextSuggestions } = require('./chat/contextSuggestions');
 const { createFollowupChips } = require('./chat/followupChips');
+const { createGitTab, ciStatusText } = require('./chat/gitTab');
 const { createElapsedTimer } = require('./chat/elapsedTimer');
 const { createLightbox } = require('./chat/lightbox');
 const { attachExportMenu } = require('./chat/exportConversation');
@@ -267,6 +268,11 @@ class ChatView extends BaseComponent {
           <span class="chat-tab-label">${escapeHtml(t('chat.tabChanges') || 'Changes')}</span>
           <span class="chat-tab-badge" data-badge="changes" hidden>0</span>
         </button>
+        <button class="chat-tab" data-tab="git" hidden>
+          <span class="chat-tab-label">${escapeHtml(t('chat.tabGit') || 'Git')}</span>
+          <span class="chat-tab-ci" role="img" hidden></span>
+          <span class="chat-tab-badge attention" data-badge="git" hidden>0</span>
+        </button>
         <button class="chat-tab" data-tab="artifacts">
           <span class="chat-tab-label">${escapeHtml(t('chat.tabDocuments') || 'Documents')}</span>
           <span class="chat-tab-badge" data-badge="artifacts" hidden>0</span>
@@ -310,6 +316,7 @@ class ChatView extends BaseComponent {
         </aside>
       </div>
       <div class="chat-changes-panel" hidden></div>
+      <div class="session-git-panel" hidden></div>
       <!-- Documents is itself a two-column screen: the list of what this
            conversation produced on the left, the preview of the selected one on
            the right. Both live inside the tab, so leaving the tab takes the
@@ -424,6 +431,63 @@ class ChatView extends BaseComponent {
   const artifactHeadEl = chatView.querySelector('.chat-artifact-head');
   const artifactBodyEl = chatView.querySelector('.chat-artifact-body');
   const changesBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="changes"]');
+  const gitPanelEl = chatView.querySelector('.session-git-panel');
+  const gitTabBtn = chatView.querySelector('.chat-tab[data-tab="git"]');
+  const gitTabCiEl = gitTabBtn.querySelector('.chat-tab-ci');
+  const gitTabAttentionEl = gitTabBtn.querySelector('.chat-tab-badge[data-badge="git"]');
+  // Where the session's branch stands (chat/gitTab.js). The tab appears once
+  // the folder turns out to be a repository; a cloud project has no local one.
+  // With the CLI's session id it reads the session's transcript and shows the
+  // worktrees it actually used; a resumed tab has that id from the start.
+  // Its pull requests' checks are the session's CI: a dot on the tab button
+  // says where they stand without opening it, and a count beside it how many
+  // of its pull requests and branches need the user.
+  const gitTab = createGitTab({
+    api,
+    panelEl: gitPanelEl,
+    getCwd: () => project.path,
+    getSessionId: () => sdkSessionId || (resumeSessionId && !forkSession ? resumeSessionId : null),
+    sessionStartedAt: recapSessionStartTime,
+    onAvailable: () => {
+      gitTabBtn.hidden = false;
+      tabbarEl.hidden = false;
+    },
+    openGitScreen: () => document.querySelector('.nav-tab[data-tab="git"]')?.click(),
+    openSettings: (tab) => document.dispatchEvent(new CustomEvent('ct-open-settings', { detail: { tab } })),
+    showToast: (opts) => require('./Toast').showToast(opts),
+    onCiStatus: (ci) => {
+      gitTabCiEl.hidden = !ci;
+      gitTabCiEl.className = `chat-tab-ci${ci ? ` ${ci.state}` : ''}`;
+      const text = ciStatusText(ci);
+      gitTabCiEl.setAttribute('aria-label', text);
+      gitTabBtn.title = text;
+    },
+    onAttention: (count) => {
+      gitTabAttentionEl.hidden = !count;
+      gitTabAttentionEl.textContent = String(count);
+      gitTabAttentionEl.title = t('chat.git.attention', { count });
+    },
+    isOnScreen: () => gitTabBtn.offsetParent !== null,
+    // A failed check's log, as a draft in this conversation: the session that
+    // wrote the code is the one with the context to fix it.
+    fillComposer: (text) => {
+      switchChatTab('conversation');
+      if (inputAdapter.isEmpty()) {
+        setInputText(text);
+      } else {
+        // After what is already there: setInputText would rewrite it as plain
+        // text and drop its @mention chips.
+        inputEl.appendChild(document.createTextNode(`\n\n${text}`));
+        updatePlaceholderVisibility();
+        placeCaretAtEnd();
+        autoResize();
+      }
+      inputEl.focus();
+    },
+  });
+  // Not read until the chat is first on screen: tabs restored in the
+  // background do not each read a transcript, git and GitHub at startup.
+  if (!project.isCloud) gitTab.probeWhenOnScreen(chatView);
   const artifactsBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="artifacts"]');
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
@@ -4736,7 +4800,10 @@ class ChatView extends BaseComponent {
     });
     messagesEl.hidden = tab !== 'conversation';
     changesPanelEl.hidden = tab !== 'changes';
+    gitPanelEl.hidden = tab !== 'git';
     artifactsPanelEl.hidden = tab !== 'artifacts';
+    if (tab === 'git') gitTab.show();
+    else gitTab.hide();
     if (tab === 'changes') renderChangesPanel();
     if (tab === 'artifacts') renderArtifactsPanel();
   }
@@ -7328,6 +7395,8 @@ class ChatView extends BaseComponent {
   }
 
   function processToolResultBlock(block) {
+    // Any tool may have committed, pushed or edited: the Git tab re-reads soon.
+    gitTab.markStale();
     // Artifact publish — the result is where the claude.ai URL comes from.
     // Runs before the early returns below so it is never skipped.
     if (block.tool_use_id && pendingPublishes.has(block.tool_use_id)) {
@@ -7505,6 +7574,8 @@ class ChatView extends BaseComponent {
     // Capture real SDK session UUID (needed for fork/resume)
     if (msg.session_id && msg.session_id !== sdkSessionId) {
       sdkSessionId = msg.session_id;
+      // Its transcript now has a name: the Git tab can say where it worked.
+      gitTab.markStale();
       // The CLI's id is what a restored tab resumes on, so it has to name this
       // tab's task history too — that is the link the next run reads.
       taskOwnerKey = tasksStore.claimSession(taskOwnerKey || msg.session_id, msg.session_id);
@@ -9021,6 +9092,7 @@ class ChatView extends BaseComponent {
       // Persist whatever the debounce was still holding, before the view goes.
       artifactRegistry.flush();
       transcriptPruner?.destroy();
+      gitTab.destroy();
       scrollResizeObserver?.disconnect();
       scrollChildrenObserver.disconnect();
       contextSuggestions.reset();

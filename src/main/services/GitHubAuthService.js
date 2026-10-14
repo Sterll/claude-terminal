@@ -135,7 +135,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
           if (cacheKey && res.headers.etag) {
             etagCache.set(cacheKey, { etag: res.headers.etag, data: parsed });
           }
-          resolve({ status: res.statusCode, data: parsed });
+          resolve({ status: res.statusCode, data: parsed, sso: res.headers['x-github-sso'] || null });
         } catch (e) {
           // Parse as form-urlencoded if JSON fails
           const parsed = {};
@@ -143,7 +143,7 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
             const [key, value] = pair.split('=');
             parsed[decodeURIComponent(key)] = decodeURIComponent(value || '');
           });
-          resolve({ status: res.statusCode, data: parsed });
+          resolve({ status: res.statusCode, data: parsed, sso: res.headers['x-github-sso'] || null });
         }
       });
     });
@@ -481,6 +481,152 @@ async function getPullRequests(owner, repo, perPage = 5, page = 1, state = 'all'
 }
 
 /**
+ * What GitHub says when an organization enforces SAML SSO and this token was
+ * never authorized for it: a 403 whose X-GitHub-SSO header is
+ * `required; url=<page that authorizes it>`. Read so the caller can offer that
+ * page instead of taking the 403 for "nothing there".
+ * @param {string|null} header
+ * @returns {{ url: string, org: string|null }|null}
+ */
+function ssoRequirement(header) {
+  const m = /^required;\s*url=(\S+)/i.exec(String(header || ''));
+  if (!m) return null;
+  try {
+    const url = new URL(m[1]);
+    if (url.protocol !== 'https:' || url.host.toLowerCase() !== config.webHostname.toLowerCase()) return null;
+    return { url: url.toString(), org: url.pathname.match(/^\/orgs\/([^/]+)\/sso/)?.[1] || null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A pull request's labels. The colour reaches the renderer's markup, so only
+ * what GitHub stores (six hex digits) is kept; anything else is dropped, and
+ * the label is drawn without a colour.
+ */
+function labelsOf(pr) {
+  return (pr.labels || [])
+    .filter((label) => typeof label?.name === 'string' && label.name)
+    .map((label) => ({ name: label.name, color: /^[0-9a-f]{6}$/i.test(label.color || '') ? label.color.toLowerCase() : null }));
+}
+
+/** Who a pull request still waits on for a review: users by login, teams by name. */
+function requestedReviewersOf(pr) {
+  return [
+    ...(pr.requested_reviewers || []).map((user) => user?.login),
+    ...(pr.requested_teams || []).map((team) => team?.name || team?.slug),
+  ].filter(Boolean);
+}
+
+/**
+ * The pull requests whose head is `headOwner:branch`, newest first. The head
+ * owner matters: a branch pushed to a fork and proposed upstream lives under
+ * the fork's owner, not the repository's.
+ * @returns {Promise<{authenticated: boolean, pullRequests: Array, error?: string}>}
+ */
+async function getPullRequestsForBranch(owner, repo, headOwner, branch) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, pullRequests: [] };
+
+  try {
+    const head = encodeURIComponent(`${headOwner}:${branch}`);
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/pulls?head=${head}&state=all&per_page=5&sort=updated&direction=desc`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `pulls-head:${owner}/${repo}/${headOwner}:${branch}`
+    });
+
+    if (response.status === 200) {
+      const pullRequests = (response.data || []).map(pr => ({
+        number: pr.number,
+        title: pr.title,
+        state: pr.merged_at ? 'merged' : pr.state,
+        draft: pr.draft || false,
+        url: pr.html_url,
+        headSha: pr.head?.sha || null,
+        headRef: pr.head?.ref || null,
+        baseRef: pr.base?.ref || null,
+        requestedReviewers: requestedReviewersOf(pr),
+        labels: labelsOf(pr),
+        mergedAt: pr.merged_at || null,
+        updatedAt: pr.updated_at
+      }));
+      return { authenticated: true, pullRequests };
+    }
+    if (response.status === 404) return { authenticated: true, pullRequests: [], notFound: true };
+    const sso = response.status === 403 ? ssoRequirement(response.sso) : null;
+    if (sso) return { authenticated: true, pullRequests: [], ssoRequired: sso };
+    return { authenticated: true, pullRequests: [], error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching pull requests for a branch:', e);
+    return { authenticated: true, pullRequests: [], error: e.message };
+  }
+}
+
+/**
+ * One pull request by number: what the Git tab needs for a pull request a
+ * session created, whose branch may live in a worktree since removed.
+ *
+ * Only this endpoint carries `mergeable_state` (the list does not): `dirty`
+ * for conflicts, `behind` when branch protection wants the base merged in
+ * first, `blocked` by required reviews or checks, `clean` when it can merge.
+ * GitHub computes it in the background and answers `unknown` until then.
+ * @returns {Promise<{ authenticated: boolean, pullRequest?: object|null, notFound?: boolean, ssoRequired?: object, error?: string }>}
+ */
+async function getPullRequest(owner, repo, number) {
+  const token = await getToken();
+  if (!token) return { authenticated: false };
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${Number(number)}`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `pull:${owner}/${repo}#${Number(number)}`
+    });
+    if (response.status === 200) {
+      const pr = response.data || {};
+      return {
+        authenticated: true,
+        pullRequest: {
+          number: pr.number,
+          title: pr.title,
+          state: pr.merged_at ? 'merged' : pr.state,
+          draft: pr.draft || false,
+          url: pr.html_url,
+          headSha: pr.head?.sha || null,
+          headRef: pr.head?.ref || null,
+          baseRef: pr.base?.ref || null,
+          mergeableState: pr.mergeable_state || null,
+          requestedReviewers: requestedReviewersOf(pr),
+          labels: labelsOf(pr),
+          mergedAt: pr.merged_at || null,
+          updatedAt: pr.updated_at
+        }
+      };
+    }
+    if (response.status === 404) return { authenticated: true, pullRequest: null, notFound: true };
+    const sso = response.status === 403 ? ssoRequirement(response.sso) : null;
+    if (sso) return { authenticated: true, pullRequest: null, ssoRequired: sso };
+    return { authenticated: true, pullRequest: null, error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching a pull request:', e);
+    return { authenticated: true, pullRequest: null, error: e.message };
+  }
+}
+
+/**
  * Create a pull request
  * @param {string} owner - Repository owner
  * @param {string} repo - Repository name
@@ -577,6 +723,53 @@ async function getWorkflowJobs(owner, repo, runId) {
 }
 
 /**
+ * One workflow job and its steps. A check run GitHub Actions reports has the
+ * job's id, so a running check's progress is read from here.
+ */
+async function getWorkflowJob(owner, repo, jobId) {
+  const token = await getToken();
+  if (!token) return { authenticated: false, job: null };
+
+  try {
+    const response = await httpsRequest({
+      hostname: config.apiHostname,
+      path: `/repos/${owner}/${repo}/actions/jobs/${jobId}`,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'Claude-Terminal'
+      },
+      etagKey: `workflow-job:${owner}/${repo}/${jobId}`
+    });
+
+    if (response.status === 200) {
+      const job = response.data;
+      return {
+        authenticated: true,
+        job: {
+          id: job.id,
+          name: job.name,
+          status: job.status,
+          conclusion: job.conclusion,
+          steps: (job.steps || []).map(step => ({
+            number: step.number,
+            name: step.name,
+            status: step.status,
+            conclusion: step.conclusion
+          }))
+        }
+      };
+    }
+
+    return { authenticated: true, job: null, error: `API error: ${response.status}` };
+  } catch (e) {
+    console.error('Error fetching workflow job:', e);
+    return { authenticated: true, job: null, error: e.message };
+  }
+}
+
+/**
  * Get logs for a specific job (follows 302 redirect to S3)
  */
 async function getJobLogs(owner, repo, jobId) {
@@ -621,7 +814,8 @@ async function getCheckRuns(owner, repo, ref) {
   try {
     const response = await httpsRequest({
       hostname: config.apiHostname,
-      path: `/repos/${owner}/${repo}/commits/${ref}/check-runs`,
+      // GitHub's default page is 30: a matrix build runs past that.
+      path: `/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=100`,
       method: 'GET',
       headers: {
         'Accept': 'application/vnd.github.v3+json',
@@ -639,7 +833,9 @@ async function getCheckRuns(owner, repo, ref) {
         conclusion: cr.conclusion,
         startedAt: cr.started_at,
         completedAt: cr.completed_at,
-        url: cr.html_url
+        url: cr.html_url,
+        // 'github-actions' for a workflow job, whose check run id is its job id
+        app: cr.app?.slug || null
       }));
       return { authenticated: true, checkRuns, total: response.data.total_count };
     }
@@ -808,40 +1004,54 @@ async function closeIssue(owner, repo, issueNumber) {
   }
 }
 
+const REVIEWS_PER_PAGE = 100;
+const MAX_REVIEW_PAGES = 10;
+
 /**
- * Get reviews for a pull request
+ * Get reviews for a pull request, oldest first.
+ *
+ * Every page, not the first: GitHub lists reviews oldest first, so a pull
+ * request reviewed more than a page's worth of times would otherwise read
+ * each reviewer's decision from before the latest round. A page holding
+ * fewer than asked is the last one.
  */
 async function getPullRequestReviews(owner, repo, pullNumber) {
   const token = await getToken();
   if (!token) return { authenticated: false, reviews: [] };
 
   try {
-    const response = await httpsRequest({
-      hostname: config.apiHostname,
-      path: `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`,
-      method: 'GET',
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': 'Claude-Terminal'
-      },
-      etagKey: `pr-reviews:${owner}/${repo}/${pullNumber}`
-    });
+    const reviews = [];
+    for (let page = 1; page <= MAX_REVIEW_PAGES; page++) {
+      const response = await httpsRequest({
+        hostname: config.apiHostname,
+        path: `/repos/${owner}/${repo}/pulls/${pullNumber}/reviews?per_page=${REVIEWS_PER_PAGE}&page=${page}`,
+        method: 'GET',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `Bearer ${token}`,
+          'User-Agent': 'Claude-Terminal'
+        },
+        etagKey: `pr-reviews:${owner}/${repo}/${pullNumber}:${page}`
+      });
 
-    if (response.status === 200) {
-      const reviews = (response.data || []).map(r => ({
-        id: r.id,
-        user: r.user?.login,
-        avatarUrl: r.user?.avatar_url,
-        state: r.state,
-        body: r.body,
-        submittedAt: r.submitted_at,
-        htmlUrl: r.html_url
-      }));
-      return { authenticated: true, reviews };
+      if (response.status !== 200) {
+        return { authenticated: true, reviews: [], error: `API error: ${response.status}` };
+      }
+      const batch = Array.isArray(response.data) ? response.data : [];
+      for (const r of batch) {
+        reviews.push({
+          id: r.id,
+          user: r.user?.login,
+          avatarUrl: r.user?.avatar_url,
+          state: r.state,
+          body: r.body,
+          submittedAt: r.submitted_at,
+          htmlUrl: r.html_url
+        });
+      }
+      if (batch.length < REVIEWS_PER_PAGE) break;
     }
-
-    return { authenticated: true, reviews: [], error: `API error: ${response.status}` };
+    return { authenticated: true, reviews };
   } catch (e) {
     console.error('Error fetching PR reviews:', e);
     return { authenticated: true, reviews: [], error: e.message };
@@ -1064,8 +1274,13 @@ module.exports = {
   getTokenForGit,
   getWorkflowRuns,
   getWorkflowJobs,
+  getWorkflowJob,
   getJobLogs,
   getPullRequests,
+  getPullRequestsForBranch,
+  getPullRequest,
+  ssoRequirement,
+  labelsOf,
   createPullRequest,
   parseGitHubRemote,
   getCheckRuns,

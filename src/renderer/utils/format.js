@@ -120,8 +120,33 @@ function redactUrlCredentials(url) {
   return url.replace(/^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/@]*@/, '$1');
 }
 
+/**
+ * "il y a 3 h", "hier", "in 2 days": a relative time in the given language,
+ * short style. Unlike formatRelativeTime above, which only speaks English.
+ * @param {string|number|Date} date
+ * @param {{ now?: number, language?: string }} [opts]
+ * @returns {string} empty for an unreadable date
+ */
+function formatRelativeTimeIntl(date, { now = Date.now(), language = 'en' } = {}) {
+  const ms = new Date(date).getTime();
+  if (!Number.isFinite(ms)) return '';
+  const diff = (ms - now) / 1000;
+  const units = [['year', 31_536_000], ['month', 2_592_000], ['week', 604_800], ['day', 86_400], ['hour', 3_600], ['minute', 60]];
+  let rtf;
+  try {
+    rtf = new Intl.RelativeTimeFormat(language || 'en', { numeric: 'auto', style: 'short' });
+  } catch {
+    rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto', style: 'short' });
+  }
+  for (const [unit, seconds] of units) {
+    if (Math.abs(diff) >= seconds) return rtf.format(Math.round(diff / seconds), unit);
+  }
+  return rtf.format(0, 'second');
+}
+
 module.exports = {
   formatRelativeTime,
+  formatRelativeTimeIntl,
   formatDuration,
   formatDurationLarge,
   capitalize,

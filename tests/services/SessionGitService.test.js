@@ -1,0 +1,300 @@
+/**
+ * The chat's Git tab, against real repositories: an upstream, a fork that is
+ * ahead of it, and a feature branch pushed to the fork - the shape this repo is
+ * developed in. GitHub is the only thing faked.
+ *
+ * The case that matters most is the base: a branch that tracks the fork is
+ * measured against the fork's main. Measured against origin/main (upstream) it
+ * would list every commit the fork has that upstream does not.
+ */
+
+'use strict';
+
+jest.mock('../../src/main/services/GitHubAuthService', () => ({
+  parseGitHubRemote: (url) => {
+    const m = /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/.exec(url || '');
+    return m ? { owner: m[1], repo: m[2] } : null;
+  },
+  getPullRequestsForBranch: jest.fn(),
+  getPullRequest: jest.fn(),
+  getCheckRuns: jest.fn(),
+  getWorkflowJob: jest.fn(),
+  getPullRequestReviews: jest.fn(),
+}));
+
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+const github = require('../../src/main/services/GitHubAuthService');
+const { summary, _internals } = require('../../src/main/services/SessionGitService');
+
+const ENV = {
+  ...process.env,
+  GIT_AUTHOR_NAME: 'Ada', GIT_AUTHOR_EMAIL: 'ada@example.com',
+  GIT_COMMITTER_NAME: 'Ada', GIT_COMMITTER_EMAIL: 'ada@example.com',
+};
+const git = (cwd, ...args) => execFileSync('git', args, { cwd, env: ENV, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+const commit = (cwd, file, msg) => {
+  fs.writeFileSync(path.join(cwd, file), `${msg}\n`);
+  git(cwd, 'add', file);
+  git(cwd, 'commit', '-q', '-m', msg);
+};
+
+let dir;
+let work;
+
+beforeAll(() => {
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-session-git-'));
+  const seed = path.join(dir, 'seed');
+  git(dir, 'init', '-q', '-b', 'main', seed);
+  commit(seed, 'a.txt', 'A on main');
+  git(dir, 'init', '-q', '--bare', '-b', 'main', path.join(dir, 'upstream.git'));
+  git(dir, 'init', '-q', '--bare', '-b', 'main', path.join(dir, 'fork.git'));
+  git(seed, 'push', '-q', path.join(dir, 'upstream.git'), 'main');
+  commit(seed, 'b.txt', 'B only on the fork');
+  git(seed, 'push', '-q', path.join(dir, 'fork.git'), 'main');
+
+  work = path.join(dir, 'work');
+  git(dir, 'clone', '-q', '-o', 'fork', path.join(dir, 'fork.git'), work);
+  git(work, 'remote', 'add', 'origin', path.join(dir, 'upstream.git'));
+  git(work, 'fetch', '-q', 'origin');
+  git(work, 'checkout', '-q', '-b', 'feat/x', 'fork/main');
+  commit(work, 'c.txt', 'C on the branch');
+  commit(work, 'd.txt', 'D on the branch');
+  git(work, 'push', '-q', '-u', 'fork', 'feat/x');
+  commit(work, 'e.txt', 'E not pushed yet');
+  fs.writeFileSync(path.join(work, 'a.txt'), 'changed\n');
+  fs.writeFileSync(path.join(work, 'new.txt'), 'untracked\n');
+  fs.writeFileSync(path.join(work, 'c.txt'), 'staged\n');
+  git(work, 'add', 'c.txt');
+  // Remote URLs as GitHub would have them; nothing fetches from here on.
+  git(work, 'remote', 'set-url', 'fork', 'https://github.com/bleleve/claude-terminal.git');
+  git(work, 'remote', 'set-url', 'origin', 'git@github.com:Sterll/claude-terminal.git');
+});
+
+afterAll(() => {
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 5 });
+});
+
+beforeEach(() => {
+  github.getPullRequestsForBranch.mockReset().mockResolvedValue({ authenticated: true, pullRequests: [] });
+  github.getPullRequest.mockReset().mockResolvedValue({ authenticated: true, pullRequest: null, notFound: true });
+  github.getCheckRuns.mockReset().mockResolvedValue({ checkRuns: [] });
+  github.getWorkflowJob.mockReset().mockResolvedValue({ authenticated: true, job: null });
+  github.getPullRequestReviews.mockReset().mockResolvedValue({ reviews: [] });
+});
+
+test('a folder that is not a repository says so', async () => {
+  await expect(summary(dir)).resolves.toEqual({ isRepo: false });
+  await expect(summary('')).resolves.toEqual({ isRepo: false });
+});
+
+test('a branch tracking the fork is measured against the fork\'s main', async () => {
+  const s = await summary(work, { withPullRequest: false });
+  expect(s).toMatchObject({
+    isRepo: true,
+    branch: 'feat/x',
+    detached: false,
+    worktree: false,
+    upstream: 'fork/feat/x',
+    remote: 'fork',
+    ahead: 1,
+    behind: 0,
+    base: 'fork/main',
+    onBase: false,
+  });
+  expect(s.commits.map((c) => c.subject)).toEqual(['E not pushed yet', 'D on the branch', 'C on the branch']);
+  expect(s.commits[0]).toMatchObject({ author: 'Ada', short: expect.stringMatching(/^[0-9a-f]{7,}$/) });
+});
+
+test('uncommitted work is counted by kind', async () => {
+  const s = await summary(work, { withPullRequest: false });
+  expect(s.dirty).toEqual({ staged: 1, unstaged: 1, untracked: 1, conflicts: 0 });
+});
+
+test('the pull request is looked up on the fork, under the fork\'s owner', async () => {
+  github.getPullRequestsForBranch.mockImplementation(async (owner) => ({
+    authenticated: true,
+    pullRequests: owner === 'bleleve'
+      ? [{ number: 57, title: 'ENG-142: session tab', state: 'open', draft: false, url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: 'abc123', labels: [{ name: 'enhancement', color: 'a2eeef' }] }]
+      : [],
+  }));
+  github.getCheckRuns.mockResolvedValue({ checkRuns: [
+    { name: 'lint', status: 'completed', conclusion: 'success' },
+    { name: 'test', status: 'completed', conclusion: 'failure', url: 'https://ci/test' },
+    { name: 'e2e', status: 'in_progress', conclusion: null },
+    { name: 'docs', status: 'completed', conclusion: 'skipped' },
+  ] });
+  github.getPullRequestReviews.mockResolvedValue({ reviews: [
+    { user: 'yanis', state: 'CHANGES_REQUESTED' },
+    { user: 'yanis', state: 'APPROVED' },
+    { user: 'yanis', state: 'COMMENTED' },
+    { user: 'grace', state: 'COMMENTED' },
+  ] });
+
+  // Only the pull request itself says whether it can merge, and who is still asked to review.
+  github.getPullRequest.mockResolvedValue({ authenticated: true, pullRequest: { number: 57, mergeableState: 'blocked', requestedReviewers: ['grace'] } });
+
+  const s = await summary(work);
+  expect(github.getPullRequestsForBranch).toHaveBeenCalledWith('bleleve', 'claude-terminal', 'bleleve', 'feat/x');
+  expect(github.getCheckRuns).toHaveBeenCalledWith('bleleve', 'claude-terminal', 'abc123');
+  expect(github.getPullRequest).toHaveBeenCalledWith('bleleve', 'claude-terminal', 57);
+  expect(s.pr.authenticated).toBe(true);
+  expect(s.pr.pullRequest).toMatchObject({
+    number: 57,
+    repo: 'bleleve/claude-terminal',
+    mergeableState: 'blocked',
+    requestedReviewers: ['grace'],
+    labels: [{ name: 'enhancement', color: 'a2eeef' }],
+    checks: { total: 4, success: 1, failure: 1, pending: 1, skipped: 1, failing: [{ name: 'test', url: 'https://ci/test' }] },
+    reviews: { approved: 1, changesRequested: 0 },
+  });
+  expect(s.pr.pullRequest.reviews.decisions).toEqual([{ user: 'yanis', state: 'APPROVED' }, { user: 'grace', state: 'COMMENTED' }]);
+});
+
+test('without a pull request, it offers the compare page on the fork', async () => {
+  const s = await summary(work);
+  expect(github.getPullRequestsForBranch).toHaveBeenCalledTimes(2); // the fork, then origin
+  expect(s.pr).toEqual({
+    authenticated: true,
+    pullRequest: null,
+    createUrl: 'https://github.com/bleleve/claude-terminal/compare/main...feat%2Fx?expand=1',
+  });
+});
+
+test('an organization behind SAML SSO is named, with the page that authorizes the token', async () => {
+  const sso = { url: 'https://github.com/orgs/Sterll/sso?authorization_request=a1', org: 'Sterll' };
+  github.getPullRequestsForBranch.mockImplementation(async (owner) => (owner === 'Sterll'
+    ? { authenticated: true, pullRequests: [], ssoRequired: sso }
+    : { authenticated: true, pullRequests: [] }));
+  const s = await summary(work);
+  expect(s.pr).toMatchObject({ authenticated: true, pullRequest: null, ssoRequired: { ...sso, repo: 'Sterll/claude-terminal' } });
+});
+
+test('a repository GitHub hides, or a failed lookup, is said rather than read as "no pull request"', async () => {
+  github.getPullRequestsForBranch.mockResolvedValueOnce({ authenticated: true, pullRequests: [], notFound: true });
+  expect((await summary(work)).pr).toMatchObject({ pullRequest: null, unreachable: 'bleleve/claude-terminal' });
+  github.getPullRequestsForBranch.mockReset().mockResolvedValue({ authenticated: true, pullRequests: [], error: 'API error: 502' });
+  expect((await summary(work)).pr).toMatchObject({ pullRequest: null, error: 'API error: 502', repo: 'bleleve/claude-terminal' });
+});
+
+test('a pull request found on one repository wins over another that could not be searched', async () => {
+  github.getPullRequestsForBranch.mockImplementation(async (owner) => (owner === 'bleleve'
+    ? { authenticated: true, pullRequests: [{ number: 57, title: 'x', state: 'merged', url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: null }] }
+    : { authenticated: true, pullRequests: [], ssoRequired: { url: 'https://github.com/orgs/Sterll/sso', org: 'Sterll' } }));
+  const s = await summary(work);
+  expect(s.pr.pullRequest).toMatchObject({ number: 57, state: 'merged', mergeableState: null });
+  expect(s.pr.ssoRequired).toBeUndefined();
+  expect(github.getPullRequest).not.toHaveBeenCalled(); // merged: nothing left to merge
+});
+
+test('without a GitHub login, it says so instead of guessing', async () => {
+  github.getPullRequestsForBranch.mockResolvedValue({ authenticated: false, pullRequests: [] });
+  const s = await summary(work);
+  expect(s.pr).toMatchObject({ authenticated: false });
+});
+
+test('on the base branch: recent commits, no pull request lookup', async () => {
+  const main = path.join(dir, 'main-wt');
+  git(work, 'worktree', 'add', '-q', main, 'main');
+  const s = await summary(main);
+  expect(s).toMatchObject({ branch: 'main', onBase: true, worktree: true, pr: null });
+  expect(s.commits.map((c) => c.subject)).toEqual(['B only on the fork', 'A on main']);
+  expect(github.getPullRequestsForBranch).not.toHaveBeenCalled();
+});
+
+test('a detached HEAD has no branch and no upstream', async () => {
+  const detached = path.join(dir, 'detached-wt');
+  git(work, 'worktree', 'add', '-q', '--detach', detached, 'HEAD~1');
+  const s = await summary(detached);
+  expect(s).toMatchObject({ detached: true, branch: null, upstream: null, ahead: 0, behind: 0 });
+});
+
+test('a running Actions job says which step it is on; its failures carry the job for the log', async () => {
+  github.getPullRequestsForBranch.mockResolvedValue({
+    authenticated: true,
+    pullRequests: [{ number: 57, title: 'x', state: 'open', draft: false, url: 'https://github.com/bleleve/claude-terminal/pull/57', headSha: 'abc123' }],
+  });
+  github.getCheckRuns.mockResolvedValue({ checkRuns: [
+    { id: 11, name: 'e2e', status: 'in_progress', conclusion: null, app: 'github-actions', url: 'https://ci/e2e' },
+    { id: 12, name: 'lint', status: 'queued', conclusion: null, app: 'github-actions', url: 'https://ci/lint' },
+    { id: 13, name: 'deploy-preview', status: 'in_progress', conclusion: null, app: 'vercel', url: 'https://vercel' },
+    { id: 14, name: 'test', status: 'completed', conclusion: 'failure', app: 'github-actions', url: 'https://ci/test' },
+    { id: 15, name: 'codecov', status: 'completed', conclusion: 'failure', app: 'codecov', url: 'https://codecov' },
+  ] });
+  github.getWorkflowJob.mockImplementation(async (owner, repo, id) => ({
+    authenticated: true,
+    job: id === 11
+      ? { id, steps: [
+        { number: 1, name: 'Set up job', status: 'completed', conclusion: 'success' },
+        { number: 2, name: 'Run smoke', status: 'in_progress', conclusion: null },
+        { number: 3, name: 'Post', status: 'queued', conclusion: null },
+      ] }
+      : { id, steps: [] }, // queued: no steps yet
+  }));
+
+  const s = await summary(work);
+  const { checks } = s.pr.pullRequest;
+  expect(github.getWorkflowJob.mock.calls.map((c) => c[2]).sort()).toEqual([11, 12]); // never another app's check
+  expect(checks.running).toEqual([
+    { name: 'e2e', url: 'https://ci/e2e', jobId: 11, step: { number: 2, total: 3, name: 'Run smoke' } },
+    { name: 'lint', url: 'https://ci/lint', jobId: 12, step: null },
+    { name: 'deploy-preview', url: 'https://vercel', jobId: null, step: null },
+  ]);
+  expect(checks.failing).toEqual([
+    { name: 'test', url: 'https://ci/test', jobId: 14 },
+    { name: 'codecov', url: 'https://codecov', jobId: null },
+  ]);
+});
+
+test('step progress is read for a few jobs only: a matrix can run dozens', async () => {
+  const runs = Array.from({ length: 10 }, (_, i) => ({ id: 100 + i, name: `test (${i})`, status: 'in_progress', app: 'github-actions' }));
+  const checks = await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs));
+  expect(github.getWorkflowJob).toHaveBeenCalledTimes(4);
+  expect(checks.running).toHaveLength(10);
+});
+
+test('the few are shared by every pull request of one read', async () => {
+  const runs = (from) => Array.from({ length: 3 }, (_, i) => ({ id: from + i, name: `test (${i})`, status: 'in_progress', app: 'github-actions' }));
+  const budget = { jobs: 4 };
+  await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs(100)), budget);
+  await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs(200)), budget);
+  await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs(300)), budget);
+  expect(github.getWorkflowJob.mock.calls.map((c) => c[2])).toEqual([100, 101, 102, 200]);
+});
+
+describe('helpers', () => {
+  test('remote hosts from https and ssh URLs', () => {
+    expect(_internals.remoteHost('https://github.example.com/a/b.git')).toBe('github.example.com');
+    expect(_internals.remoteHost('git@github.com:a/b.git')).toBe('github.com');
+    expect(_internals.remoteHost('/local/path')).toBeNull();
+  });
+
+  test('a plain comment does not override a reviewer\'s decision', () => {
+    expect(_internals.summarizeReviews([{ user: 'a', state: 'APPROVED' }, { user: 'a', state: 'COMMENTED' }]).approved).toBe(1);
+  });
+
+  test('a request for changes keeps what the reviewer wrote, for the prompt that addresses it', () => {
+    const r = _internals.summarizeReviews([
+      { user: 'a', state: 'CHANGES_REQUESTED', body: 'Rename the helper.', htmlUrl: 'https://github.com/o/r/pull/1#pullrequestreview-9' },
+      { user: 'a', state: 'COMMENTED', body: 'nit' },
+      { user: 'b', state: 'APPROVED', body: 'LGTM' },
+    ]);
+    expect(r).toMatchObject({ approved: 1, changesRequested: 1 });
+    expect(r.decisions).toEqual([
+      { user: 'a', state: 'CHANGES_REQUESTED', body: 'Rename the helper.', url: 'https://github.com/o/r/pull/1#pullrequestreview-9' },
+      { user: 'b', state: 'APPROVED' },
+    ]);
+  });
+});
+
+test('a branch not published yet is measured against the closest base, not origin by default', async () => {
+  const wt = path.join(dir, 'unpublished-wt');
+  git(work, 'worktree', 'add', '-q', '--no-track', '-b', 'ada/eng-151', wt, 'fork/main');
+  commit(wt, 'f.txt', 'F on an unpublished branch');
+  const s = await summary(wt, { withPullRequest: false });
+  expect(s.upstream).toBeNull();
+  expect(s.base).toBe('fork/main');
+  expect(s.commits.map((c) => c.subject)).toEqual(['F on an unpublished branch']);
+});

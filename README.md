@@ -269,7 +269,7 @@ npm install
 - OAuth Device Flow authentication (secure, no token copy-paste)
 - **GitHub Enterprise support**: connect to self-hosted GitHub Enterprise instances
 - **Repository search in clone wizard**: search GitHub repos by name without leaving the app
-- **CI/CD status pill**: live inline status of the latest workflow run shown directly in the terminal header bar, with a Fix-it button to jump straight to a failing step
+- **Session CI**: each chat session's Git tab follows the checks of its own pull requests, with the step each running job is on and a dot on the tab button. Fix it puts a failed job's log in that session's composer
 - View CI/CD workflow runs per repository
 - View, create, and review pull requests from the app; multi-forge support (GitHub, GitLab)
 - Token stored securely via keytar (Windows Credential Manager, macOS Keychain, Linux libsecret)

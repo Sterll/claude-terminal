@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 270 test files)
+npm test                 # Run Jest tests (jsdom, 276 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -86,8 +86,8 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 38 IPC files, 350 handlers total
-├── src/main/services/               # 38 services
+├── src/main/ipc/                    # 38 IPC files, 352 handlers total
+├── src/main/services/               # 40 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 30 utilities
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
@@ -105,7 +105,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4081 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4174 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade)
 
 Project Types (Plugin System)
@@ -134,7 +134,7 @@ Remote UI (PWA for mobile)
 | File | Handlers | Key Operations |
 |------|---------:|----------------|
 | `terminal.ipc.js` | 5 | Create PTY (node-pty), input, resize, kill, and respawn a remote (SSH) tab whose connection dropped. A remote project's PTY is resolved in main from its `ssh-remote://` path (`projectTarget` + `SshHostService.ptyLaunch`); closing a remote tab ends its tmux session |
-| `git.ipc.js` | 69 | Status, branches, pull/push/merge/rebase, clone, stash, cherry-pick, revert, tag, blame, worktree, AI commit message, PR description, inline diff. A `projectPath` that is an `ssh-remote://` URI is resolved through `projectTarget` before any handler runs and refused, in that handler's own result shape, when its profile is unknown or it lies outside every registered project; remote worktrees come back as URIs and are never granted; a remote clone runs on the host and never fetches the local GitHub token |
+| `git.ipc.js` | 71 | Status, branches, pull/push/merge/rebase, clone, stash, cherry-pick, revert, tag, blame, worktree, AI commit message, PR description, inline diff. A `projectPath` that is an `ssh-remote://` URI is resolved through `projectTarget` before any handler runs and refused, in that handler's own result shape, when its profile is unknown or it lies outside every registered project; remote worktrees come back as URIs and are never granted; a remote clone runs on the host and never fetches the local GitHub token, the chat Git tab's session summary and per-session overview |
 | `chat.ipc.js` | 26 | Agent SDK streaming sessions, permissions, interrupt, model/effort/permission-mode switching, tab name generation, fork/rewind, skill/agent generation, session recap |
 | `github.ipc.js` | 25 | OAuth Device Flow, workflow runs, PRs, issues, reviews, GitHub Enterprise, repo search |
 | `dialog.ipc.js` | 23 | Window controls, file/folder dialogs, open in explorer/editor/browser, notifications, updates + release notes, startup, clipboard. A remote file opens in VS Code, Cursor or Windsurf as `<editor> --remote ssh-remote+<alias or user@host> <path on the host>`, any other editor is refused; `watch-file` on a URI polls its remote stat every 3 s |
@@ -173,7 +173,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 350 IPC handlers across 38 files.**
+**Total: 352 IPC handlers across 38 files.**
 
 ### Services (`src/main/services/`)
 
@@ -192,6 +192,8 @@ Remote UI (PWA for mobile)
 | `ChatService.js` | Claude Agent SDK bridge: streaming input mode, `maxTurns: 100`, permission forwarding, persistent haiku naming session, fork/rewind. A remote (SSH) session is the same `sdk.query()` plus the SDK's `spawnClaudeCodeProcess` hook (`sshClaudeSpawn.js`): local home as cwd, no account overlay, no Claude in Chrome server, no model catalog ingestion, and ssh failures reported as sentences about the host, a lost connection as `errorType: 'connection_lost'` |
 | `GitHubAuthService.js` | GitHub OAuth Device Flow + API, keytar storage, GitHub Enterprise support (Client ID: `Ov23liYfl42qwDVVk99l`) |
 | `UsageService.js` | Claude usage via OAuth API (`api.anthropic.com/api/oauth/usage`) with PTY fallback, 5 min staleness. A credential store that gives back no usable token parks the account on an **escalating, bounded** backoff (5 min doubling to 1 h), not on `Infinity`: that never recovered, so one unreadable store or one token caught between two CLI rotations froze the chip for the life of the process. `getUsageData().retryAt` carries the next attempt so the tooltip can say "waiting" rather than leaving the user with a chip that stopped |
+| `SessionGitService.js` | Everything the chat's **Git tab** shows, read-only. `summary(cwd)`: branch, upstream and drift, uncommitted counts, the branch's own commits against its base, and its pull request with checks and reviews. The base comes from the remote the branch *tracks* first (a branch pushed to a fork is measured against the fork's main), and the PR is looked up on that repository under the fork's owner, then on origin; a 403 from an organization's SAML SSO (its `X-GitHub-SSO` page) or a repository GitHub hides is said as such, not read as "no pull request". `overview({ projectPath, sessionId })`: the worktrees one session worked in, from `SessionActivityService`, each with its summary, plus the pull requests it opened that no worktree carries. Only git calls that fail as control flow, so a tab polled every 30 s never fills the error log. A running GitHub Actions check carries the step its job is on (one `actions/jobs/:id` read each, four per read across all its pull requests, since a matrix can run dozens) and a failed one its job id, which the tab's Fix it uses to put the job's log in the session's composer |
+| `SessionActivityService.js` | Where one Claude session actually worked, read back from its transcript for the Git tab: every entry's `cwd`, the worktree `EnterWorktree` entered and the branch it reported, the files `Edit`/`Write` touched, and the pull request URL `gh pr create` printed on a line of its own. Only fields the transcript structures: a URL that merely appears in some output is not the session's. Read incrementally, one read of a session at a time (two at once advanced the shared offset twice), and found again when Claude Code moves the file with the session's cwd. The overview keeps the worktrees of the project's own repository, the project folder only if the session changed a file git tracks there (every session starts in it, and the notes it writes there are untracked), and a removed worktree by the branch it was on |
 | `McpService.js` | MCP server child process spawning with env vars, force-kill via taskkill |
 | `MarketplaceService.js` | Skill marketplace (`skills.sh/api/search`), git clone install, caching (5-30 min TTL) |
 | `McpRegistryService.js` | MCP server registry browsing (`registry.modelcontextprotocol.io/v0.1`), pagination, caching |
@@ -357,7 +359,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
-**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray`, `elapsedTimer`, `remoteSession` (the host bar, host hold, "connection lost" banner and resume of a remote SSH chat) and `projectMentions` (`@git` and `@todos`, read on the host of a remote project and failing closed while it is away); `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer` and `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab).
+**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `gitTab` (the session's Git tab. Its open pull requests' checks are the session's CI, shown as a dot on the tab button and the only thing it reads while hidden. Nothing is read while the chat is off screen, and the first read waits until the chat is first shown, so restored background tabs cost nothing at startup; this replaced the project bar's CI pill, which read the project folder's branch and so never followed a worktree. A session that worked in worktrees is drawn as a list of its pull requests rather than a card per worktree, and the rows that need the user are counted on the tab button), `sessionPrs` (what that list is made of, pure: a row per pull request or per branch that needs one, one verdict each from the first rule that applies, so a red check is never hidden behind a pending review; groups for what needs the user, what waits on someone else, ready and done; and the prompts its buttons draft for conflicts, a base to merge in and a review to address), `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray`, `elapsedTimer`, `remoteSession` (the host bar, host hold, "connection lost" banner and resume of a remote SSH chat) and `projectMentions` (`@git` and `@todos`, read on the host of a remote project and failing closed while it is away); `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer` and `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab).
 
 Two things make this harder than it looks and set the shape of the modules. `ChatView.js`'s body is a single ~8,600-line closure, so every helper in it closes over the same mutable session state; a unit only comes out as a `createXxx(deps)` factory taking its dependencies explicitly, reading late-bound ones (`getPruner`, `getInputEl`, `getProject`) through getters, and owning its own `destroy()` rather than leaving listeners for `createChatView`'s to remember. And the units have real couplings worth naming rather than hiding: `attachmentTray` reaches the mention rail because an attached file *is* a chip there, and `transcriptSearch` has to suspend the pruner because it walks the mounted tree.
 
@@ -431,7 +433,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4081 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4174 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -620,7 +622,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (69 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost` | `ssh`
+`terminal` | `git` (70 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost` | `ssh`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -761,7 +763,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 270 unit test files (jsdom environment)
+npm test                    # Run all 276 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -770,7 +772,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 270 test files
+- **Framework:** Jest with jsdom, 276 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
