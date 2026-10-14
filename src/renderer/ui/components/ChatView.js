@@ -45,7 +45,7 @@ const { createRemoteChat } = require('./chat/remoteSession');
 const { createProjectMentions } = require('./chat/projectMentions');
 const projectFs = require('../../utils/projectFs');
 const { createTicketsTab } = require('./chat/ticketsTab');
-const { createSuggestionCard } = require('./chat/ticketSuggestionCard');
+const { createTicketsWiring } = require('./chat/ticketsWiring');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
@@ -518,73 +518,28 @@ class ChatView extends BaseComponent {
       tabbarEl.hidden = false;
     },
     showToast: (opts) => require('./Toast').showToast(opts),
-    buildRecap: () => buildTicketRecap(),
+    buildRecap: () => ticketsWiring.buildRecap(),
   });
   ticketsTab.probe();
   for (const ticket of Array.isArray(initialTickets) ? initialTickets : []) {
     ticketsTab.linkTicket(ticket, 'start');
   }
 
-  // Detected tickets are asked about in the conversation (chat/ticketSuggestionCard.js),
-  // at the end of a turn rather than in the middle of Claude's answer.
-  const pendingSuggestionCards = [];
-  function showSuggestionCards() {
-    if (!pendingSuggestionCards.length || destroyed) return;
-    const batch = pendingSuggestionCards.splice(0);
-    messagesEl.appendChild(createSuggestionCard(batch, {
-      onConfirm: (refs) => ticketsTab.confirm(refs),
-      onDismiss: (refs) => ticketsTab.dismiss(refs),
-    }));
-    scrollToBottom();
-  }
-  // Suggestions from one moment (the branch and the PR title, several tool
-  // calls) arrive one by one: gathered for a moment, they make one card.
-  let suggestionCardTimer = null;
-  ticketsTab.onSuggestions((list) => {
-    pendingSuggestionCards.push(...list);
-    clearTimeout(suggestionCardTimer);
-    suggestionCardTimer = setTimeout(() => {
-      if (!isStreaming) showSuggestionCards();
-    }, 600);
+  // Suggestion cards, the Git tab's branch and PR title, the recap (chat/ticketsWiring.js).
+  const ticketsWiring = createTicketsWiring({
+    api,
+    ticketsTab,
+    getGitSummary: () => gitTab.getSummary(),
+    getProject: () => project,
+    getEditedFiles: () => [...sessionFileTally.keys()],
+    showCard: (card) => {
+      messagesEl.appendChild(card);
+      scrollToBottom();
+    },
+    isStreaming: () => isStreaming,
   });
-
-  /**
-   * What this session did, as a markdown comment draft for a linked ticket:
-   * branch, the branch's commits, the pull request, the files Claude edited.
-   * Only a draft: the user edits it and publishes it themselves.
-   */
-  function buildTicketRecap() {
-    const s = gitTab.getSummary();
-    const lines = [t('chat.tickets.recapHeading', { project: project?.name || '' })];
-    if (s?.isRepo && s.branch) lines.push(`- ${t('chat.tickets.recapBranch')}: \`${s.branch}\``);
-    if (s?.isRepo && !s.onBase && s.commits?.length) {
-      lines.push(`- ${t('chat.tickets.recapCommits')}:`);
-      for (const c of s.commits.slice(0, 10)) lines.push(`  - \`${c.short}\` ${c.subject}`);
-    }
-    const pr = s?.pr?.pullRequest;
-    if (pr) lines.push(`- ${t('chat.tickets.recapPr')}: [#${pr.number} ${pr.title}](${pr.url})`);
-    const files = [...sessionFileTally.keys()].map((f) => f.split(/[\\/]/).pop());
-    if (files.length) {
-      const shown = files.slice(0, 8).map((f) => `\`${f}\``).join(', ');
-      lines.push(`- ${t('chat.tickets.recapFiles', { count: files.length })}: ${shown}${files.length > 8 ? ', …' : ''}`);
-    }
-    return lines.join('\n');
-  }
-
-  let observedBranch = null;
-  let observedPrTitle = null;
   function observeGitForTickets(summary) {
-    if (!summary?.isRepo || !api.issueLinks?.observeText) return;
-    const key = ticketsTab.getKey();
-    if (summary.branch && summary.branch !== observedBranch) {
-      observedBranch = summary.branch;
-      api.issueLinks.observeText(key, summary.branch, 'branch', summary.branch).catch(() => {});
-    }
-    const pr = summary.pr?.pullRequest;
-    if (pr?.title && pr.title !== observedPrTitle) {
-      observedPrTitle = pr.title;
-      api.issueLinks.observeText(key, pr.title, 'pr', `#${pr.number}`).catch(() => {});
-    }
+    ticketsWiring.observeGit(summary);
   }
   const artifactsBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="artifacts"]');
   const inputEl = chatView.querySelector('.chat-input');
@@ -6689,7 +6644,7 @@ class ChatView extends BaseComponent {
     // mid-turn is held and pushed to the SDK when the turn ends.
     if (!streaming && turnEnded) {
       flushPendingSelection();
-      showSuggestionCards();
+      ticketsWiring.flushCards();
     }
 
     if (streaming) {
@@ -9221,7 +9176,7 @@ class ChatView extends BaseComponent {
       transcriptPruner?.destroy();
       gitTab.destroy();
       ticketsTab.destroy();
-      clearTimeout(suggestionCardTimer);
+      ticketsWiring.destroy();
       scrollResizeObserver?.disconnect();
       scrollChildrenObserver.disconnect();
       contextSuggestions.reset();
