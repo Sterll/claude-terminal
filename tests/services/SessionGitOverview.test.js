@@ -16,6 +16,7 @@ jest.mock('../../src/main/services/GitHubAuthService', () => ({
   getPullRequest: jest.fn(),
   getCheckRuns: jest.fn(),
   getPullRequestReviews: jest.fn(),
+  getWorkflowJob: jest.fn(),
 }));
 
 const fs = require('fs');
@@ -82,6 +83,7 @@ beforeEach(() => {
   github.getPullRequest.mockReset().mockResolvedValue({ authenticated: true, pullRequest: null, notFound: true });
   github.getCheckRuns.mockReset().mockResolvedValue({ checkRuns: [] });
   github.getPullRequestReviews.mockReset().mockResolvedValue({ reviews: [] });
+  github.getWorkflowJob.mockReset().mockResolvedValue({ job: { steps: [] } });
 });
 
 const activityOf = (dirs, prs = [], edits = []) => ({ read: jest.fn(async () => ({ dirs, prs, edits })) });
@@ -170,6 +172,29 @@ test('a pull request it opened that GitHub will not show says why', async () => 
   const o = await overview({ projectPath: proj, sessionId: 's1' }, { activity: activityOf([], [pr]) });
   expect(o).toMatchObject({ mode: 'session', workspaces: [] });
   expect(o.createdPrs[0]).toMatchObject({ number: 3, pullRequest: null, ssoRequired: { org: 'acme', repo: 'acme/app' } });
+});
+
+test('step progress is read for a few jobs per read, however many pull requests run', async () => {
+  github.getPullRequest.mockImplementation(async (owner, repo, number) => ({
+    authenticated: true,
+    pullRequest: { number, title: `#${number}`, state: 'open', url: `https://github.com/acme/app/pull/${number}`, headSha: `sha${number}` },
+  }));
+  let id = 0;
+  github.getCheckRuns.mockImplementation(async () => ({
+    checkRuns: Array.from({ length: 3 }, () => ({ id: ++id, name: `job ${id}`, status: 'in_progress', app: 'github-actions' })),
+  }));
+  const pr = (n) => ({ host: 'github.com', owner: 'acme', repo: 'app', number: n, url: `https://github.com/acme/app/pull/${n}`, at: n });
+  const o = await overview({ projectPath: proj, sessionId: 's1' }, { activity: activityOf([], [pr(1), pr(2), pr(3)]) });
+  expect(o.createdPrs).toHaveLength(3);
+  expect(github.getWorkflowJob).toHaveBeenCalledTimes(4);
+});
+
+test('which worktree a folder is in is remembered per project', async () => {
+  // The same folder, read for another project: not this project's worktree.
+  await overview({ projectPath: other, sessionId: 's1' }, { activity: activityOf([d(wtA, 5, ['enter', 'cwd'])]) });
+  const o = await overview({ projectPath: proj, sessionId: 's1' }, { activity: activityOf([d(wtA, 5, ['enter', 'cwd'])]) });
+  expect(o.mode).toBe('session');
+  expect(o.workspaces.map((w) => w.branch)).toEqual(['feat/a']);
 });
 
 describe('stacked pull requests', () => {

@@ -25,7 +25,11 @@ const CONFLICT_CODES = new Set(['DD', 'AU', 'UD', 'UA', 'DU', 'AA', 'UU']);
 const MAX_WORKSPACES = 6;
 const MAX_DIRS = 100;
 const TOP_CACHE_MS = 5 * 60 * 1000;
+const MAX_TOP_CACHE = 500;
 const MAX_PROGRESS_JOBS = 4;
+
+/** How many running jobs one read may ask GitHub about, shared by every pull request it shows. */
+const progressBudget = () => ({ jobs: MAX_PROGRESS_JOBS });
 
 /** `git log` lines as commits. */
 function parseLog(output) {
@@ -132,10 +136,13 @@ function summarizeChecks(checkRuns) {
 
 /**
  * Which step each running job is on, shown as "5/8". One request per job, so
- * only the first few: a matrix can run dozens.
+ * only the first few: a matrix can run dozens, and a session can have several
+ * pull requests running at once, so the few are counted over the whole read.
+ * @param {{ jobs: number }} budget what is left of this read's, see progressBudget()
  */
-async function addStepProgress(owner, repo, checks) {
-  const jobs = checks.running.filter((c) => c.jobId).slice(0, MAX_PROGRESS_JOBS);
+async function addStepProgress(owner, repo, checks, budget = progressBudget()) {
+  const jobs = checks.running.filter((c) => c.jobId).slice(0, Math.max(0, budget.jobs));
+  budget.jobs -= jobs.length;
   await Promise.all(jobs.map(async (check) => {
     const res = await github.getWorkflowJob(owner, repo, check.jobId);
     const steps = res?.job?.steps || [];
@@ -145,10 +152,10 @@ async function addStepProgress(owner, repo, checks) {
   return checks;
 }
 
-async function checksOf(owner, repo, headSha) {
+async function checksOf(owner, repo, headSha, budget) {
   if (!headSha) return summarizeChecks([]);
   const res = await github.getCheckRuns(owner, repo, headSha);
-  return addStepProgress(owner, repo, summarizeChecks(res.checkRuns));
+  return addStepProgress(owner, repo, summarizeChecks(res.checkRuns), budget);
 }
 
 /**
@@ -177,7 +184,7 @@ function summarizeReviews(reviews) {
  * The branch's pull request, looked for on the repository the branch is
  * pushed to, then on origin. An open one wins over a closed or merged one.
  */
-async function findPullRequest(cwd, branch, remote, base) {
+async function findPullRequest(cwd, branch, remote, base, budget = progressBudget()) {
   const remotes = parseRemotes(await execGit(cwd, ['remote', '-v']));
   const pushRemote = remote && remotes[remote] ? remote : remotes.origin ? 'origin' : null;
   if (!pushRemote) return null;
@@ -217,7 +224,7 @@ async function findPullRequest(cwd, branch, remote, base) {
   const { repo, pr } = found;
   // The list carries no mergeability: an open one is read in full for it.
   const [checks, reviews, full] = await Promise.all([
-    checksOf(repo.owner, repo.repo, pr.headSha),
+    checksOf(repo.owner, repo.repo, pr.headSha, budget),
     github.getPullRequestReviews(repo.owner, repo.repo, pr.number),
     pr.state === 'open' ? github.getPullRequest(repo.owner, repo.repo, pr.number) : null,
   ]);
@@ -238,9 +245,9 @@ async function findPullRequest(cwd, branch, remote, base) {
 
 /**
  * @param {string} cwd the session's working directory
- * @param {{ withPullRequest?: boolean }} [opts]
+ * @param {{ withPullRequest?: boolean, budget?: { jobs: number } }} [opts] `budget` is shared when one read summarizes several folders
  */
-async function summary(cwd, { withPullRequest = true } = {}) {
+async function summary(cwd, { withPullRequest = true, budget = progressBudget() } = {}) {
   if (typeof cwd !== 'string' || !cwd) return { isRepo: false };
   const root = await execGit(cwd, ['rev-parse', '--show-toplevel']);
   if (!root) return { isRepo: false };
@@ -283,7 +290,7 @@ async function summary(cwd, { withPullRequest = true } = {}) {
     ? await execGit(cwd, ['log', format, '-n', String(RECENT_ON_BASE)])
     : await execGit(cwd, ['log', format, '-n', String(COMMIT_LIMIT), `${base}..HEAD`]));
 
-  const pr = withPullRequest && branch && !onBase ? await findPullRequest(cwd, branch, remote, base) : null;
+  const pr = withPullRequest && branch && !onBase ? await findPullRequest(cwd, branch, remote, base, budget) : null;
 
   return {
     isRepo: true,
@@ -311,7 +318,12 @@ async function summary(cwd, { withPullRequest = true } = {}) {
 
 // ── A session's own worktrees ──────────────────────────────────────────────
 
-/** dir → { top, at }: which worktree of the project a directory belongs to, or null. */
+/**
+ * "<project's common git dir>\0<dir>" → { top, at }: which worktree of that
+ * project's repository a directory belongs to, or null. The same directory
+ * answers differently for two projects, so the project is in the key.
+ * Oldest first, capped.
+ */
 const topCache = new Map();
 
 async function realpathOrNull(p) {
@@ -382,11 +394,14 @@ async function workspacesOf(projectPath, activity) {
   const tops = new Map();
   const removed = [];
   for (const { dir, at, kinds, branch } of activity.dirs.slice(0, MAX_DIRS)) {
-    let hit = topCache.get(dir);
+    const key = `${project.common}\0${dir}`;
+    let hit = topCache.get(key);
     if (!hit || Date.now() - hit.at > TOP_CACHE_MS) {
       const where = await locateDir(dir);
       hit = { top: where && where.common === project.common ? where.top : null, at: Date.now() };
-      topCache.set(dir, hit);
+      topCache.delete(key);
+      topCache.set(key, hit);
+      if (topCache.size > MAX_TOP_CACHE) topCache.delete(topCache.keys().next().value);
     }
     if (!hit.top) {
       // A worktree it entered and that has since been removed: its branch
@@ -410,7 +425,7 @@ async function workspacesOf(projectPath, activity) {
 }
 
 /** A pull request the session created, looked up by number. */
-async function createdPullRequest(p) {
+async function createdPullRequest(p, budget = progressBudget()) {
   const repo = `${p.owner}/${p.repo}`;
   const res = await github.getPullRequest(p.owner, p.repo, p.number);
   const base = { url: p.url, number: p.number, repo };
@@ -422,7 +437,7 @@ async function createdPullRequest(p) {
   }
   const pr = res.pullRequest;
   const [checks, reviews] = await Promise.all([
-    checksOf(p.owner, p.repo, pr.headSha),
+    checksOf(p.owner, p.repo, pr.headSha, budget),
     github.getPullRequestReviews(p.owner, p.repo, pr.number),
   ]);
   return {
@@ -493,14 +508,15 @@ async function overview({ projectPath, sessionId = null } = {}, { activity = ses
   const spaces = act ? await workspacesOf(projectPath, act) : [];
   if (!spaces.length && !act?.prs?.length) return { ...(await summary(projectPath)), mode: 'project' };
 
+  const budget = progressBudget();
   const workspaces = [];
   for (const ws of spaces) {
     if (ws.removed) {
       // Nothing left on disk to read: the branch and its pull request, looked up from the project folder.
-      workspaces.push({ ...ws, isRepo: true, pr: await findPullRequest(projectPath, ws.branch, null, null) });
+      workspaces.push({ ...ws, isRepo: true, pr: await findPullRequest(projectPath, ws.branch, null, null, budget) });
       continue;
     }
-    const s = await summary(ws.dir);
+    const s = await summary(ws.dir, { budget });
     if (s.isRepo) workspaces.push({ ...s, dir: ws.dir, isRoot: ws.isRoot, label: ws.label, at: ws.at });
   }
   const created = new Set(act.prs.map((p) => p.url.toLowerCase()));
@@ -511,7 +527,7 @@ async function overview({ projectPath, sessionId = null } = {}, { activity = ses
   const shown = new Set(workspaces.map((w) => w.pr?.pullRequest?.url?.toLowerCase()).filter(Boolean));
   const createdPrs = [];
   for (const p of [...act.prs].reverse()) {
-    if (!shown.has(p.url.toLowerCase())) createdPrs.push(await createdPullRequest(p));
+    if (!shown.has(p.url.toLowerCase())) createdPrs.push(await createdPullRequest(p, budget));
   }
   await markStacks(projectPath, [...workspaces.map((w) => w.pr?.pullRequest), ...createdPrs.map((c) => c.pullRequest)].filter(Boolean));
   return { isRepo: true, mode: 'session', workspaces, createdPrs };

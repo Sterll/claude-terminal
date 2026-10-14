@@ -255,6 +255,15 @@ test('step progress is read for a few jobs only: a matrix can run dozens', async
   expect(checks.running).toHaveLength(10);
 });
 
+test('the few are shared by every pull request of one read', async () => {
+  const runs = (from) => Array.from({ length: 3 }, (_, i) => ({ id: from + i, name: `test (${i})`, status: 'in_progress', app: 'github-actions' }));
+  const budget = { jobs: 4 };
+  await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs(100)), budget);
+  await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs(200)), budget);
+  await _internals.addStepProgress('o', 'r', _internals.summarizeChecks(runs(300)), budget);
+  expect(github.getWorkflowJob.mock.calls.map((c) => c[2])).toEqual([100, 101, 102, 200]);
+});
+
 describe('helpers', () => {
   test('remote hosts from https and ssh URLs', () => {
     expect(_internals.remoteHost('https://github.example.com/a/b.git')).toBe('github.example.com');
