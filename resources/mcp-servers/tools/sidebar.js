@@ -54,7 +54,7 @@ const ALL_TABS = [
 const TAB_LABELS = {
   claude: 'Claude (terminal/chat)',
   git: 'Git & version control',
-  tickets: 'Tickets (issue tracker)',
+  tickets: 'Tickets (issue tracker: Linear, ...)',
   database: 'Database management',
   mcp: 'MCP servers',
   plugins: 'Claude Code plugins',
