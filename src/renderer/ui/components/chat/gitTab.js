@@ -7,15 +7,20 @@
  * commits, and its pull request with checks and reviews.
  *
  * Everything comes from one read-only call (`git.sessionSummary`, served by
- * SessionGitService). It is fetched when the tab is shown, every 30 s while it
- * stays shown and the window is focused, and shortly after a tool result,
- * since a tool is what commits and pushes.
+ * SessionGitService). It is first read when the chat is first on screen
+ * (`probeWhenOnScreen`), so tabs restored at startup cost nothing until they
+ * are looked at. Then when the tab is shown, every 30 s while it stays shown
+ * and the window is focused, and shortly after a tool result, since a tool is
+ * what commits and pushes.
  *
  * The pull requests' checks are this session's CI, so they are also told to
  * the tab button (`onCiStatus`), which shows them without the tab open. That
- * is the one thing read while hidden, and only for the session on screen:
- * every 15 s while a check runs, at most every 30 s after a tool result
- * (it may have pushed). A session in a background tab costs nothing.
+ * is the one thing read while hidden: every 15 s while a check runs, at most
+ * every 30 s after a tool result (it may have pushed).
+ *
+ * Nothing is read while the chat is off screen, its Git tab open or not: a
+ * session in a background tab or another project costs nothing, and catches
+ * up as soon as it is back.
  *
  * A session that worked in its own worktrees shows those instead
  * (`git.sessionOverview`, read from its transcript): its pull requests as one
@@ -508,7 +513,7 @@ function sessionHtml(o, { decoratePrTitle = null, view = defaultView() } = {}) {
  * @param {(summary: object) => void} [deps.onSummary] every summary read: a hook for the features that read branches and PR titles
  * @param {(ci: object|null) => void} [deps.onCiStatus] the session's CI, see ciStatus(), each time it changes
  * @param {(count: number) => void} [deps.onAttention] how many rows need the user, each time it changes
- * @param {() => boolean} [deps.isOnScreen] whether the session is the one on screen: only then is it read while hidden
+ * @param {() => boolean} [deps.isOnScreen] whether the session is on screen: nothing is read while it is not. Always, when left out
  * @param {(text: string) => void} [deps.fillComposer] puts a prompt in this session's composer
  */
 function createGitTab(deps) {
@@ -525,12 +530,15 @@ function createGitTab(deps) {
   let staleTimer = null;
   let ciKey = '';
   let attention = null;
+  let probed = false;
+  let screenObserver = null;
   // The list's own state, kept across reads: a re-read every 30 s must not
   // fold what the user unfolded.
   const view = defaultView();
 
   async function load() {
     if (destroyed) return;
+    probed = true;
     const mine = ++seq;
     inFlight++;
     let res;
@@ -582,12 +590,28 @@ function createGitTab(deps) {
     deps.onAttention?.(count);
   }
 
-  /** Shown: every 30 s. Hidden: only the session on screen, while a check runs or after a tool result. */
+  const onScreen = () => (deps.isOnScreen ? !!deps.isOnScreen() : true);
+
+  /** Only on screen. Shown: every 30 s. Hidden: while a check runs or after a tool result. */
   function tick() {
-    if (destroyed || inFlight || !document.hasFocus()) return;
+    if (destroyed || inFlight || !document.hasFocus() || !onScreen()) return;
     const due = Date.now() - loadedAt >= POLL_MS - TICK_MS / 2;
     const running = ciKey.startsWith('pending');
-    if (visible ? running || due : deps.isOnScreen?.() && (running || (stale && due))) load();
+    if (visible ? running || due : running || (stale && due)) load();
+  }
+
+  /**
+   * The chat is on screen again: the first read if it never had one, else
+   * what changed while it was away, now rather than at the next tick.
+   */
+  function cameOnScreen() {
+    if (destroyed || inFlight) return;
+    if (!probed) {
+      load();
+      return;
+    }
+    const age = Date.now() - loadedAt;
+    if (visible ? stale || age > FRESH_MS : ciKey.startsWith('pending') || (stale && age >= POLL_MS - TICK_MS / 2)) load();
   }
 
   function render() {
@@ -725,6 +749,23 @@ function createGitTab(deps) {
     /** Find out once, quietly, whether there is a repository to show. */
     probe: () => load(),
 
+    /**
+     * The probe, held until `el` (the chat) is first on screen, then a catch-up
+     * each time it comes back. Without IntersectionObserver, the probe at once.
+     * @param {HTMLElement} el
+     */
+    probeWhenOnScreen(el) {
+      if (destroyed || screenObserver) return;
+      if (typeof IntersectionObserver !== 'function' || !el) {
+        load();
+        return;
+      }
+      screenObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) cameOnScreen();
+      });
+      screenObserver.observe(el);
+    },
+
     show() {
       visible = true;
       render();
@@ -735,10 +776,10 @@ function createGitTab(deps) {
       visible = false;
     },
 
-    /** A tool just finished: it may have committed, pushed or edited. */
+    /** A tool just finished: it may have committed, pushed or edited. Off screen, read once back. */
     markStale() {
       stale = true;
-      if (!visible) return;
+      if (!visible || !onScreen()) return;
       clearTimeout(staleTimer);
       staleTimer = setTimeout(load, STALE_DEBOUNCE_MS);
     },
@@ -748,6 +789,7 @@ function createGitTab(deps) {
 
     destroy() {
       destroyed = true;
+      screenObserver?.disconnect();
       clearInterval(pollTimer);
       clearTimeout(staleTimer);
       panelEl.removeEventListener('click', onClick);

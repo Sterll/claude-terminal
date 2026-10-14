@@ -477,7 +477,9 @@ class ChatView extends BaseComponent {
       inputEl.focus();
     },
   });
-  if (!project.isCloud) gitTab.probe();
+  // Not read until the chat is first on screen: tabs restored in the
+  // background do not each read a transcript, git and GitHub at startup.
+  if (!project.isCloud) gitTab.probeWhenOnScreen(chatView);
   const artifactsBadgeEl = chatView.querySelector('.chat-tab-badge[data-badge="artifacts"]');
   const inputEl = chatView.querySelector('.chat-input');
   const sendBtn = chatView.querySelector('.chat-send-btn');
