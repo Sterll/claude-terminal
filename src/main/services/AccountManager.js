@@ -7,8 +7,9 @@
  * The live store is platform-dependent: the macOS login Keychain on darwin,
  * ~/.claude/.credentials.json everywhere else.
  *
- * Login flow stays unchanged: user runs `claude /login` once in a terminal,
- * then captures the resulting credentials as a named account.
+ * Two ways in: startLogin() signs a new account straight into a credential
+ * store of its own through the CLI's `auth login`, and captureCurrent() saves
+ * whoever `claude /login` last put in the machine-wide store.
  */
 
 const fs = require('fs');
@@ -25,6 +26,7 @@ const {
   deleteCredentialsForDir,
   SECURESTORAGE_ENV,
 } = require('../utils/claudeCredentials');
+const { runLogin, loginEnv } = require('../utils/claudeLogin');
 
 const accountsDir = path.join(dataDir, 'accounts');
 const indexFile = path.join(accountsDir, 'index.json');
@@ -486,6 +488,159 @@ async function captureCurrent(name) {
 }
 
 /**
+ * Who a sign-in authenticated as, from the `oauthAccount` the CLI records in
+ * its config file. Every field may be missing: the identity only names the
+ * account and catches a duplicate, and the login is good without it.
+ * @param {string} configDir - the CLAUDE_CONFIG_DIR the sign-in ran under
+ */
+function readLoginIdentity(configDir) {
+  for (const file of ['.claude.json', '.config.json']) {
+    try {
+      const oauth = JSON.parse(fs.readFileSync(path.join(configDir, file), 'utf-8'))?.oauthAccount;
+      if (!oauth) continue;
+      return {
+        email: oauth.emailAddress || null,
+        accountUuid: oauth.accountUuid || null,
+        organizationUuid: oauth.organizationUuid || null,
+      };
+    } catch {
+      // Absent or unreadable: try the legacy name, then go without.
+    }
+  }
+  return { email: null, accountUuid: null, organizationUuid: null };
+}
+
+/**
+ * Record a signed-in store as a new account.
+ *
+ * A duplicate is matched on the account and organisation ids, not on the
+ * fingerprint: every sign-in mints a new token, so the fingerprint of the same
+ * account never matches twice. One person can sit in two organisations (a
+ * personal plan and a Team seat), each with its own grant and limits, which is
+ * why the organisation is part of the key. Captured accounts carry neither id
+ * and are never matched here.
+ */
+async function registerSignedIn(id, { name, storeDir, configDir }) {
+  const creds = await readCredentialsForDir(storeDir);
+  const fingerprint = fingerprintCredentials(creds);
+  if (!isUsableStore(creds) || !fingerprint) {
+    throw new Error('Sign-in finished, but Claude Code wrote no usable credentials for the new account.');
+  }
+  const identity = readLoginIdentity(configDir);
+
+  const index = readIndex();
+  const existing = identity.accountUuid && index.accounts.find(a =>
+    a.accountUuid === identity.accountUuid
+    && (a.organizationUuid || null) === identity.organizationUuid);
+  if (existing) {
+    throw new Error(`This account is already saved as "${existing.name}".`);
+  }
+
+  const now = new Date().toISOString();
+  const account = {
+    id,
+    name: name?.trim() || identity.email || `Account ${index.accounts.length + 1}`,
+    color: null,
+    fingerprint,
+    createdAt: now,
+    lastUsedAt: now
+  };
+  if (identity.email) account.email = identity.email;
+  if (identity.accountUuid) account.accountUuid = identity.accountUuid;
+  if (identity.organizationUuid) account.organizationUuid = identity.organizationUuid;
+
+  // The store is the record from here on; the snapshot is the backup every
+  // account keeps, and what ensureAccountStore() keeps current.
+  fs.writeFileSync(accountFile(id), JSON.stringify(accountCredentials(creds), null, 2), { mode: 0o600 });
+  index.accounts.push(account);
+  // Neither defaultId nor liveId moves. The machine-wide store still holds
+  // whoever it held, and making this the default is setDefault()'s job, since
+  // that is what puts an account in that store.
+  writeIndex(index);
+  return summarize(account);
+}
+
+/** The sign-in in progress, if any: the modal drives one at a time. */
+let activeLogin = null;
+
+/**
+ * Sign a new account in, straight into a credential store of its own.
+ *
+ * captureCurrent() needs the machine-wide login: `claude /login` replaces
+ * whoever was signed in there, and what it saves is a second copy of that
+ * grant. Here the CLI writes the new login into the account's own directory,
+ * so the machine-wide login is never touched and the account starts with a
+ * grant nobody else holds, which leaves nothing for a rotation to sign out.
+ *
+ * Starting a sign-in cancels the one in progress.
+ *
+ * @param {Object} opts
+ * @param {string} opts.command - the Claude Code binary
+ * @param {string[]} [opts.commandArgs]
+ * @param {string} [opts.name] - defaults to the account's email
+ * @param {(url: string) => void} [opts.onUrl]
+ * @param {() => void} [opts.onInvalidCode]
+ * @returns {Promise<Object>} the new account's summary
+ */
+function startLogin({ command, commandArgs, name, onUrl, onInvalidCode }) {
+  cancelLogin();
+  ensureDir();
+  const id = generateId();
+  const storeDir = accountConfigDir(id);
+  const configDir = path.join(accountsDir, `login-${id}`);
+  fs.mkdirSync(storeDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+
+  let login;
+  try {
+    login = runLogin({
+      command,
+      commandArgs,
+      env: loginEnv(process.env, { storeDir, configDir }),
+      onUrl,
+      onInvalidCode,
+    });
+  } catch (err) {
+    fs.rmSync(configDir, { recursive: true, force: true });
+    fs.rmSync(storeDir, { recursive: true, force: true });
+    throw err;
+  }
+  activeLogin = login;
+
+  return login.result
+    .then(() => registerSignedIn(id, { name, storeDir, configDir }))
+    .catch(async (err) => {
+      // Whatever the CLI managed to write, Keychain entry included, belongs to
+      // an account that does not exist.
+      await deleteCredentialsForDir(storeDir);
+      throw err;
+    })
+    .finally(() => {
+      if (activeLogin === login) activeLogin = null;
+      // Holds nothing secret, only who signed in, so a cleanup that fails
+      // (Windows can still hold a handle the CLI just closed) must not turn a
+      // finished sign-in into an error.
+      try {
+        fs.rmSync(configDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      } catch (err) {
+        console.warn('[AccountManager] could not remove the sign-in scratch directory:', err.message);
+      }
+    });
+}
+
+/**
+ * Hand the sign-in in progress the `code#state` the browser page showed.
+ * @returns {boolean} false when no sign-in is waiting for one
+ */
+function submitLoginCode(code) {
+  return activeLogin ? activeLogin.submitCode(code) : false;
+}
+
+function cancelLogin() {
+  activeLogin?.cancel();
+}
+
+/**
  * Point the machine-wide credential store at this account's snapshot.
  *
  * Off the normal path now that spawns resolve their own account: kept for the
@@ -640,6 +795,9 @@ async function removeAccount(id) {
 module.exports = {
   listAccounts,
   captureCurrent,
+  startLogin,
+  submitLoginCode,
+  cancelLogin,
   switchTo,
   setDefault,
   syncActiveFromDisk,

@@ -2467,6 +2467,19 @@ mark.qp-hl {
   justify-content: flex-end;
 }
 
+/* ===== Account login modal ===== */
+.account-login-url {
+  text-overflow: ellipsis;
+}
+
+.account-login-error {
+  font-size: var(--font-xs);
+  color: var(--danger);
+  padding: 0 2px;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
 /* ========== WHAT'S NEW ==========
    Shown once per version, at launch. "What moved" leads because it is the part
    people are looking for; the release notes are the reading material below it. */

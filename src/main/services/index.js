@@ -400,6 +400,9 @@ function cleanupServices() {
   // only has work to do when a remote host was used in this session.
   sshHostService.disposeAll();
   try { require('./AccountManager').stopCredentialWatch(); } catch (_) { /* non-critical */ }
+  // A sign-in left open would keep its CLI listening for the OAuth redirect
+  // after the app is gone.
+  try { require('./AccountManager').cancelLogin(); } catch (_) { /* non-critical */ }
   databaseService.disconnectAll().catch(() => {});
   _stopMcpTriggerPolling();
   // fs.watch on the artifacts index. Required lazily (same pattern as the

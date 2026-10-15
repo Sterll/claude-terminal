@@ -22,6 +22,7 @@ const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
 const { setProjectAccount } = require('../../state/projects.state');
 const { buildAccountUsageHtml, blockingLimit, formatBucketReset } = require('./accountUsage');
+const { showAccountLoginModal } = require('./AccountLoginModal');
 
 // How old an account's figures may be before the offer asks again. Settings
 // accepts five minutes because it redraws on every rename; here the question
@@ -113,7 +114,7 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
 
   const emptyHint = `
     <div class="account-switch-empty">
-      <p>${escapeHtml(t('accounts.emptyHint') || 'No saved accounts yet. Open a terminal, run "claude /login", then come back to capture this account.')}</p>
+      <p>${escapeHtml(t('accounts.emptyHint') || 'No saved accounts yet. Click "Connect an account" to sign one in, or "Save current account" to keep the one Claude Code is already using.')}</p>
     </div>
   `;
 
@@ -141,6 +142,7 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
         ${listHtml}
         <div class="account-switch-note" hidden></div>
         <div class="account-switch-actions">
+          <button class="btn btn-secondary" data-extra="login">${escapeHtml(t('accounts.connectAccount'))}</button>
           <button class="btn btn-secondary" data-extra="capture">${escapeHtml(t('accounts.captureCurrent') || 'Save current as new account')}</button>
         </div>
       `,
@@ -179,6 +181,22 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
       };
     });
 
+    // Same ending as a capture: the new account is only worth connecting here
+    // if the project moves onto it.
+    const adopt = (id) => {
+      if (projectId && id) setProjectAccount(projectId, id);
+      closeModal(modal);
+      finish(id || null);
+    };
+
+    const loginBtn = modal.querySelector('[data-extra="login"]');
+    if (loginBtn) {
+      loginBtn.onclick = async () => {
+        const account = await showAccountLoginModal();
+        if (account) adopt(account.id);
+      };
+    }
+
     const captureBtn = modal.querySelector('[data-extra="capture"]');
     if (captureBtn) {
       captureBtn.onclick = async () => {
@@ -195,9 +213,7 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
         }
         // A freshly captured account is only useful here if the project moves
         // onto it — otherwise the limit stands and the session cannot resume.
-        if (projectId && res.data?.id) setProjectAccount(projectId, res.data.id);
-        closeModal(modal);
-        finish(res.data?.id || null);
+        adopt(res.data?.id);
       };
     }
 
