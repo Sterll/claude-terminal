@@ -1160,6 +1160,12 @@
       "hostFailed": "Não foi possível registrar o conector do navegador. Nenhum navegador compatível foi encontrado.",
       "toggleError": "Falha ao atualizar a integração com o navegador."
     },
+    "mcpGrants": {
+      "title": "Orquestração de agentes",
+      "enable": "Permitir que um agente conceda as permissões de outra aba",
+      "enableDesc": "Pela ferramenta MCP chat_respond_permission. Desativado: um agente só pode negar os pedidos de outra aba, e você responde ao resto no app.",
+      "warning": "Um agente poderá então aprovar, em outra aba, um comando ou um plano que você nunca vê, inclusive regras \"Sempre permitir\". Ative apenas se um agente conduz os outros do início ao fim."
+    },
     "advanced": "Avançado",
     "restoreTerminalSessions": "Lembrar o último estado dos terminais",
     "restoreTerminalSessionsDesc": "Restaura as abas de terminal e as sessões do Claude da sessão anterior ao iniciar",

@@ -1,18 +1,20 @@
 /**
- * The MCP `chat_respond_permission` tool can deny a chat tab's pending
- * permission request, never grant it.
+ * The MCP `chat_respond_permission` tool denies a chat tab's pending
+ * permission request, and grants one only when the user turned on
+ * `mcpPermissionGrantsEnabled` in the settings.
  *
- * It used to accept `allow` and `always-allow` too. The session calling it is
- * asked to approve "chat_respond_permission tabId=… action=allow", which says
- * nothing of the command it unlocks on the other tab, so one agent allowed to
- * use the MCP tools could approve another agent's Bash. `always-allow` on a
- * card without SDK suggestions went further and switched that tab to
- * `bypassPermissions`. Same rule as `skipPermissions` being read-only in
- * settings.js: nothing reached over MCP lifts a permission.
+ * It used to grant unconditionally. The session calling it is asked to approve
+ * "chat_respond_permission tabId=… action=allow", which says nothing of the
+ * command or plan it unlocks on the other tab, so one agent allowed to use the
+ * MCP tools could approve another agent's Bash. Granting is now opt-in, for
+ * those who want one agent to drive the others from start to finish.
  *
- * Both halves are pinned. The tool refuses before writing a trigger, and the
- * renderer refuses again, because `tabs/triggers/` is a plain directory that
- * any local process (or an older server) can drop a file into.
+ * Three things are pinned:
+ *  - the tool refuses a grant before writing a trigger unless the setting is on;
+ *  - the renderer refuses it again, because `tabs/triggers/` is a plain
+ *    directory any local process (or an older server) can drop a file into;
+ *  - `settings_set` cannot turn the setting on, or an agent would only have to
+ *    flip it first. Same treatment as `skipPermissions`.
  */
 
 const fs = require('fs');
@@ -25,6 +27,8 @@ describe('MCP chat_respond_permission tool', () => {
 
   const triggerDir = () => path.join(dataDir, 'tabs', 'triggers');
   const triggers = () => (fs.existsSync(triggerDir()) ? fs.readdirSync(triggerDir()) : []);
+  const writeSettings = (settings) =>
+    fs.writeFileSync(path.join(dataDir, 'settings.json'), JSON.stringify(settings), 'utf8');
 
   /** Plays the renderer: answers the first trigger the tool drops. */
   async function answerNextTrigger(payload) {
@@ -53,36 +57,77 @@ describe('MCP chat_respond_permission tool', () => {
     fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
-  it('only advertises deny', () => {
+  it('defaults the action to deny', () => {
     const tool = tabs.tools.find(t => t.name === 'chat_respond_permission');
-    expect(tool.inputSchema.properties.action.enum).toEqual(['deny']);
+    expect(tool.inputSchema.properties.action.enum).toEqual(['deny', 'allow', 'always-allow']);
     expect(tool.inputSchema.required).toEqual(['tabId']);
   });
 
-  it.each(['allow', 'always-allow'])('refuses %s without writing a trigger', async (action) => {
-    const res = await tabs.handle('chat_respond_permission', { tabId: 'tab-1', action });
+  describe('with the setting off', () => {
+    it.each([
+      ['absent', null],
+      ['false', { mcpPermissionGrantsEnabled: false }],
+      ['truthy but not true', { mcpPermissionGrantsEnabled: 'yes' }],
+    ])('refuses allow and always-allow without writing a trigger (setting %s)', async (_label, settings) => {
+      if (settings) writeSettings(settings);
+
+      for (const action of ['allow', 'always-allow']) {
+        const res = await tabs.handle('chat_respond_permission', { tabId: 'tab-1', action });
+        expect(res.isError).toBe(true);
+        expect(res.content[0].text).toMatch(/turned off/);
+      }
+      expect(triggers()).toEqual([]);
+    });
+
+    it('still forwards a deny with its message', async () => {
+      const pending = tabs.handle('chat_respond_permission', { tabId: 'tab-1', action: 'deny', message: 'run the tests first' });
+      const trigger = await answerNextTrigger({ ok: true });
+      const res = await pending;
+
+      expect(trigger).toMatchObject({ action: 'deny', tabId: 'tab-1', message: 'run the tests first' });
+      expect(res.isError).toBeFalsy();
+    });
+
+    it('denies when no action is given', async () => {
+      const pending = tabs.handle('chat_respond_permission', { tabId: 'tab-1' });
+      const trigger = await answerNextTrigger({ ok: true });
+      await pending;
+
+      expect(trigger.action).toBe('deny');
+    });
+  });
+
+  describe('with the setting on', () => {
+    beforeEach(() => writeSettings({ mcpPermissionGrantsEnabled: true }));
+
+    it.each(['allow', 'always-allow'])('forwards %s', async (action) => {
+      const pending = tabs.handle('chat_respond_permission', { tabId: 'tab-1', action });
+      const trigger = await answerNextTrigger({ ok: true });
+      const res = await pending;
+
+      expect(trigger).toMatchObject({ action, tabId: 'tab-1' });
+      expect(res.isError).toBeFalsy();
+    });
+  });
+
+  it('rejects an unknown action', async () => {
+    writeSettings({ mcpPermissionGrantsEnabled: true });
+    const res = await tabs.handle('chat_respond_permission', { tabId: 'tab-1', action: 'approve' });
 
     expect(res.isError).toBe(true);
-    expect(res.content[0].text).toMatch(/granted by the user/);
     expect(triggers()).toEqual([]);
   });
 
-  it('forwards a deny with its message', async () => {
-    const pending = tabs.handle('chat_respond_permission', { tabId: 'tab-1', action: 'deny', message: 'run the tests first' });
-    const trigger = await answerNextTrigger({ ok: true });
-    const res = await pending;
+  it('cannot be turned on through settings_set', async () => {
+    writeSettings({ mcpPermissionGrantsEnabled: false });
+    const settingsTool = require('../../resources/mcp-servers/tools/settings.js');
 
-    expect(trigger).toMatchObject({ action: 'deny', tabId: 'tab-1', message: 'run the tests first' });
-    expect(res.isError).toBeFalsy();
-    expect(res.content[0].text).toMatch(/denied/);
-  });
+    const res = await settingsTool.handle('settings_set', { key: 'mcpPermissionGrantsEnabled', value: true });
 
-  it('denies when no action is given', async () => {
-    const pending = tabs.handle('chat_respond_permission', { tabId: 'tab-1' });
-    const trigger = await answerNextTrigger({ ok: true });
-    await pending;
-
-    expect(trigger.action).toBe('deny');
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toMatch(/read-only/);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8'));
+    expect(onDisk.mcpPermissionGrantsEnabled).toBe(false);
   });
 });
 
@@ -99,7 +144,7 @@ jest.mock('../../src/renderer/services/TerminalSessionService', () => ({
 }));
 
 describe('TerminalManager.respondPermissionForTab', () => {
-  let manager, state, card, clicked;
+  let manager, state, settings, card, clicked;
 
   /** A chat tab waiting on a permission card, as ChatView renders it. */
   function seedPendingPermission() {
@@ -140,6 +185,7 @@ describe('TerminalManager.respondPermissionForTab', () => {
       <div id="terminals-filter"><span id="filter-project-name"></span></div>
     `;
     state = require('../../src/renderer/state/terminals.state');
+    settings = require('../../src/renderer/state/settings.state').settingsState;
     const { TerminalManager } = require('../../src/renderer/ui/components/TerminalManager');
     manager = new TerminalManager();
     seedPendingPermission();
@@ -149,25 +195,57 @@ describe('TerminalManager.respondPermissionForTab', () => {
     try { state.clearAllTerminals(() => {}); } catch (_) { /* best effort */ }
   });
 
-  it.each(['allow', 'always-allow'])('refuses %s and clicks nothing', (action) => {
-    const res = manager.respondPermissionForTab('tab-1', { action });
+  describe('with the setting off (the default)', () => {
+    it.each(['allow', 'always-allow'])('refuses %s and clicks nothing', (action) => {
+      expect(settings.get().mcpPermissionGrantsEnabled).toBe(false);
+
+      const res = manager.respondPermissionForTab('tab-1', { action });
+
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/turned off/);
+      expect(clicked).toEqual([]);
+    });
+
+    it('denies, carrying the feedback message', () => {
+      const res = manager.respondPermissionForTab('tab-1', { action: 'deny', message: 'not on main' });
+
+      expect(res).toMatchObject({ ok: true, requestId: 'req-1', action: 'deny' });
+      expect(clicked).toEqual(['deny', 'deny']);
+      expect(card.querySelector('.chat-perm-feedback-input').value).toBe('not on main');
+    });
+
+    it('denies when no action is given', () => {
+      const res = manager.respondPermissionForTab('tab-1', {});
+
+      expect(res.ok).toBe(true);
+      expect(clicked).toEqual(['deny']);
+    });
+  });
+
+  describe('with the setting on', () => {
+    beforeEach(() => settings.setProp('mcpPermissionGrantsEnabled', true));
+
+    it.each(['allow', 'always-allow'])('clicks %s', (action) => {
+      const res = manager.respondPermissionForTab('tab-1', { action });
+
+      expect(res).toMatchObject({ ok: true, requestId: 'req-1', action });
+      expect(clicked).toEqual([action]);
+    });
+
+    it('still denies', () => {
+      const res = manager.respondPermissionForTab('tab-1', { action: 'deny' });
+
+      expect(res.ok).toBe(true);
+      expect(clicked).toEqual(['deny']);
+    });
+  });
+
+  it('rejects an unknown action whatever the setting', () => {
+    settings.setProp('mcpPermissionGrantsEnabled', true);
+
+    const res = manager.respondPermissionForTab('tab-1', { action: 'approve' });
 
     expect(res.ok).toBe(false);
     expect(clicked).toEqual([]);
-  });
-
-  it('denies, carrying the feedback message', () => {
-    const res = manager.respondPermissionForTab('tab-1', { action: 'deny', message: 'not on main' });
-
-    expect(res).toMatchObject({ ok: true, requestId: 'req-1', action: 'deny' });
-    expect(clicked).toEqual(['deny', 'deny']);
-    expect(card.querySelector('.chat-perm-feedback-input').value).toBe('not on main');
-  });
-
-  it('denies when no action is given', () => {
-    const res = manager.respondPermissionForTab('tab-1', {});
-
-    expect(res.ok).toBe(true);
-    expect(clicked).toEqual(['deny']);
   });
 });

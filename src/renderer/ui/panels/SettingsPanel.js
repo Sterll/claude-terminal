@@ -1749,6 +1749,25 @@ class SettingsPanel extends BasePanel {
               <div class="settings-desc" style="padding: 0 16px 12px;">${t('claudeRemote.settingsHint')}</div>
               </div>
             </div>
+            <div class="settings-group" data-section="mcp-grants">
+              <div class="settings-group-title">${t('settings.mcpGrants.title')}</div>
+              <div class="settings-card">
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.mcpGrants.enable')}</div>
+                  <div class="settings-toggle-desc">${t('settings.mcpGrants.enableDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="mcp-permission-grants-toggle" ${settings.mcpPermissionGrantsEnabled === true ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-warning" id="mcp-permission-grants-warning" style="display: ${settings.mcpPermissionGrantsEnabled === true ? 'flex' : 'none'};">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
+                <span>${t('settings.mcpGrants.warning')}</span>
+              </div>
+              </div>
+            </div>
             <div class="settings-group">
               <div class="settings-group-title">${t('settings.advanced')}</div>
               <div class="settings-card">
@@ -2070,6 +2089,13 @@ class SettingsPanel extends BasePanel {
         document.getElementById('dangerous-warning').style.display = card.dataset.mode === 'dangerous' ? 'flex' : 'none';
       };
     });
+
+    const mcpGrantsToggle = document.getElementById('mcp-permission-grants-toggle');
+    if (mcpGrantsToggle) {
+      mcpGrantsToggle.addEventListener('change', () => {
+        document.getElementById('mcp-permission-grants-warning').style.display = mcpGrantsToggle.checked ? 'flex' : 'none';
+      });
+    }
 
     // Claude accounts section — wire async list + actions
     this._wireAccountsSection(container);
@@ -2450,6 +2476,8 @@ class SettingsPanel extends BasePanel {
       const newRcDrive = rcDriveToggle ? rcDriveToggle.checked : settings.claudeRemoteControlDrive !== false;
       const rcTerminalsToggle = document.getElementById('claude-remote-terminals-toggle');
       const newRcTerminals = rcTerminalsToggle ? rcTerminalsToggle.checked : settings.claudeRemoteControlTerminals === true;
+      const mcpGrantsToggleEl = document.getElementById('mcp-permission-grants-toggle');
+      const newMcpPermissionGrants = mcpGrantsToggleEl ? mcpGrantsToggleEl.checked : settings.mcpPermissionGrantsEnabled === true;
       const context1MToggle = document.getElementById('enable-1m-context-toggle');
       const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
       const ephemeralChatsToggle = document.getElementById('ephemeral-chats-toggle');
@@ -2516,6 +2544,7 @@ class SettingsPanel extends BasePanel {
         claudeRemoteControlEnabled: newRcEnabled,
         claudeRemoteControlDrive: newRcDrive,
         claudeRemoteControlTerminals: newRcTerminals,
+        mcpPermissionGrantsEnabled: newMcpPermissionGrants,
         enable1MContext: newEnable1MContext,
         ephemeralChats: newEphemeralChats,
         showDotfiles: newShowDotfiles,

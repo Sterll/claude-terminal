@@ -101,6 +101,9 @@ const defaultSettings = {
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
   chromeBridgeEnabled: false, // Opt-in: let chat sessions drive Chrome via the Claude browser extension
+  // Opt-in: let the MCP chat_respond_permission tool grant, not only deny, another
+  // chat tab's permission request. Read-only over MCP, so an agent cannot turn it on.
+  mcpPermissionGrantsEnabled: false,
   // Every tab is pinned by default: the grouped sidebar fits without overflow,
   // so the More menu is now opt-in rather than the default state.
   pinnedTabs: ['claude', 'dashboard', 'files', 'git', 'tickets', 'session-replay', 'tasks', 'control-tower', 'workspace', 'memory', 'timetracking', 'cost', 'database', 'skills', 'agents', 'plugins', 'mcp', 'workflows', 'errorlog', 'connectivity'],

@@ -4724,14 +4724,22 @@ class TerminalManager extends BaseComponent {
     };
   }
 
-  // Deny a pending permission on a chat tab programmatically (the MCP
-  // `chat_respond_permission` tool); message optional, sent as feedback.
-  // Granting is refused here as well as in the tool: anything can drop a
-  // trigger file, and an approval from outside the app is one the user
-  // never saw. See the header of resources/mcp-servers/tools/tabs.js.
+  // Answer a pending permission on a chat tab programmatically (the MCP
+  // `chat_respond_permission` tool). action: 'deny' | 'allow' | 'always-allow';
+  // message optional, sent as feedback with a denial.
+  // Granting needs `mcpPermissionGrantsEnabled`, checked here as well as in the
+  // tool: anything can drop a trigger file, and an approval from outside the
+  // app is one the user never saw. See the header of
+  // resources/mcp-servers/tools/tabs.js.
   respondPermissionForTab(tabId, { action = 'deny', message = '', requestId = null } = {}) {
-    if (action !== 'deny') {
-      return { ok: false, error: `Action "${action}" refused: a permission can only be granted by the user, in the app` };
+    const btnSelector = {
+      'deny': '.chat-perm-btn[data-action="deny"], .chat-plan-btn[data-action="deny"]',
+      'allow': '.chat-perm-btn[data-action="allow"], .chat-plan-btn[data-action="allow"]',
+      'always-allow': '.chat-perm-btn[data-action="always-allow"]',
+    }[action];
+    if (!btnSelector) return { ok: false, error: `Unsupported action: ${action}` };
+    if (action !== 'deny' && getSetting('mcpPermissionGrantsEnabled') !== true) {
+      return { ok: false, error: `Action "${action}" refused: granting another tab's permissions over MCP is turned off in the settings` };
     }
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
@@ -4755,11 +4763,11 @@ class TerminalManager extends BaseComponent {
     }
     if (!card) return { ok: false, error: 'Permission card not found in DOM' };
 
-    const btn = card.querySelector('.chat-perm-btn[data-action="deny"], .chat-plan-btn[data-action="deny"]');
-    if (!btn) return { ok: false, error: 'Deny button not found' };
+    const btn = card.querySelector(btnSelector);
+    if (!btn) return { ok: false, error: `Button for action "${action}" not found` };
 
-    // With a message: prefill the feedback input then click twice (first shows input, second sends).
-    if (message) {
+    // For deny: prefill the feedback input then click twice (first shows input, second sends).
+    if (action === 'deny' && message) {
       try { btn.click(); } catch (_) {}
       const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
       if (feedbackInput) feedbackInput.value = String(message);

@@ -1255,6 +1255,12 @@
       "hostFailed": "Impossible d'enregistrer le connecteur navigateur. Aucun navigateur compatible n'a été trouvé.",
       "toggleError": "Échec de la mise à jour de l'intégration navigateur."
     },
+    "mcpGrants": {
+      "title": "Orchestration d'agents",
+      "enable": "Laisser un agent accorder les autorisations d'un autre onglet",
+      "enableDesc": "Via l'outil MCP chat_respond_permission. Désactivé : un agent peut seulement refuser les demandes d'un autre onglet, et vous répondez au reste dans l'app.",
+      "warning": "Un agent peut alors approuver, dans un autre onglet, une commande ou un plan que vous ne voyez jamais, y compris une autorisation permanente. N'activez cette option que si un agent en pilote d'autres de bout en bout."
+    },
     "advanced": "Avancé",
     "restoreTerminalSessions": "Mémoriser les derniers états des terminaux",
     "restoreTerminalSessionsDesc": "Restaurer les onglets de terminal et les sessions Claude de la session précédente au démarrage",

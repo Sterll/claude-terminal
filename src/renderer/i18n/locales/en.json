@@ -1160,6 +1160,12 @@
       "hostFailed": "Could not register the browser connector. No supported browser was found.",
       "toggleError": "Failed to update the browser integration."
     },
+    "mcpGrants": {
+      "title": "Agent orchestration",
+      "enable": "Let an agent grant another tab's permissions",
+      "enableDesc": "Through the chat_respond_permission MCP tool. Off: an agent can only deny another tab's requests, and you answer the rest in the app.",
+      "warning": "An agent can then approve, in another tab, a command or a plan you never see, including \"Always Allow\" rules. Only turn this on if one agent drives the others from start to finish."
+    },
     "advanced": "Advanced",
     "restoreTerminalSessions": "Remember last terminal states",
     "restoreTerminalSessionsDesc": "Restore terminal tabs and Claude sessions from the previous session on startup",

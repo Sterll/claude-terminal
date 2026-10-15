@@ -119,6 +119,7 @@ const KNOWN_SETTINGS = new Set([
 // Sensitive settings - readable but NOT writable via MCP
 const READONLY_SETTINGS = new Set([
   'skipPermissions',        // Security: bypasses Claude permissions
+  'mcpPermissionGrantsEnabled', // Security: lets an agent grant another tab's permissions
   'cloudApiKey',            // Credentials
   'remotePersistentPinValue', // Auth PIN
   'telemetryEnabled',       // Privacy: user must opt-in via UI

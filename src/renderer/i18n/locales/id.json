@@ -1160,6 +1160,12 @@
       "hostFailed": "Tidak dapat mendaftarkan konektor peramban. Tidak ada peramban yang didukung ditemukan.",
       "toggleError": "Gagal memperbarui integrasi peramban."
     },
+    "mcpGrants": {
+      "title": "Orkestrasi agen",
+      "enable": "Izinkan agen memberi izin untuk tab lain",
+      "enableDesc": "Melalui alat MCP chat_respond_permission. Nonaktif: agen hanya dapat menolak permintaan tab lain, dan Anda menjawab sisanya di aplikasi.",
+      "warning": "Agen kemudian dapat menyetujui, di tab lain, perintah atau rencana yang tidak pernah Anda lihat, termasuk aturan \"Selalu Izinkan\". Aktifkan hanya jika satu agen mengendalikan agen lainnya dari awal hingga akhir."
+    },
     "advanced": "Lanjutan",
     "restoreTerminalSessions": "Ingat kondisi terminal terakhir",
     "restoreTerminalSessionsDesc": "Pulihkan tab terminal dan sesi Claude dari sesi sebelumnya saat aplikasi dijalankan",
