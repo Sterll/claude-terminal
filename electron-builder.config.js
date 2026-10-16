@@ -110,7 +110,18 @@ module.exports = {
     target: "dmg",
     icon: "assets/icon.png",
     category: "public.app-category.developer-tools",
-    darkModeSupport: true
+    darkModeSupport: true,
+    // Ad-hoc sign the whole bundle. With no certificate electron-builder signs
+    // nothing, so the app ships with only the Electron binary's linker
+    // signature, which does not cover the bundle's resources. macOS reports a
+    // quarantined app signed that way as "damaged", and `xattr -cr` was the only
+    // way past it. A valid ad-hoc signature gets the "could not verify the
+    // developer" prompt instead, cleared once from Privacy & Security ->
+    // "Open Anyway". Removing that prompt too needs a Developer ID + notarization.
+    identity: "-",
+    // The hardened runtime is only required for notarization, and under it the
+    // microphone (voice dictation) needs an entitlement the default file lacks.
+    hardenedRuntime: false
   },
   dmg: {
     // Disable background/window customization to avoid hdiutil "Resource busy" on CI
