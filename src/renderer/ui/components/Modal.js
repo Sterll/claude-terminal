@@ -9,6 +9,23 @@ const { t } = require('../../i18n');
 // Detect platform for button order convention
 const isWindows = typeof process !== 'undefined' ? process.platform === 'win32' : navigator.userAgent.includes('Windows');
 
+// Modals currently shown, oldest first. Every modal listens on `document`, so
+// without this a modal opened from another one (connecting an account from the
+// account switch offer) would have Escape close both and Tab trapped twice.
+// Only the top of the stack answers the keyboard.
+// A modal torn down without going through cleanupModal() is skipped rather
+// than left to deafen every modal under it.
+const openModals = [];
+function isTopModal(modal) {
+  for (let i = openModals.length - 1; i >= 0; i--) {
+    if (openModals[i].isConnected) return openModals[i] === modal;
+  }
+  return false;
+}
+// One Escape closes one modal: once the top one is gone, the next listener
+// would otherwise find itself on top for the same keypress.
+const handledEscapes = new WeakSet();
+
 /**
  * Create a modal element
  * @param {Object} options
@@ -126,7 +143,7 @@ function showModal(modal) {
 
   // Focus trap — cycle Tab within the modal
   const trapHandler = (e) => {
-    if (e.key !== 'Tab') return;
+    if (e.key !== 'Tab' || !isTopModal(modal)) return;
     const focusable = getFocusableElements(modal);
     if (focusable.length === 0) return;
     const first = focusable[0];
@@ -143,6 +160,7 @@ function showModal(modal) {
       }
     }
   };
+  openModals.push(modal);
   modal._trapHandler = trapHandler;
   document.addEventListener('keydown', trapHandler);
 
@@ -151,7 +169,8 @@ function showModal(modal) {
   // it, so without this an `await showPrompt(...)` dismissed with Escape never
   // resolves and the caller hangs forever.
   const escHandler = (e) => {
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !handledEscapes.has(e) && isTopModal(modal)) {
+      handledEscapes.add(e);
       closeModal(modal);
       if (modal._onClose) modal._onClose();
     }
@@ -184,6 +203,8 @@ function showModal(modal) {
  * Internal cleanup — removes listeners without DOM removal
  */
 function cleanupModal(modal) {
+  const stackIndex = openModals.indexOf(modal);
+  if (stackIndex !== -1) openModals.splice(stackIndex, 1);
   if (modal._escHandler) {
     document.removeEventListener('keydown', modal._escHandler);
     delete modal._escHandler;
