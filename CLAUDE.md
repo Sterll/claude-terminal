@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 295 test files)
+npm test                 # Run Jest tests (jsdom, 298 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -86,10 +86,10 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 39 IPC files, 370 handlers total
+├── src/main/ipc/                    # 39 IPC files, 373 handlers total
 ├── src/main/services/               # 43 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 30 utilities
+├── src/main/utils/                  # 31 utilities
 ├── src/main/issue-trackers/         # Ticket provider adapters (*.tracker.js) + contract
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
@@ -99,14 +99,14 @@ Electron Renderer Process (Browser)
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 16 observable state modules
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
-├── src/renderer/ui/components/      # 23 UI components
+├── src/renderer/ui/components/      # 24 UI components
 ├── src/renderer/ui/panels/          # 27 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4334 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4353 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade)
 
 Project Types (Plugin System)
@@ -146,7 +146,7 @@ Remote UI (PWA for mobile)
 | `cloud-projects.ipc.js` | 11 | Cloud project upload / download / listing |
 | `parallel.ipc.js` | 9 | Parallel task orchestration across git worktrees |
 | `knowledge.ipc.js` | 9 | Global knowledge CRUD, pin, enable, search, CLAUDE.md block preview/sync |
-| `accounts.ipc.js` | 10 | Multiple Claude accounts: capture, list, switch, rename, delete (refused while a project or an automation still uses the account), per-project binding |
+| `accounts.ipc.js` | 13 | Multiple Claude accounts: connect (`claude auth login`, URL + code), capture, list, switch, rename, delete (refused while a project or an automation still uses the account), per-project binding |
 | `plugin.ipc.js` | 8 | Installed plugins, catalog, marketplaces, install/uninstall via Claude CLI PTY |
 | `cloud-sync.ipc.js` | 8 | Bidirectional desktop <-> cloud sync with per-entity toggles |
 | `artifacts.ipc.js` | 8 | Artifact library: list, get, versions, search, stats, delete |
@@ -175,13 +175,13 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 370 IPC handlers across 39 files.**
+**Total: 373 IPC handlers across 39 files.**
 
 ### Services (`src/main/services/`)
 
 | Service | Purpose |
 |---------|---------|
-| `AccountManager.js` | Multiple Claude OAuth accounts: snapshots the CLI's live credential store into `~/.claude-terminal/accounts/` and swaps the active credentials on demand. The live store is the macOS login Keychain on darwin, `~/.claude/.credentials.json` elsewhere. Login itself stays the CLI's job (`claude /login` once, then capture) |
+| `AccountManager.js` | Multiple Claude OAuth accounts: snapshots the CLI's live credential store into `~/.claude-terminal/accounts/` and swaps the active credentials on demand. The live store is the macOS login Keychain on darwin, `~/.claude/.credentials.json` elsewhere. Login itself stays the CLI's job: `startLogin()` runs `claude auth login` straight into a new account's own store and leaves the machine-wide login alone, `captureCurrent()` saves whoever `claude /login` last put in the machine-wide store |
 | `ArtifactService.js` | Main-process facade over `src/shared/artifact-store.js` (shared verbatim with the MCP server process). Adds the two things only main can do: broadcast `artifacts-changed` to every window, and poll for out-of-process writes from the MCP tools |
 | `ModelCatalogService.js` | Builds the chat picker's two-tier model catalog: `primary` from whatever the CLI advertises (`initializationResult().models`) minus its `default` alias, `legacy` from the hand-curated list minus anything primary already covers, plus the CLI rows a newer version of their family supersedes (`splitSuperseded`): the published catalog the CLI can serve instead of its compiled list appends every older model after the current lineup, with no field to tell them apart. Follows CLI upgrades on its own, which is the point - hard-coded lists went stale the day Fable 5.1 shipped. The disk cache is keyed on the SDK binary's version as well as its age, because the model list is compiled into that binary: after an update a young cache still describes the previous CLI. A refresh that changes the catalog is pushed to every window (`onChange`) |
 | `VoiceService.js` | Speech-to-text. The renderer captures the mic and hands over raw PCM; anything needing a secret or the network happens here. Groq is the only backend for now (a local Whisper burns CPU exactly when the user is gaming and is worse in French). The API key lives in the OS credential store, never in settings.json, and is never sent to the renderer |
@@ -245,6 +245,7 @@ Remote UI (PWA for mobile)
 | `macKeychain.js` | The CLI's Keychain items, read and written through `/usr/bin/security` exactly as the CLI does, never through keytar. Every one of those items trusts `security` and nothing else, so an in-process read makes this app the requester and macOS asks for the login password; "Always Allow" pins the app's code signature, which an ad-hoc signed build changes on every update. keytar stays for the secrets the app creates itself |
 | `claudeConfig.js` | Single guarded read/modify/write boundary for `~/.claude.json`, under a cross-process lock. Refuses to write when the file changed underneath, since the Claude CLI rewrites it continuously |
 | `sdkCli.js` | Locates the bundled Agent SDK CLI binary, including inside `app.asar.unpacked` |
+| `claudeLogin.js` | Drives `claude auth login` over pipes for `AccountManager.startLogin()`: hands over the sign-in URL (unwrapped from its OSC 8 hyperlink), writes the pasted `code#state` back, reports refusals, cancels and times out. `CLAUDE_SECURESTORAGE_CONFIG_DIR` picks the store the login lands in, a scratch `CLAUDE_CONFIG_DIR` keeps the `oauthAccount` it records out of `~/.claude.json`, and `ANTHROPIC_BASE_URL` and the key variables are scrubbed so the fresh token goes nowhere else |
 | `fileLock.js` | Cross-process advisory lock, used by the workflow store and by concurrent settings writers |
 | `rendererSecurity.js` | The privilege boundary for the sandboxed windows. Wraps `ipcMain.handle`/`on` once so every handler answers only the registered main frame at its expected document URL, denies navigation and `window.open`, and gates renderer filesystem access behind an allowlist whose `canonical()` resolves existing ancestors so a new child under a symlink cannot escape. Keeps the credential and startup denials (`.ssh`, `.aws`, `.gnupg`, `.credentials.json`, shell rc files, autostart) above any grant. A remote (SSH) project is never granted: `projectGrantPaths()` skips any project with a `remote` block or an `ssh-remote://` path, worktrees included |
 | `syncBundles.js` | Builds and validates the bounded bundles `SyncEngine` exchanges: resource files, both agent formats and deletion markers |
@@ -366,7 +367,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 ### UI Components (`src/renderer/ui/components/`)
 
-`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`, `ticketsSettings`.
+`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `AccountLoginModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`, `ticketsSettings`.
 
 `RemoteProjectModal` is "Open Remote Project" (choose an SSH host, browse its directories, open, create, `git init` or clone a folder) and also hosts the SSH profile editor that Settings → SSH hosts reuses, plus the "Verify host" view, a small xterm running OpenSSH's own host key prompt. `RemoteHostBadge` draws the host label and the state-coloured dot remote projects carry in `ProjectList` and `ProjectBar`, and `refuseForRemote()` turns a capability row of `src/shared/remote-capabilities.js` into a toast so a disabled action never fails silently.
 
@@ -764,7 +765,7 @@ Worker); neither is bundled into the desktop app.
 - **Workflows:** custom canvas editor (no LiteGraph), 31 nodes / 12 trigger types, AI assistant for graph editing, webhook/cron/hook/file/git/session triggers. A workflow with `mode: 'simple'` is a "task": `src/shared/simple-task.js` compiles it into the same graph the advanced editor produces, so both paths write one object through one `workflow.save` IPC
 - **Workspace:** cross-project KB with advisor chat, concept links, `@workspace` mention
 - **Usage reads the credential store on a bounded ladder, and eventually stops.** A store read that yields no usable token parks the account for 5, 10, 20, 40 then 60 minutes; a usable token clears the ladder and an explicit refresh restarts it. That interval used to be `Infinity`, so one transient failure — an expired token between two CLI rotations, a 401, a refused Keychain — froze the chip for the life of the process. But capping the interval bounds only how *often*: after `TOKEN_BACKOFF_GIVE_UP` consecutive failures the automatic retry stops altogether, because on darwin each reopen of a refused store is a password dialog raised behind the window, and one an hour forever is the timer-driven prompt the `Infinity` was there to prevent. Only the explicit refresh lifts it. `retryAt` and `gaveUp` ride on **both** `getUsageData` (the 30 s poll) and `getFetchState` (the refresh), since the chip reads one on each path and the tooltip has to distinguish waiting from broken from stopped
-- **Multiple accounts:** `AccountManager` snapshots the CLI's live credential store per named account and swaps it on demand; a project can be bound to one. Login itself is never reimplemented - the user runs `claude /login` once and the result is captured. Switching mid-conversation resumes with the CLI session id, and MCP tokens are deliberately left alone. **One account authenticates from exactly one store at a time**: the account holding the machine-wide login gets no `CLAUDE_SECURESTORAGE_CONFIG_DIR` overlay, because two stores refreshing the same OAuth grant sign each other out - a refresh rotates the refresh token and invalidates whichever copy the other store still holds, and the CLI blanks the loser to `accessToken: ''`. For the same reason a snapshot is a decaying asset, not an archive: `startCredentialWatch()` re-reads the machine-wide store every 5 min so the snapshot tracks the CLI's rotations, and `ensureAccountStore()` copies a bound account's own store back the same way. `isRotationOf()` is what attributes a refreshed store to the account that owns it - note `refreshTokenExpiresAt` is recomputed on every rotation and drifts by a round-trip, so it is matched within a tolerance, never for equality
+- **Multiple accounts:** `AccountManager` snapshots the CLI's live credential store per named account and swaps it on demand; a project can be bound to one. Login itself is never reimplemented: "Connect an account" runs the CLI's own `claude auth login` with `CLAUDE_SECURESTORAGE_CONFIG_DIR` pointed at the new account's store, shows the URL it prints and writes back the `code#state` the page gives when the browser redirect cannot reach the CLI, so the account starts on a grant of its own and the machine-wide login is never touched. A duplicate is caught on `accountUuid` + `organizationUuid` from the scratch config, since a fresh token never matches a fingerprint. "Save current account" still captures whoever `claude /login` last put in the machine-wide store. Switching mid-conversation resumes with the CLI session id, and MCP tokens are deliberately left alone. **One account authenticates from exactly one store at a time**: the account holding the machine-wide login gets no `CLAUDE_SECURESTORAGE_CONFIG_DIR` overlay, because two stores refreshing the same OAuth grant sign each other out - a refresh rotates the refresh token and invalidates whichever copy the other store still holds, and the CLI blanks the loser to `accessToken: ''`. For the same reason a snapshot is a decaying asset, not an archive: `startCredentialWatch()` re-reads the machine-wide store every 5 min so the snapshot tracks the CLI's rotations, and `ensureAccountStore()` copies a bound account's own store back the same way. `isRotationOf()` is what attributes a refreshed store to the account that owns it - note `refreshTokenExpiresAt` is recomputed on every rotation and drifts by a round-trip, so it is matched within a tolerance, never for equality
 - **What travels with an account is what the CLI's `/logout` deletes:** `claudeAiOauth`, `organizationUuid`, `trustedDeviceToken`, `enterpriseGateway` and `designOauth` (`ACCOUNT_KEYS` in `AccountManager`). A snapshot keeps exactly those, and a swap drops the outgoing account's before laying the incoming one's on, so a key the incoming snapshot lacks is absent rather than inherited. Everything else in the store, `mcpOAuth` above all, belongs to the machine and stays. Snapshotting `claudeAiOauth` alone used to hand one account's Claude Design grant (`/design-login`) to whichever account was switched in next
 - **Terminal-only CLI commands open in a terminal:** the chat drives the CLI headless, where every `local-jsx` command answers "isn't available in this environment". Those that act on the machine or the account rather than on the conversation (`/design-login`, `/login`, `/logout`, `/permissions`, `/plugin`... listed in `src/shared/terminal-commands.js`) are caught in `handleSend` and run as `claude /<command>` in a new Claude terminal tab, on the account the conversation runs on (`conversationAccountId()`). Anything the CLI also runs headless (`/config`, `/mcp`, `/design consent`...) is left to it. The command line is built from user input and goes through `cmd.exe /c` or a shell, so `TerminalService.create` re-validates it against the same allowlist and refuses any argument that is not a plain word. In a remote (SSH) project the tab is a remote Claude terminal: the command runs on the host, against the host's own login and with no account overlay, quoted once more by `terminalClaudeScript()`; a reconnect runs it again unless the tab has a conversation to resume
 - **Voice:** the renderer captures the mic and sends raw PCM to main; the Groq key stays in the OS credential store and never crosses to the renderer. Transcription output goes to the screen only, routed to the focused tab
@@ -780,7 +781,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 295 unit test files (jsdom environment)
+npm test                    # Run all 298 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -789,7 +790,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 295 test files
+- **Framework:** Jest with jsdom, 298 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

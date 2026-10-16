@@ -1444,11 +1444,12 @@ class SettingsPanel extends BasePanel {
             <div class="settings-group" data-section="accounts">
               <div class="settings-group-title">${t('settings.accountsGroup') || 'Claude accounts'}</div>
               <div class="settings-card">
-                <div class="settings-desc" style="padding: 8px 16px;">${t('settings.accountsDesc') || 'Save the credentials currently active in ~/.claude/.credentials.json so you can switch between them when one hits its usage limit. Run "claude /login" in a terminal to add a new account.'}</div>
+                <div class="settings-desc" style="padding: 8px 16px;">${t('settings.accountsDesc') || 'Connect each Claude account you use, then pick one per project or switch to another when one hits its usage limit. "Save current account" keeps the account Claude Code is already signed in with.'}</div>
                 <div class="accounts-list" id="claude-accounts-list">
                   <div class="settings-desc" style="padding: 12px 16px;">${t('common.loading') || 'Loading…'}</div>
                 </div>
                 <div style="display: flex; gap: 8px; padding: 8px 16px 16px;">
+                  <button class="btn btn-primary" id="btn-account-login">${t('accounts.connectAccount')}</button>
                   <button class="btn btn-secondary" id="btn-account-capture">${t('accounts.captureCurrent') || 'Save current account'}</button>
                   <button class="btn btn-secondary" id="btn-accounts-usage-refresh">${t('accounts.usageRefresh') || 'Refresh usage'}</button>
                 </div>
@@ -2830,7 +2831,7 @@ class SettingsPanel extends BasePanel {
       if (!accounts.length) {
         listEl.innerHTML = `
           <div class="settings-desc" style="padding: 12px 16px;">
-            ${escapeHtml(t('accounts.emptyHint') || 'No saved accounts yet. Open a terminal, run "claude /login", then click "Save current account".')}
+            ${escapeHtml(t('accounts.emptyHint') || 'No saved accounts yet. Click "Connect an account" to sign one in, or "Save current account" to keep the one Claude Code is already using.')}
           </div>`;
         if (captureBtn) captureBtn.disabled = !hasCredentials;
         return;
@@ -3006,6 +3007,15 @@ class SettingsPanel extends BasePanel {
         } catch (err) {
           showError(err?.message || t('accounts.captureError'), 5000);
         }
+      };
+    }
+
+    const loginBtn = container.querySelector('#btn-account-login');
+    if (loginBtn) {
+      loginBtn.onclick = async () => {
+        const { showAccountLoginModal } = require('../components/AccountLoginModal');
+        // The list follows through accounts-changed.
+        await showAccountLoginModal();
       };
     }
 

@@ -6,6 +6,7 @@
 const { ipcMain, BrowserWindow } = require('electron');
 const AccountManager = require('../services/AccountManager');
 const UsageService = require('../services/UsageService');
+const { getSdkCliPath } = require('../utils/sdkCli');
 
 function broadcast(channel, payload) {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -110,6 +111,33 @@ function registerAccountsHandlers() {
     if (result.success) await broadcastAccounts();
     return result;
   });
+
+  // Resolves when the sign-in ends, which can be minutes away: the URL and a
+  // refused code reach the window that asked through accounts-login-progress.
+  ipcMain.handle('accounts-login-start', async (event, { name } = {}) => {
+    const send = (payload) => {
+      if (!event.sender.isDestroyed()) event.sender.send('accounts-login-progress', payload);
+    };
+    try {
+      const command = getSdkCliPath();
+      if (!command) throw new Error('The Claude Code binary shipped with the app was not found.');
+      const account = await AccountManager.startLogin({
+        command,
+        name,
+        onUrl: (url) => send({ type: 'url', url }),
+        onInvalidCode: () => send({ type: 'invalid-code' }),
+      });
+      await broadcastAccounts();
+      return { success: true, data: account };
+    } catch (err) {
+      return { success: false, error: err.message, code: err.code };
+    }
+  });
+
+  ipcMain.handle('accounts-login-code', (_event, { code } = {}) =>
+    wrap(() => AccountManager.submitLoginCode(code)));
+
+  ipcMain.handle('accounts-login-cancel', () => wrap(() => AccountManager.cancelLogin()));
 
   ipcMain.handle('accounts-switch', async (_event, { id } = {}) => {
     const result = await wrap(() => AccountManager.switchTo(id));
