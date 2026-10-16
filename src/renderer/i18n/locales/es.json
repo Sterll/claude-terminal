@@ -4483,7 +4483,8 @@
     "loginChecking": "Comprobando el código…",
     "loginInvalidCode": "Este código no se ha aceptado. Copia el código completo y vuelve a intentarlo.",
     "loginSuccess": "Cuenta \"{name}\" conectada.",
-    "loginError": "No se pudo iniciar sesión."
+    "loginError": "No se pudo iniciar sesión.",
+    "duplicate": "Esta cuenta ya está guardada como \"{name}\"."
   },
   "usage": {
     "staleRetry": "Datos de uso posiblemente desactualizados - la última actualización falló. Próximo intento a las {time}; haz clic para reintentar ahora. {error}",

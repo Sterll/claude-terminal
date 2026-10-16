@@ -4483,7 +4483,8 @@
     "loginChecking": "Memeriksa kode…",
     "loginInvalidCode": "Kode ini tidak diterima. Salin seluruh kode lalu coba lagi.",
     "loginSuccess": "Akun \"{name}\" terhubung.",
-    "loginError": "Gagal masuk."
+    "loginError": "Gagal masuk.",
+    "duplicate": "Akun ini sudah disimpan sebagai \"{name}\"."
   },
   "usage": {
     "staleRetry": "Data penggunaan mungkin sudah tidak terbaru - pemuatan terakhir gagal. Percobaan berikutnya pukul {time}; klik untuk mencoba sekarang. {error}",

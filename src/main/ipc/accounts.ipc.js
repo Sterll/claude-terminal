@@ -18,7 +18,7 @@ async function wrap(fn) {
   try {
     return { success: true, data: await fn() };
   } catch (err) {
-    return { success: false, error: err.message };
+    return { success: false, error: err.message, code: err.code, accountName: err.accountName };
   }
 }
 
@@ -130,7 +130,7 @@ function registerAccountsHandlers() {
       await broadcastAccounts();
       return { success: true, data: account };
     } catch (err) {
-      return { success: false, error: err.message, code: err.code };
+      return { success: false, error: err.message, code: err.code, accountName: err.accountName };
     }
   });
 

@@ -4483,7 +4483,8 @@
     "loginChecking": "Checking the code…",
     "loginInvalidCode": "This code was not accepted. Copy the whole code and try again.",
     "loginSuccess": "Account \"{name}\" connected.",
-    "loginError": "Sign-in failed."
+    "loginError": "Sign-in failed.",
+    "duplicate": "This account is already saved as \"{name}\"."
   },
   "usage": {
     "staleRetry": "Usage data may be out of date - the last refresh failed. Next attempt at {time}; click to try now. {error}",

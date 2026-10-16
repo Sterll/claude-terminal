@@ -3000,7 +3000,8 @@ class SettingsPanel extends BasePanel {
         try {
           const r = await this.api.accounts.capture(name);
           if (!r?.success) {
-            showError(r?.error || t('accounts.captureError'), 5000);
+            const { accountErrorMessage } = require('../components/AccountLoginModal');
+            showError(accountErrorMessage(r, t('accounts.captureError')), 5000);
             return;
           }
           await renderList();

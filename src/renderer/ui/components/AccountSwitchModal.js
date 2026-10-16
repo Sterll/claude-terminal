@@ -22,7 +22,7 @@ const { sanitizeColor } = require('../../utils/color');
 const { t } = require('../../i18n');
 const { setProjectAccount } = require('../../state/projects.state');
 const { buildAccountUsageHtml, blockingLimit, formatBucketReset } = require('./accountUsage');
-const { showAccountLoginModal } = require('./AccountLoginModal');
+const { showAccountLoginModal, accountErrorMessage } = require('./AccountLoginModal');
 
 // How old an account's figures may be before the offer asks again. Settings
 // accepts five minutes because it redraws on every rename; here the question
@@ -208,7 +208,7 @@ async function showAccountSwitchModal({ reason, activeAccountId, projectId = nul
         if (!name) return;
         const res = await api.accounts.capture(name);
         if (!res.success) {
-          alert(res.error || 'Capture failed');
+          alert(accountErrorMessage(res, 'Capture failed'));
           return;
         }
         // A freshly captured account is only useful here if the project moves

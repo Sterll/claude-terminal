@@ -32,6 +32,11 @@ jest.mock('../../src/main/utils/macKeychain', () => ({
   deletePassword: jest.fn(async () => true)
 }));
 
+// The real module asks api.anthropic.com who a token belongs to.
+jest.mock('../../src/main/utils/oauthProfile', () => ({
+  fetchOAuthIdentity: jest.fn(async () => null),
+}));
+
 const paths = require('../../src/main/utils/paths');
 const AccountManager = require('../../src/main/services/AccountManager');
 const { SECURESTORAGE_ENV } = require('../../src/main/utils/claudeCredentials');

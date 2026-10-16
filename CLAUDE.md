@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 298 test files)
+npm test                 # Run Jest tests (jsdom, 301 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -89,7 +89,7 @@ Electron Main Process (Node.js)
 ├── src/main/ipc/                    # 39 IPC files, 373 handlers total
 ├── src/main/services/               # 43 services
 ├── src/main/windows/                # 5 window managers
-├── src/main/utils/                  # 31 utilities
+├── src/main/utils/                  # 32 utilities
 ├── src/main/issue-trackers/         # Ticket provider adapters (*.tracker.js) + contract
 └── src/main/workflow-nodes/         # 31 workflow node types (*.node.js)
 
@@ -106,7 +106,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4353 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4354 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade)
 
 Project Types (Plugin System)
@@ -246,6 +246,7 @@ Remote UI (PWA for mobile)
 | `claudeConfig.js` | Single guarded read/modify/write boundary for `~/.claude.json`, under a cross-process lock. Refuses to write when the file changed underneath, since the Claude CLI rewrites it continuously |
 | `sdkCli.js` | Locates the bundled Agent SDK CLI binary, including inside `app.asar.unpacked` |
 | `claudeLogin.js` | Drives `claude auth login` over pipes for `AccountManager.startLogin()`: hands over the sign-in URL (unwrapped from its OSC 8 hyperlink), writes the pasted `code#state` back, reports refusals, cancels and times out. `CLAUDE_SECURESTORAGE_CONFIG_DIR` picks the store the login lands in, a scratch `CLAUDE_CONFIG_DIR` keeps the `oauthAccount` it records out of `~/.claude.json`, and `ANTHROPIC_BASE_URL` and the key variables are scrubbed so the fresh token goes nowhere else |
+| `oauthProfile.js` | Asks `api.anthropic.com/api/oauth/profile` who an OAuth token belongs to (account, email, organisation). The identity `AccountManager` refuses a duplicate on, for a capture and for an account saved before identities were recorded (`recordIdentity`, fed by `UsageService` with a token the API just accepted). Not `~/.claude.json`: after an account switch its `oauthAccount` still names whoever ran `claude /login` last. Never rejects |
 | `fileLock.js` | Cross-process advisory lock, used by the workflow store and by concurrent settings writers |
 | `rendererSecurity.js` | The privilege boundary for the sandboxed windows. Wraps `ipcMain.handle`/`on` once so every handler answers only the registered main frame at its expected document URL, denies navigation and `window.open`, and gates renderer filesystem access behind an allowlist whose `canonical()` resolves existing ancestors so a new child under a symlink cannot escape. Keeps the credential and startup denials (`.ssh`, `.aws`, `.gnupg`, `.credentials.json`, shell rc files, autostart) above any grant. A remote (SSH) project is never granted: `projectGrantPaths()` skips any project with a `remote` block or an `ssh-remote://` path, worktrees included |
 | `syncBundles.js` | Builds and validates the bounded bundles `SyncEngine` exchanges: resource files, both agent formats and deletion markers |
@@ -781,7 +782,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 298 unit test files (jsdom environment)
+npm test                    # Run all 301 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -790,7 +791,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 298 test files
+- **Framework:** Jest with jsdom, 301 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

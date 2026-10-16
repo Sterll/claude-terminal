@@ -17,6 +17,18 @@ const { createModal, showModal, closeModal } = require('./Modal');
 const { escapeHtml } = require('../../utils/dom');
 const { t } = require('../../i18n');
 
+/**
+ * What to tell the user about a failed sign-in or capture. Main answers in
+ * English; the one refusal a user is expected to meet, an account saved twice,
+ * comes back with a code so it can be said in their language.
+ * @param {{ error?: string, code?: string, accountName?: string }|null} res
+ * @param {string} fallback
+ */
+function accountErrorMessage(res, fallback) {
+  if (res?.code === 'ACCOUNT_DUPLICATE') return t('accounts.duplicate', { name: res.accountName || '' });
+  return res?.error || fallback;
+}
+
 function showAccountLoginModal() {
   const api = window.electron_api;
 
@@ -140,7 +152,7 @@ function showAccountLoginModal() {
       startBtn.disabled = false;
       nameInput.disabled = false;
       setStatus('');
-      if (res?.code !== 'LOGIN_CANCELLED') setError(res?.error || t('accounts.loginError'));
+      if (res?.code !== 'LOGIN_CANCELLED') setError(accountErrorMessage(res, t('accounts.loginError')));
     }
 
     async function submitCode() {
@@ -172,4 +184,4 @@ function showAccountLoginModal() {
   });
 }
 
-module.exports = { showAccountLoginModal };
+module.exports = { showAccountLoginModal, accountErrorMessage };

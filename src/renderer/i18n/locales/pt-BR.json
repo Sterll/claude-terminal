@@ -4483,7 +4483,8 @@
     "loginChecking": "Verificando o código…",
     "loginInvalidCode": "Este código não foi aceito. Copie o código inteiro e tente novamente.",
     "loginSuccess": "Conta \"{name}\" conectada.",
-    "loginError": "Falha ao entrar."
+    "loginError": "Falha ao entrar.",
+    "duplicate": "Esta conta já está salva como \"{name}\"."
   },
   "usage": {
     "staleRetry": "Os dados de uso podem estar desatualizados - a última atualização falhou. Próxima tentativa às {time}; clique para tentar agora. {error}",

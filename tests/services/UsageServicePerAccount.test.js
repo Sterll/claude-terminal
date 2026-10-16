@@ -11,6 +11,7 @@
 // `mock`-prefixed: jest.mock factories are hoisted above other consts.
 const mockBodyByToken = new Map();
 const mockRequestedTokens = [];
+const mockRecordIdentity = jest.fn(async () => false);
 
 jest.mock('https', () => ({
   get: jest.fn((opts, cb) => {
@@ -50,7 +51,8 @@ jest.mock('../../src/main/utils/claudeCredentials', () => ({
 jest.mock('../../src/main/services/AccountManager', () => ({
   accountConfigDir: (id) => `/tmp/accounts/config/${id}`,
   credentialsForAccount: async (id) => require('../../src/main/utils/claudeCredentials')
-    .readCredentialsForDir(`/tmp/accounts/config/${id}`)
+    .readCredentialsForDir(`/tmp/accounts/config/${id}`),
+  recordIdentity: (...args) => mockRecordIdentity(...args)
 }));
 
 jest.mock('../../src/main/windows/MainWindow', () => ({ isMainWindowVisible: () => true }), { virtual: true });
@@ -64,6 +66,7 @@ const usageBody = (utilization, resetsAt = '2099-10-01T00:00:00Z') => JSON.strin
 beforeEach(() => {
   mockBodyByToken.clear();
   mockRequestedTokens.length = 0;
+  mockRecordIdentity.mockClear();
   UsageService.invalidateCredentials();
   UsageService.onUpdate(null);
   UsageService.onLimit(null);
@@ -244,5 +247,26 @@ describe('focus', () => {
     UsageService.setFocusedAccount(null);
     expect(UsageService.getFocusedAccount()).toBeNull();
     await new Promise(r => setTimeout(r, 10));
+  });
+});
+
+describe('account identity', () => {
+  // A saved account that predates identities is filled in from the first
+  // token the API accepts for it: that token is known to be this account's.
+  test('hands an accepted token to AccountManager, for that account only', async () => {
+    mockBodyByToken.set('tok-acct-legacy', usageBody(0.10));
+
+    await UsageService.fetchUsage('acct-legacy', true);
+
+    expect(mockRecordIdentity).toHaveBeenCalledWith('acct-legacy', 'tok-acct-legacy');
+  });
+
+  test('never for a refused token, nor for the machine-wide login', async () => {
+    mockBodyByToken.set('tok-machine', usageBody(0.10));
+
+    await UsageService.fetchUsage('acct-refused', true);
+    await UsageService.fetchUsage(null, true);
+
+    expect(mockRecordIdentity).not.toHaveBeenCalled();
   });
 });

@@ -4483,7 +4483,8 @@
     "loginChecking": "Vérification du code…",
     "loginInvalidCode": "Ce code a été refusé. Copiez le code en entier et réessayez.",
     "loginSuccess": "Compte \"{name}\" connecté.",
-    "loginError": "La connexion a échoué."
+    "loginError": "La connexion a échoué.",
+    "duplicate": "Ce compte est déjà enregistré sous le nom \"{name}\"."
   },
   "usage": {
     "staleRetry": "Données d'usage peut-être obsolètes - la dernière actualisation a échoué. Prochaine tentative à {time} ; cliquez pour réessayer maintenant. {error}",

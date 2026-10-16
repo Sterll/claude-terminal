@@ -596,6 +596,14 @@ async function fetchUsage(accountId, force = false) {
         entry.isStale = false;
         console.log('[Usage] Fetched via API');
         mirrorToDisk(entry);
+        // The API just accepted this token for this account, which makes it
+        // the right one to ask who the account is, for an account saved before
+        // that was recorded. Once per account per process, never awaited.
+        if (entry.accountId) {
+          try {
+            require('./AccountManager').recordIdentity?.(entry.accountId, token)?.catch?.(() => {});
+          } catch (_) { /* identity is a nicety, never a reason to fail a fetch */ }
+        }
         if (_onUpdateCallback) _onUpdateCallback(data, entry.accountId);
         for (const cb of _sampleListeners) {
           try {

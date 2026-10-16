@@ -4483,7 +4483,8 @@
     "loginChecking": "正在验证代码…",
     "loginInvalidCode": "此代码未被接受。请复制完整代码后重试。",
     "loginSuccess": "账户“{name}”已连接。",
-    "loginError": "登录失败。"
+    "loginError": "登录失败。",
+    "duplicate": "该账户已保存为“{name}”。"
   },
   "usage": {
     "staleRetry": "使用情况数据可能已过时 - 上次刷新失败。下次尝试时间 {time}；点击可立即重试。 {error}",
