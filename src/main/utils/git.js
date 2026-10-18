@@ -1237,6 +1237,144 @@ async function getGitStatusQuick(projectPath) {
   };
 }
 
+// ── Repositories in sub-folders ─────────────────────────────────────────────
+//
+// A project can be a plain folder grouping several repositories (x/a, x/b...),
+// each with its own .git. Nothing at the root answers git, so the panels ask
+// for the repositories one or two levels down instead.
+
+const NESTED_REPO_MAX_DEPTH = 2;
+const NESTED_REPO_MAX = 50;
+/** Folders never searched: dependencies and build output can hold a stray .git. */
+const NESTED_REPO_SKIP = new Set(['node_modules', 'vendor', 'bower_components', 'dist', 'build', 'out', 'target', 'venv', '__pycache__']);
+
+/**
+ * `## main...origin/main [ahead 1, behind 2]` and its variants, from
+ * `git status --porcelain=v1 -b`.
+ * @param {string} line
+ * @returns {{ branch: string|null, upstream: string|null, ahead: number, behind: number, gone: boolean }}
+ */
+function parseStatusBranchLine(line) {
+  const out = { branch: null, upstream: null, ahead: 0, behind: 0, gone: false };
+  if (typeof line !== 'string' || !line.startsWith('## ')) return out;
+  let rest = line.slice(3).trim();
+  const noCommits = rest.match(/^(?:No commits yet on|Initial commit on) (.+)$/);
+  if (noCommits) { out.branch = noCommits[1]; return out; }
+  if (rest.startsWith('HEAD (no branch)')) return out;
+  const bracket = rest.match(/\s\[([^\]]*)\]$/);
+  if (bracket) {
+    rest = rest.slice(0, bracket.index);
+    const info = bracket[1];
+    out.gone = /\bgone\b/.test(info);
+    const ahead = info.match(/ahead (\d+)/);
+    const behind = info.match(/behind (\d+)/);
+    if (ahead) out.ahead = parseInt(ahead[1], 10);
+    if (behind) out.behind = parseInt(behind[1], 10);
+  }
+  const dots = rest.indexOf('...');
+  if (dots >= 0) {
+    out.branch = rest.slice(0, dots);
+    out.upstream = rest.slice(dots + 3) || null;
+  } else {
+    out.branch = rest || null;
+  }
+  return out;
+}
+
+/** Keep the outermost repositories, in path order, capped; a repository's own sub-repositories are its business. */
+function _outermostRepos(relPaths) {
+  const sorted = [...new Set(relPaths)].sort((a, b) => a.localeCompare(b));
+  const kept = [];
+  for (const rel of sorted) {
+    const segments = rel.split('/');
+    if (segments.some((s) => NESTED_REPO_SKIP.has(s))) continue;
+    if (kept.some((k) => rel.startsWith(k + '/'))) continue;
+    kept.push(rel);
+    if (kept.length >= NESTED_REPO_MAX) break;
+  }
+  return kept;
+}
+
+/** Relative paths (POSIX) of the folders under `root` holding a `.git`, up to the depth limit. */
+async function _findLocalNestedRepoDirs(root) {
+  const found = [];
+  let level = [''];
+  for (let depth = 1; depth <= NESTED_REPO_MAX_DEPTH && level.length; depth++) {
+    const next = [];
+    for (const rel of level) {
+      let entries;
+      try {
+        entries = await fs.promises.readdir(path.join(root, rel), { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        // Symlinks and junctions are not followed: they can loop, or leave the project.
+        if (!entry.isDirectory() || entry.name.startsWith('.') || NESTED_REPO_SKIP.has(entry.name)) continue;
+        const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+        // A .git file is a worktree or a submodule checkout, still a repository.
+        if (fs.existsSync(path.join(root, childRel, '.git'))) found.push(childRel);
+        else next.push(childRel);
+      }
+    }
+    level = next;
+  }
+  return found;
+}
+
+/**
+ * The git repositories in the sub-folders of a folder that is not one itself,
+ * each with its branch, upstream drift and number of changed files.
+ *
+ * Local: a readdir walk, then one `git status` per repository. Remote (SSH):
+ * one request for the whole listing.
+ *
+ * @param {string} projectPath - local path or ssh-remote:// URI
+ * @returns {Promise<{ ok: boolean, reason?: string|null, error?: string, repos: Array<{ name: string, path: string, branch: string|null, upstream: string|null, ahead: number, behind: number, changes: number }> }>}
+ */
+async function findNestedRepos(projectPath) {
+  if (typeof projectPath !== 'string' || !projectPath) return { ok: false, reason: 'badargs', repos: [] };
+
+  if (remotePath.isRemotePath(projectPath)) {
+    const { q, requireDir, NODIR_EXIT } = remoteShell;
+    const build = (dir) => remoteShell.script(
+      requireDir(dir),
+      `cd -- ${q(dir)} || exit ${NODIR_EXIT}`,
+      `for d in */ */*/; do [ -e "$d.git" ] || continue; printf '\\036%s\\n' "$d"; GIT_OPTIONAL_LOCKS=0 GIT_TERMINAL_PROMPT=0 git -C "$d" status --porcelain=v1 -b 2>/dev/null | awk 'NR==1{print;next}{n++}END{print n+0}'; done`,
+      'exit 0',
+    );
+    const r = await _remoteRun(projectPath, { cacheKey: ['@nested-repos'], readOnly: true, timeout: 20000, build });
+    if (!r.ok) return { ok: false, reason: r.reason, error: r.error, repos: [] };
+    const byRel = new Map();
+    for (const block of r.stdout.split('\u001e').slice(1)) {
+      const lines = block.split('\n');
+      const rel = lines[0].replace(/\/+$/, '');
+      if (!rel || remotePath.hasControlChars(rel)) continue;
+      const header = lines[1] && lines[1].startsWith('## ') ? lines[1] : '';
+      const count = parseInt(header ? lines[2] : lines[1], 10) || 0;
+      byRel.set(rel, { ...parseStatusBranchLine(header), changes: count });
+    }
+    const repos = _outermostRepos([...byRel.keys()]).map((rel) => ({
+      name: rel,
+      path: remotePath.join(projectPath, ...rel.split('/')),
+      ...byRel.get(rel),
+    }));
+    return { ok: true, reason: null, repos };
+  }
+
+  if (!fs.existsSync(projectPath)) return { ok: false, reason: 'nodir', error: GIT_FAILURE_MESSAGES.nodir, repos: [] };
+  const rels = _outermostRepos(await _findLocalNestedRepoDirs(projectPath));
+  const repos = await Promise.all(rels.map(async (rel) => {
+    const repoPath = path.join(projectPath, ...rel.split('/'));
+    const status = await execGitResult(repoPath, ['--no-optional-locks', 'status', '--porcelain=v1', '-b']);
+    const lines = status.ok ? status.output.split('\n') : [];
+    const header = lines[0] && lines[0].startsWith('## ') ? lines[0] : '';
+    const changes = lines.filter((l, i) => l && !(i === 0 && header)).length;
+    return { name: rel, path: repoPath, ...parseStatusBranchLine(header), changes };
+  }));
+  return { ok: true, reason: null, repos };
+}
+
 /**
  * Execute git pull
  * @param {string} projectPath - Path to the project
@@ -2691,6 +2829,8 @@ module.exports = {
   getGitInfo,
   getGitInfoFull,
   getGitStatusQuick,
+  findNestedRepos,
+  parseStatusBranchLine,
   getGitStatusDetailed,
   gitPull,
   gitPush,

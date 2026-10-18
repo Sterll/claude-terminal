@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 302 test files)
+npm test                 # Run Jest tests (jsdom, 304 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -86,7 +86,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 39 IPC files, 373 handlers total
+├── src/main/ipc/                    # 39 IPC files, 374 handlers total
 ├── src/main/services/               # 43 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 32 utilities
@@ -106,8 +106,8 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4361 keys each)
-└── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4366 keys each)
+└── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked)
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
@@ -135,7 +135,7 @@ Remote UI (PWA for mobile)
 | File | Handlers | Key Operations |
 |------|---------:|----------------|
 | `terminal.ipc.js` | 5 | Create PTY (node-pty), input, resize, kill, and respawn a remote (SSH) tab whose connection dropped. A remote project's PTY is resolved in main from its `ssh-remote://` path (`projectTarget` + `SshHostService.ptyLaunch`); closing a remote tab ends its tmux session |
-| `git.ipc.js` | 71 | Status, branches, pull/push/merge/rebase, clone, stash, cherry-pick, revert, tag, blame, worktree, AI commit message, PR description, inline diff. A `projectPath` that is an `ssh-remote://` URI is resolved through `projectTarget` before any handler runs and refused, in that handler's own result shape, when its profile is unknown or it lies outside every registered project; remote worktrees come back as URIs and are never granted; a remote clone runs on the host and never fetches the local GitHub token, the chat Git tab's session summary and per-session overview |
+| `git.ipc.js` | 72 | Status, branches, pull/push/merge/rebase, clone, stash, cherry-pick, revert, tag, blame, worktree, AI commit message, PR description, inline diff. A `projectPath` that is an `ssh-remote://` URI is resolved through `projectTarget` before any handler runs and refused, in that handler's own result shape, when its profile is unknown or it lies outside every registered project; remote worktrees come back as URIs and are never granted; a remote clone runs on the host and never fetches the local GitHub token, the chat Git tab's session summary and per-session overview, and the repositories in the sub-folders of a project folder that is not one (`git-nested-repos`) |
 | `chat.ipc.js` | 26 | Agent SDK streaming sessions, permissions, interrupt, model/effort/permission-mode switching, tab name generation, fork/rewind, skill/agent generation, session recap |
 | `github.ipc.js` | 25 | OAuth Device Flow, workflow runs, PRs, issues, reviews, GitHub Enterprise, repo search |
 | `issue-trackers.ipc.js` | 18 | Ticket tracker providers and connections (connect with a personal API key, test, disconnect; keys go in, only masked forms come out), plus metadata, issue pages, issue detail, the two writes (update state / assignee / priority, add a comment), and the session ↔ ticket links (`issue-links:*`) |
@@ -175,7 +175,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 373 IPC handlers across 39 files.**
+**Total: 374 IPC handlers across 39 files.**
 
 ### Services (`src/main/services/`)
 
@@ -256,7 +256,7 @@ Remote UI (PWA for mobile)
 | `exportTable.js` | Database export as a cancellable, resumable operation |
 | `projectCreation.js` | Git init and web scaffolding for a new project, preserving an existing destination rather than overwriting it |
 | `secretBackups.js` | Finds the legacy plaintext secret backups earlier versions left behind and replaces them with verified encrypted copies. Recovery needs the original machine's keychain and writes to a separate, explicitly chosen file |
-| `git.js` | 20+ git operations via `execGit()`, status parsing, safe.directory, 15s timeout, worktree support. `execGitResult`, `spawnGit` and `execGitCallback` route an `ssh-remote://` path to its host over the command channel before the local `existsSync` bail-out, with the same result contracts and a new `disconnected` reason; read-only commands share a 2 s cache per host, dropped by any write. The local argv of every command is pinned by `tests/utils/gitLocalArgv.test.js` |
+| `git.js` | 20+ git operations via `execGit()`, status parsing, safe.directory, 15s timeout, worktree support. `findNestedRepos()` lists the repositories one or two folders below a project folder that is not one itself (outermost only, dependencies and hidden folders skipped), each with its branch, drift and change count: a readdir walk locally, one request on a remote host. `execGitResult`, `spawnGit` and `execGitCallback` route an `ssh-remote://` path to its host over the command channel before the local `existsSync` bail-out, with the same result contracts and a new `disconnected` reason; read-only commands share a 2 s cache per host, dropped by any write. The local argv of every command is pinned by `tests/utils/gitLocalArgv.test.js` |
 | `commitMessageGenerator.js` | AI commit via GitHub Models API (gpt-4o-mini), heuristic fallback |
 | `prDescriptionGenerator.js` | AI-generated PR descriptions |
 | `shell.js` | Shell utilities, PATH resolution (macOS/Linux) |
@@ -449,7 +449,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4361 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4366 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -639,7 +639,7 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 
 Exposes API namespaces on `window.electron_api`:
 
-`terminal` | `git` (70 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost` | `ssh` | `issueTrackers` | `issueLinks`
+`terminal` | `git` (71 methods) | `github` | `chat` | `claude` | `accounts` | `mcp` | `mcpRegistry` | `mcpTerminal` | `mcpTab` | `marketplace` | `plugins` | `dialog` | `explorer` | `window` | `app` | `notification` | `usage` | `project` | `hooks` | `updates` | `setupWizard` | `lifecycle` | `quickPicker` | `tray` | `fivem` | `webapp` | `api` | `python` | `minecraft` | `discord` | `discordRpc` | `remote` | `remoteControl` | `workspace` | `workflow` | `parallel` | `database` | `time` | `telemetry` | `cloud` | `knowledge` | `artifacts` | `chrome` | `errorLog` | `voice` | `preview` | `controlTower` | `projectTypes` | `cost` | `ssh` | `issueTrackers` | `issueLinks`
 
 Also exposes `window.electron_nodeModules`: `path`, `fs` (sync + promises, guarded by a system-path blocklist in `preload.js`), `os.homedir()`, a small allowlist of `process.env` vars, and `__dirname`.
 
@@ -782,7 +782,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 302 unit test files (jsdom environment)
+npm test                    # Run all 304 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -791,7 +791,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 302 test files
+- **Framework:** Jest with jsdom, 304 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

@@ -218,6 +218,8 @@
     }
   },
   "gitTab": {
+    "nestedRepos": "Repositories",
+    "nestedRepoChanges": "{count} changed file(s)",
     "selectProject": "Select a project to view git information",
     "notGitRepo": "This project is not a Git repository",
     "gitUnavailable": "Git could not run",
@@ -445,6 +447,11 @@
     "nothingToCommit": "Nothing to commit. The working tree is clean."
   },
   "dashboard": {
+    "nestedRepos": {
+      "title": "{count} Git repo(s)",
+      "open": "Open {name} in the Git tab",
+      "clean": "clean"
+    },
     "brief": {
       "noGit": "Not a git repository",
       "synced": "up to date",

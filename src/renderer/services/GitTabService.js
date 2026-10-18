@@ -12,6 +12,7 @@ const Toast = require('../ui/components/Toast');
 const { showConfirm, createModal, showModal, closeModal } = require('../ui/components/Modal');
 const { isRemoteProject } = require('../../shared/remote-capabilities');
 const remotePathLib = require('../../shared/remote-path');
+const nestedRepos = require('../utils/nestedRepos');
 
 // ========== GIT ERROR MAPPER ==========
 
@@ -170,6 +171,10 @@ let historyAllBranches = false;
 
 // Worktree data
 let worktreesData = [];
+
+// Repositories in the sub-folders of a project whose root is not one: the
+// panel then works on the picked one (selectedProject.path is its path).
+let nestedReposData = [];
 
 // Tags data
 let tagsData = [];
@@ -380,6 +385,7 @@ function countFolderProjects(folder, folders, projects) {
 function renderSidebar() {
   // No project list here any more: the docked column is the one project
   // navigation in column mode, and the project bar serves tab-bar mode.
+  renderNestedRepos();
   renderQuickActions();
   renderBranches();
   renderTags();
@@ -399,7 +405,14 @@ async function selectProjectById(projectId) {
   if (content) content.innerHTML = '<div class="git-loading"><div class="spinner"></div></div>';
 
   try {
-    await loadAllData(project);
+    // A folder grouping several repositories: work on the one picked, under
+    // the project's own id and name.
+    const repos = await nestedRepos.listNestedRepos(project);
+    if (selectedProjectId !== projectId) return;
+    nestedReposData = repos;
+    const repo = nestedRepos.getSelectedRepo(projectId, repos);
+    await loadAllData(repo ? { ...project, path: repo.path, nestedRepoName: repo.name } : project);
+    if (selectedProjectId !== projectId) return;
 
     // Update badges
     const changesBadge = document.getElementById('git-changes-badge');
@@ -412,6 +425,42 @@ async function selectProjectById(projectId) {
   } catch (e) {
     if (content) content.innerHTML = `<div class="git-empty-state"><p>${t('gitTab.notGitRepo')}</p></div>`;
   }
+}
+
+/** The repositories of a folder project, as a switcher at the top of the sidebar. Hidden for a project that is a repository itself. */
+function renderNestedRepos() {
+  const section = document.getElementById('git-sidebar-repos');
+  const container = document.getElementById('git-repos-list');
+  if (!section || !container) return;
+  if (!nestedReposData.length || !selectedProject) {
+    section.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+  section.style.display = '';
+  const activePath = selectedProject.path;
+  container.innerHTML = nestedReposData.map((repo) => {
+    const isActive = repo.path === activePath;
+    // The active one is what the panel just read; the others are as listed.
+    const branch = isActive ? (currentBranch || repo.branch) : repo.branch;
+    const changes = isActive && changesData?.success ? (changesData.files || []).length : repo.changes;
+    const ahead = isActive && aheadBehind ? aheadBehind.ahead : repo.ahead;
+    const behind = isActive && aheadBehind ? aheadBehind.behind : repo.behind;
+    const sync = [ahead ? `↑${ahead}` : '', behind ? `↓${behind}` : ''].filter(Boolean).join(' ');
+    return `<button type="button" class="git-repo-item ${isActive ? 'active' : ''}" data-repo-path="${escapeAttr(repo.path)}" title="${escapeAttr(repo.name)}"${isActive ? ' aria-current="true"' : ''}>
+      <span class="git-repo-name">${escapeHtml(repo.name)}</span>
+      <span class="git-repo-meta">
+        ${branch ? `<span class="git-repo-branch">${escapeHtml(branch)}</span>` : ''}
+        ${sync ? `<span class="git-repo-sync">${escapeHtml(sync)}</span>` : ''}
+        ${changes ? `<span class="git-repo-changes" title="${escapeAttr(t('gitTab.nestedRepoChanges', { count: changes }))}">${changes}</span>` : ''}
+      </span>
+    </button>`;
+  }).join('');
+  container.onclick = (e) => {
+    const item = e.target.closest('.git-repo-item');
+    if (!item || item.classList.contains('active') || !selectedProjectId) return;
+    nestedRepos.selectRepo(selectedProjectId, item.dataset.repoPath);
+  };
 }
 
 function renderQuickActions() {
@@ -3219,14 +3268,26 @@ async function handleBlame(filePath) {
 
 // ========== TOAST HELPER ==========
 function showToast(message, type = 'info') {
-  const prefix = selectedProject?.name ? `${selectedProject.name} — ` : '';
-  const hasPrefix = selectedProject?.name && message.startsWith(selectedProject.name + ' — ');
+  const name = selectedProject?.name
+    ? (selectedProject.nestedRepoName ? `${selectedProject.name}/${selectedProject.nestedRepoName}` : selectedProject.name)
+    : '';
+  const prefix = name ? `${name} — ` : '';
+  const hasPrefix = name && message.startsWith(name + ' — ');
   Toast.showToast({ message: hasPrefix ? message : prefix + message, type, duration: 4000 });
 }
 
 // ========== INIT & EXPORT ==========
 
+let _unsubscribeNestedRepos = null;
+
 function initGitTab() {
+  // Another surface (the Changes panel) picked a repository of this project.
+  if (!_unsubscribeNestedRepos) {
+    _unsubscribeNestedRepos = nestedRepos.onSelectionChange((projectId, repoPath) => {
+      if (!document.getElementById('tab-git')?.classList.contains('active')) return;
+      if (projectId === selectedProjectId && selectedProject?.path !== repoPath) selectProjectById(projectId);
+    });
+  }
   // Sub-tab navigation
   // Delegated sub-tab navigation
   const subTabContainer = document.querySelector('.git-sub-tabs');

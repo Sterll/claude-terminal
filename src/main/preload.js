@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     info: (projectPath) => ipcRenderer.invoke('git-info', projectPath),
     infoFull: (projectPath) => ipcRenderer.invoke('git-info-full', projectPath),
     statusQuick: (params) => ipcRenderer.invoke('git-status-quick', params),
+    nestedRepos: (params) => ipcRenderer.invoke('git-nested-repos', params),
     statusDetailed: (params) => ipcRenderer.invoke('git-status-detailed', params),
     branches: (params) => ipcRenderer.invoke('git-branches', params),
     currentBranch: (params) => ipcRenderer.invoke('git-current-branch', params),

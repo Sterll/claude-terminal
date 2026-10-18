@@ -313,6 +313,8 @@
     }
   },
   "gitTab": {
+    "nestedRepos": "Dépôts",
+    "nestedRepoChanges": "{count} fichier(s) modifié(s)",
     "selectProject": "Sélectionnez un projet pour voir les informations git",
     "notGitRepo": "Ce projet n'est pas un dépôt Git",
     "gitUnavailable": "Git n'a pas pu s'exécuter",
@@ -540,6 +542,11 @@
     "nothingToCommit": "Rien à commiter. L'arbre de travail est propre."
   },
   "dashboard": {
+    "nestedRepos": {
+      "title": "{count} dépôt(s) Git",
+      "open": "Ouvrir {name} dans l'onglet Git",
+      "clean": "propre"
+    },
     "brief": {
       "noGit": "Pas un dépôt git",
       "synced": "synchronisé",

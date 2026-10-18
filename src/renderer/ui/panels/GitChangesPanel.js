@@ -10,6 +10,7 @@ const { copyText } = require('../../utils/clipboard');
 const { t } = require('../../i18n');
 const { getSetting } = require('../../state');
 const { createModal, showModal, closeModal } = require('../components/Modal');
+const nestedRepos = require('../../utils/nestedRepos');
 
 class GitChangesPanel extends BasePanel {
   /**
@@ -84,6 +85,12 @@ class GitChangesPanel extends BasePanel {
     this._btnGitReset = document.getElementById('btn-git-reset');
 
     this._setupEventListeners();
+
+    // A folder grouping several repositories: the panel follows the one picked,
+    // here or in the Git tab.
+    this._unsubscribeNestedRepos = nestedRepos.onSelectionChange((projectId) => {
+      if (projectId === this._state.projectId && this._gitChangesPanel?.classList.contains('active')) this.loadGitChanges();
+    });
   }
 
   _setupEventListeners() {
@@ -487,6 +494,7 @@ class GitChangesPanel extends BasePanel {
     const effectivePath = (this._getEffectiveGitPath && this._getEffectiveGitPath()) || project.path;
     this._state.projectPath = effectivePath;
     this._gitChangesProject.textContent = `- ${project.name}`;
+    this._renderRepoPicker(projectId, effectivePath);
 
     // A remote (SSH) project whose host is away: say so instead of waiting out
     // a request, and reload on our own once the host answers. An idle host is
@@ -526,6 +534,34 @@ class GitChangesPanel extends BasePanel {
     } catch (e) {
       this._gitChangesList.innerHTML = `<div class="git-changes-empty"><p>${t('gitChanges.errorStatus', { message: e.message })}</p></div>`;
     }
+  }
+
+  /**
+   * Which sub-folder repository the panel works on, for a project whose root
+   * is not one. Absent for an ordinary repository and for a worktree tab.
+   */
+  _renderRepoPicker(projectId, effectivePath) {
+    let picker = document.getElementById('git-changes-repo');
+    const repos = nestedRepos.getCachedNestedRepos(projectId);
+    if (!repos.length || !repos.some((r) => r.path === effectivePath)) {
+      if (picker) picker.remove();
+      return;
+    }
+    if (!picker) {
+      picker = document.createElement('select');
+      picker.id = 'git-changes-repo';
+      picker.className = 'git-changes-repo-select';
+      picker.setAttribute('aria-label', t('gitTab.nestedRepos'));
+      picker.addEventListener('click', (e) => e.stopPropagation());
+      picker.addEventListener('change', () => {
+        nestedRepos.selectRepo(this._state.projectId, picker.value);
+      });
+      this._gitChangesProject.after(picker);
+    }
+    picker.innerHTML = repos.map((r) => {
+      const label = r.changes ? `${r.name} (${r.changes})` : r.name;
+      return `<option value="${escapeHtml(r.path)}"${r.path === effectivePath ? ' selected' : ''}>${escapeHtml(label)}</option>`;
+    }).join('');
   }
 
   /** The host of a remote project (state, label), or null for a local one. */

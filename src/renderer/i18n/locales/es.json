@@ -218,6 +218,8 @@
     }
   },
   "gitTab": {
+    "nestedRepos": "Repositorios",
+    "nestedRepoChanges": "{count} archivo(s) modificado(s)",
     "selectProject": "Selecciona un proyecto para ver la información de git",
     "notGitRepo": "Este proyecto no es un repositorio Git",
     "gitUnavailable": "No se pudo ejecutar Git",
@@ -445,6 +447,11 @@
     "nothingToCommit": "Nada que commitear. El árbol de trabajo está limpio."
   },
   "dashboard": {
+    "nestedRepos": {
+      "title": "{count} repositorio(s) Git",
+      "open": "Abrir {name} en la pestaña Git",
+      "clean": "limpio"
+    },
     "brief": {
       "noGit": "No es un repositorio git",
       "synced": "sincronizado",

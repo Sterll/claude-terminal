@@ -2002,6 +2002,94 @@
   opacity: 0.6;
 }
 
+/* Repositories in the sub-folders of a folder project */
+.dash-nested-repos {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.dash-nested-repo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  border-bottom: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.dash-nested-repo:last-child {
+  border-bottom: none;
+}
+
+.dash-nested-repo:hover {
+  background: var(--bg-hover);
+}
+
+.dash-nested-repo:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.dash-nested-repo-name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-nested-repo-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 160px;
+  font-family: 'Cascadia Code', monospace;
+  font-size: var(--font-xs);
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-nested-repo-branch svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.dash-nested-repo-sync {
+  font-size: var(--font-xs);
+  color: var(--info);
+  white-space: nowrap;
+}
+
+.dash-nested-repo-changes {
+  font-size: var(--font-xs);
+  color: var(--warning);
+  white-space: nowrap;
+}
+
+.dash-nested-repo-clean {
+  font-size: var(--font-xs);
+  color: var(--success);
+  white-space: nowrap;
+}
+
 /* No git state */
 .dashboard-no-git {
   display: flex;

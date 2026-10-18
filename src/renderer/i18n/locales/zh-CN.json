@@ -218,6 +218,8 @@
     }
   },
   "gitTab": {
+    "nestedRepos": "仓库",
+    "nestedRepoChanges": "{count} 个文件已更改",
     "selectProject": "选择项目查看Git信息",
     "notGitRepo": "此项目不是 Git 仓库",
     "gitUnavailable": "Git 无法运行",
@@ -445,6 +447,11 @@
     "nothingToCommit": "没有需要提交的更改。工作树是干净的。"
   },
   "dashboard": {
+    "nestedRepos": {
+      "title": "{count} 个 Git 仓库",
+      "open": "在 Git 标签页中打开 {name}",
+      "clean": "无改动"
+    },
     "brief": {
       "noGit": "不是 git 仓库",
       "synced": "已同步",

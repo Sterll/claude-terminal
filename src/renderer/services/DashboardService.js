@@ -19,6 +19,7 @@ const Timeline = require('./ProjectTimeline');
 const Brief = require('./dashboard/briefing');
 const { isRemoteProject, can } = require('../../shared/remote-capabilities');
 const remotePathLib = require('../../shared/remote-path');
+const nestedRepos = require('../utils/nestedRepos');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
@@ -630,7 +631,13 @@ function loadProjectDashboard(project) {
     ...getCachedData(project.id)
   };
   const remote = isRemoteProject(project);
-  load.git = Promise.all([getGitInfoFull(project.path), detectProjectType(project.path)]).then(([gitInfo, projectType]) => {
+  load.git = Promise.all([getGitInfoFull(project.path), detectProjectType(project.path)]).then(async ([gitInfo, projectType]) => {
+    // A folder grouping several repositories: list them instead of saying
+    // "not a git repository".
+    if (gitInfo && gitInfo.isGitRepo === false && !gitInfo.disconnected && !gitInfo.gitUnavailable) {
+      const repos = await nestedRepos.listNestedRepos(project);
+      if (repos.length) gitInfo = { ...gitInfo, nestedRepos: repos };
+    }
     if (remote) {
       // A host that dropped mid-load says nothing about the repository: keep
       // the last known answer rather than repaint it as "not a git repo". The
@@ -1040,6 +1047,7 @@ function buildTimelineListHtml(groups, failed, now, unavailable = []) {
  * @returns {string}
  */
 function buildGitStatusHtml(gitInfo) {
+  if (!gitInfo.isGitRepo && gitInfo.nestedRepos?.length) return buildNestedReposHtml(gitInfo.nestedRepos);
   if (!gitInfo.isGitRepo) {
     return `
       <div class="dashboard-no-git">
@@ -1085,6 +1093,36 @@ function buildGitStatusHtml(gitInfo) {
     ${stashesHtml}
     ${buildChangedFilesHtml(files)}
     ${buildCommitsHtml(recentCommits)}
+  `;
+}
+
+/**
+ * The repositories in the sub-folders of a folder project, one row each with
+ * its branch, drift and pending changes. A row opens the Git tab on it.
+ * @param {Array} repos
+ * @returns {string}
+ */
+function buildNestedReposHtml(repos) {
+  const rows = repos.map((repo) => {
+    const sync = [repo.ahead ? `↑${repo.ahead}` : '', repo.behind ? `↓${repo.behind}` : ''].filter(Boolean).join(' ');
+    return `
+      <button type="button" class="dash-nested-repo" data-nested-repo="${escapeHtml(repo.path)}" title="${escapeHtml(t('dashboard.nestedRepos.open', { name: repo.name }))}">
+        <span class="dash-nested-repo-name">${escapeHtml(repo.name)}</span>
+        <span class="dash-nested-repo-branch">${BRANCH_ICON}${escapeHtml(repo.branch || '-')}</span>
+        ${sync ? `<span class="dash-nested-repo-sync">${escapeHtml(sync)}</span>` : ''}
+        ${repo.changes
+          ? `<span class="dash-nested-repo-changes">${escapeHtml(t('dashboard.filesChanged', { count: repo.changes }))}</span>`
+          : `<span class="dash-nested-repo-clean">${escapeHtml(t('dashboard.nestedRepos.clean'))}</span>`}
+      </button>`;
+  }).join('');
+  return `
+    <div class="dashboard-git-header dash-nested-repos-header">
+      <div class="git-branch">
+        ${BRANCH_ICON}
+        <span class="branch-name">${escapeHtml(t('dashboard.nestedRepos.title', { count: repos.length }))}</span>
+      </div>
+    </div>
+    <div class="dash-nested-repos">${rows}</div>
   `;
 }
 
@@ -1926,6 +1964,13 @@ const BRANCH_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 2a
 /** Branch, sync state and pending changes, on one line under the title. */
 function buildBranchLineHtml(gitInfo = {}, { trailingSep = true } = {}) {
   const tail = trailingSep ? '<span class="dash-sub-sep">·</span>' : '';
+  if (!gitInfo.isGitRepo && gitInfo.nestedRepos?.length) {
+    const repos = gitInfo.nestedRepos;
+    const parts = [`<span class="dash-sub-item dash-branch">${BRANCH_ICON}${escapeHtml(t('dashboard.nestedRepos.title', { count: repos.length }))}</span>`];
+    const changed = repos.reduce((sum, r) => sum + (r.changes || 0), 0);
+    if (changed) parts.push(`<span class="dash-sub-item tone-warning">${escapeHtml(t('dashboard.filesChanged', { count: changed }))}</span>`);
+    return parts.join('<span class="dash-sub-sep">·</span>') + tail;
+  }
   if (!gitInfo.isGitRepo) {
     return gitInfo.isGitRepo === false
       ? `<span class="dash-sub-item">${escapeHtml(t('dashboard.brief.noGit'))}</span>${tail}`
@@ -2349,6 +2394,13 @@ function renderDashboardHtml(container, project, data, options, isRefreshing = f
   });
 
   // Attach event listeners
+  container.querySelectorAll('[data-nested-repo]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      nestedRepos.selectRepo(project.id, btn.dataset.nestedRepo);
+      document.querySelector('.nav-tab[data-tab="git"]')?.click();
+    });
+  });
+
   container.querySelector('#dash-btn-open-folder')?.addEventListener('click', () => {
     if (onOpenFolder) onOpenFolder(project.path);
   });

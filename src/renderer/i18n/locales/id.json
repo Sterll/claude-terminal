@@ -218,6 +218,8 @@
     }
   },
   "gitTab": {
+    "nestedRepos": "Repositori",
+    "nestedRepoChanges": "{count} file diubah",
     "selectProject": "Pilih proyek untuk melihat informasi git",
     "notGitRepo": "Proyek ini bukan repositori Git",
     "gitUnavailable": "Git tidak dapat dijalankan",
@@ -445,6 +447,11 @@
     "nothingToCommit": "Tidak ada yang di-commit. Working tree bersih."
   },
   "dashboard": {
+    "nestedRepos": {
+      "title": "{count} repositori Git",
+      "open": "Buka {name} di tab Git",
+      "clean": "bersih"
+    },
     "brief": {
       "noGit": "Bukan repositori git",
       "synced": "tersinkron",
