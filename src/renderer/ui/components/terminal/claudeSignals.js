@@ -6,7 +6,8 @@
  * "still working" (a braille spinner, a tool line) as against "waiting for
  * you" (a prompt box). This is a heuristic by construction and is only ever
  * used to decide when to *stop* showing a busy state, never to decide what to
- * send.
+ * send. The one exception goes the safe way: detectPermissionDialog() decides
+ * what to *refuse* to type.
  */
 
 const { BUILTIN_TOOLS } = require('../../../utils/toolRegistry');
@@ -52,6 +53,32 @@ function detectCompletionSignal(terminal) {
   if (lines[0].includes('⎿')) return { signal: 'tool_result' };
 
   return null;
+}
+
+/**
+ * Whether the visible screen shows one of the CLI's approval dialogs: a
+ * "Do you want to ...?" / "Would you like to proceed?" question over a
+ * numbered menu whose first entry is "Yes". Enter picks that entry, so text
+ * typed into the PTY by an agent (the MCP `tab_send`) would approve it.
+ *
+ * Used only to *refuse* such a send. A miss lets the send through, as before;
+ * a false hit refuses one, which the caller reports. Scans the viewport
+ * rather than the rows above the cursor, since the dialog does not keep the
+ * cursor on its last line.
+ */
+function detectPermissionDialog(terminal) {
+  if (!terminal?.buffer?.active) return false;
+  const buf = terminal.buffer.active;
+  const top = buf.viewportY ?? buf.baseY;
+  const rows = terminal.rows || 50;
+  const lines = [];
+  for (let i = top; i < top + rows; i++) {
+    const row = buf.getLine(i);
+    if (row) lines.push(row.translateToString(true));
+  }
+  const screen = lines.join('\n');
+  return /\b(?:Do you want|Would you like) to\b[^\n]*\?/.test(screen)
+    && /(?:^|[\s│|❯>])1\.\s+Yes\b/m.test(screen);
 }
 
 function parseClaudeTitle(title) {
@@ -119,6 +146,7 @@ module.exports = {
   parseClaudeTitle,
   extractTitleFromInput,
   extractTerminalContext,
+  detectPermissionDialog,
   CLAUDE_TOOLS,
   TITLE_STOP_WORDS,
   BRAILLE_SPINNER_RE,

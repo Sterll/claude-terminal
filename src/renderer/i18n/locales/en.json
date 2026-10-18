@@ -1160,6 +1160,11 @@
       "hostFailed": "Could not register the browser connector. No supported browser was found.",
       "toggleError": "Failed to update the browser integration."
     },
+    "alwaysAllowBypass": {
+      "enable": "\"Always Allow\" bypasses every prompt of the conversation",
+      "enableDesc": "Off: \"Always Allow\" allows that one tool for the rest of the conversation. On: it switches the conversation to the bypass mode, so nothing asks again until it ends.",
+      "warning": "Every later tool call of the conversation runs without asking, whatever the tool. If agents may grant another tab's permissions, they can trigger this too."
+    },
     "mcpGrants": {
       "title": "Agent orchestration",
       "enable": "Let an agent grant another tab's permissions",

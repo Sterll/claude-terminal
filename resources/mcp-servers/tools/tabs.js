@@ -165,7 +165,7 @@ const tools = [
   },
   {
     name: 'tab_send',
-    description: 'Send content to a specific tab by its stable tabId. For chat tabs the content is submitted as a user message; for terminal tabs it is typed as a command with a trailing newline. Fire-and-forget with a short response confirmation (~2-5s).',
+    description: 'Send content to a specific tab by its stable tabId. For chat tabs the content is submitted as a user message; for terminal tabs it is typed as a command with a trailing newline, and refused while the tab shows a permission prompt (typing would approve it) unless the user turned on "Let an agent grant another tab\'s permissions". Fire-and-forget with a short response confirmation (~2-5s).',
     inputSchema: {
       type: 'object',
       properties: {

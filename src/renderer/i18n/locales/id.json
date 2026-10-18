@@ -1160,6 +1160,11 @@
       "hostFailed": "Tidak dapat mendaftarkan konektor peramban. Tidak ada peramban yang didukung ditemukan.",
       "toggleError": "Gagal memperbarui integrasi peramban."
     },
+    "alwaysAllowBypass": {
+      "enable": "\"Selalu Izinkan\" melewati semua permintaan dalam percakapan",
+      "enableDesc": "Mati: \"Selalu Izinkan\" hanya mengizinkan alat itu sampai percakapan berakhir. Nyala: percakapan beralih ke mode bypass, sehingga tidak ada yang bertanya lagi sampai selesai.",
+      "warning": "Setiap pemanggilan alat berikutnya dalam percakapan berjalan tanpa bertanya, apa pun alatnya. Jika agen boleh memberikan izin tab lain, agen juga bisa memicu ini."
+    },
     "mcpGrants": {
       "title": "Orkestrasi agen",
       "enable": "Izinkan agen memberi izin untuk tab lain",

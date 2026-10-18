@@ -249,3 +249,126 @@ describe('TerminalManager.respondPermissionForTab', () => {
     expect(clicked).toEqual([]);
   });
 });
+
+/**
+ * The same grant by another route: the CLI's approval dialog in a terminal tab
+ * answers Enter with its first entry, "Yes", so `tab_send` (and the legacy
+ * `terminal_send_command`) typing into that tab approves it. They refuse while
+ * the dialog is on screen, unless the user opted in to agent grants.
+ */
+describe('typing into a terminal tab that shows an approval dialog', () => {
+  let manager, state, settings, inputs, screen;
+
+  const DIALOG = [
+    '╭──────────────────────────────────────╮',
+    '│ Bash command                         │',
+    '│   rm -rf build                       │',
+    '│ Do you want to proceed?              │',
+    '│ ❯ 1. Yes                             │',
+    '│   2. Yes, and don\'t ask again        │',
+    '│   3. No, and tell Claude what to do  │',
+    '╰──────────────────────────────────────╯',
+  ];
+  const PROMPT = ['╭──────────────╮', '│ >            │', '╰──────────────╯', '  ? for shortcuts'];
+
+  const fakeTerminal = () => ({
+    rows: 24,
+    buffer: { active: { baseY: 0, viewportY: 0, cursorY: 0, getLine: (i) => (i < screen.length ? { translateToString: () => screen[i] } : undefined) } },
+  });
+
+  beforeEach(() => {
+    jest.resetModules();
+    inputs = [];
+    window.electron_api = new Proxy({}, {
+      get: (_t, ns) => new Proxy({}, {
+        get: (_u, method) => (...args) => {
+          if (ns === 'terminal' && method === 'input') inputs.push(args[0]);
+          return Promise.resolve({ success: true });
+        },
+      }),
+    });
+    document.body.innerHTML = `
+      <div id="terminals-tabs"></div>
+      <div id="terminals-container"></div>
+      <div id="empty-terminals"></div>
+      <div id="terminals-filter"><span id="filter-project-name"></span></div>
+    `;
+    state = require('../../src/renderer/state/terminals.state');
+    settings = require('../../src/renderer/state/settings.state').settingsState;
+    const { TerminalManager } = require('../../src/renderer/ui/components/TerminalManager');
+    manager = new TerminalManager();
+    screen = DIALOG;
+    state.addTerminal('t2', {
+      tabId: 'tab-2',
+      name: 'Claude',
+      project: { id: 'p1', name: 'Test', path: '/tmp/test' },
+      projectIndex: 0,
+      mode: 'terminal',
+      status: 'ready',
+      terminal: fakeTerminal(),
+    });
+  });
+
+  afterEach(() => {
+    try { state.clearAllTerminals(() => {}); } catch (_) { /* best effort */ }
+  });
+
+  it('recognises the dialog, and only the dialog', () => {
+    const { detectPermissionDialog } = require('../../src/renderer/ui/components/terminal/claudeSignals');
+    expect(detectPermissionDialog(fakeTerminal())).toBe(true);
+    screen = PROMPT;
+    expect(detectPermissionDialog(fakeTerminal())).toBe(false);
+    screen = ['Would you like to proceed?', '❯ 1. Yes, and auto-accept edits', '  2. No, keep planning'];
+    expect(detectPermissionDialog(fakeTerminal())).toBe(true);
+    expect(detectPermissionDialog(undefined)).toBe(false);
+  });
+
+  it.each(['', '1', 'yes'])('refuses to type %p while the dialog is on screen', (content) => {
+    const res = manager.sendToTab('tab-2', content);
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/permission prompt/);
+    expect(inputs).toEqual([]);
+  });
+
+  it('types as before once the dialog is gone', () => {
+    screen = PROMPT;
+    const res = manager.sendToTab('tab-2', 'npm test');
+
+    expect(res.ok).toBe(true);
+    expect(inputs).toEqual([{ id: 't2', data: 'npm test\r' }]);
+  });
+
+  it('types into the dialog when the user opted in to agent grants', () => {
+    settings.setProp('mcpPermissionGrantsEnabled', true);
+    const res = manager.sendToTab('tab-2', '1');
+
+    expect(res.ok).toBe(true);
+    expect(inputs).toHaveLength(1);
+  });
+});
+
+describe('alwaysAllowBypassesSession over MCP', () => {
+  let dataDir;
+
+  beforeEach(() => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-mcp-bypass-'));
+    process.env.CT_DATA_DIR = dataDir;
+    jest.resetModules();
+  });
+
+  afterEach(() => {
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  it('cannot be turned on through settings_set', async () => {
+    fs.writeFileSync(path.join(dataDir, 'settings.json'), JSON.stringify({ alwaysAllowBypassesSession: false }), 'utf8');
+    const settingsTool = require('../../resources/mcp-servers/tools/settings.js');
+
+    const res = await settingsTool.handle('settings_set', { key: 'alwaysAllowBypassesSession', value: true });
+
+    expect(res.isError).toBe(true);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8'));
+    expect(onDisk.alwaysAllowBypassesSession).toBe(false);
+  });
+});

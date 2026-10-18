@@ -1518,6 +1518,20 @@ class SettingsPanel extends BasePanel {
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
                 <span>${t('settings.modeAutonomousWarning')}</span>
               </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
+                  <div>${t('settings.alwaysAllowBypass.enable')}</div>
+                  <div class="settings-toggle-desc">${t('settings.alwaysAllowBypass.enableDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="always-allow-bypass-toggle" ${settings.alwaysAllowBypassesSession === true ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-warning" id="always-allow-bypass-warning" style="display: ${settings.alwaysAllowBypassesSession === true ? 'flex' : 'none'};">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L1 21h22L12 2zm0 3.99L19.53 19H4.47L12 5.99zM11 10v4h2v-4h-2zm0 6v2h2v-2h-2z"/></svg>
+                <span>${t('settings.alwaysAllowBypass.warning')}</span>
+              </div>
               </div>
             </div>
             <div class="settings-group">
@@ -2097,6 +2111,13 @@ class SettingsPanel extends BasePanel {
       });
     }
 
+    const alwaysAllowBypassToggle = document.getElementById('always-allow-bypass-toggle');
+    if (alwaysAllowBypassToggle) {
+      alwaysAllowBypassToggle.addEventListener('change', () => {
+        document.getElementById('always-allow-bypass-warning').style.display = alwaysAllowBypassToggle.checked ? 'flex' : 'none';
+      });
+    }
+
     // Claude accounts section — wire async list + actions
     this._wireAccountsSection(container);
 
@@ -2478,6 +2499,8 @@ class SettingsPanel extends BasePanel {
       const newRcTerminals = rcTerminalsToggle ? rcTerminalsToggle.checked : settings.claudeRemoteControlTerminals === true;
       const mcpGrantsToggleEl = document.getElementById('mcp-permission-grants-toggle');
       const newMcpPermissionGrants = mcpGrantsToggleEl ? mcpGrantsToggleEl.checked : settings.mcpPermissionGrantsEnabled === true;
+      const alwaysAllowBypassToggleEl = document.getElementById('always-allow-bypass-toggle');
+      const newAlwaysAllowBypass = alwaysAllowBypassToggleEl ? alwaysAllowBypassToggleEl.checked : settings.alwaysAllowBypassesSession === true;
       const context1MToggle = document.getElementById('enable-1m-context-toggle');
       const newEnable1MContext = context1MToggle ? context1MToggle.checked : settings.enable1MContext || false;
       const ephemeralChatsToggle = document.getElementById('ephemeral-chats-toggle');
@@ -2545,6 +2568,7 @@ class SettingsPanel extends BasePanel {
         claudeRemoteControlDrive: newRcDrive,
         claudeRemoteControlTerminals: newRcTerminals,
         mcpPermissionGrantsEnabled: newMcpPermissionGrants,
+        alwaysAllowBypassesSession: newAlwaysAllowBypass,
         enable1MContext: newEnable1MContext,
         ephemeralChats: newEphemeralChats,
         showDotfiles: newShowDotfiles,

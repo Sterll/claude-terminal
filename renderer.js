@@ -1482,6 +1482,12 @@ if (api.mcpTerminal) {
       }
 
       const termData = terminals.get(targetId);
+      // Same refusal as tab_send: typing into a tab that shows the CLI's
+      // approval dialog would answer it Yes.
+      if (termData?.mode !== 'chat' && TerminalManager.refusesAgentInput(termData)) {
+        console.warn(`[MCP Terminal] Refused send to terminal ${targetId}: it is waiting on a permission prompt`);
+        return;
+      }
       console.log(`[MCP Terminal] Sending to terminal ${targetId} (mode=${termData?.mode || '?'}): ${data.command}`);
 
       if (termData?.mode === 'chat' && termData?.chatView) {

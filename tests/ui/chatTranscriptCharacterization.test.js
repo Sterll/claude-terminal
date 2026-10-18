@@ -228,6 +228,22 @@ describe('chat transcript rendering (characterization)', () => {
         ]);
         expect(JSON.stringify(result)).not.toContain('bypassPermissions');
       });
+
+      it('switches the session to bypass only when the user opted in', async () => {
+        // `alwaysAllowBypassesSession` brings the old behaviour back on
+        // purpose, suggestions or not, and goes through the mode picker so
+        // the footer and ChatService follow.
+        require('../../src/renderer/state/settings.state').settingsState.setProp('alwaysAllowBypassesSession', true);
+        request({ suggestions: [{ type: 'addRules', rules: [{ toolName: 'Bash' }], behavior: 'allow', destination: 'session' }] });
+        permCard().querySelector('[data-action="always-allow"]').click();
+
+        expect(answer().result.updatedPermissions).toEqual([
+          { type: 'setMode', mode: 'bypassPermissions', destination: 'session' },
+        ]);
+        await new Promise(r => setTimeout(r, 0));
+        const modeCall = calls.find(c => c.ns === 'chat' && c.method === 'setPermissionMode');
+        expect(modeCall && modeCall.args[0]).toEqual({ sessionId, mode: 'bypassPermissions' });
+      });
     });
 
     it('drops Always Allow when the user own ask rule forced the prompt', () => {

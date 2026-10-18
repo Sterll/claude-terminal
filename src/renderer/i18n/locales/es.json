@@ -1157,6 +1157,11 @@
       "hostFailed": "No se pudo registrar el conector del navegador. No se encontró ningún navegador compatible.",
       "toggleError": "No se pudo actualizar la integración con el navegador."
     },
+    "alwaysAllowBypass": {
+      "enable": "\"Permitir siempre\" omite todas las solicitudes de la conversación",
+      "enableDesc": "Desactivado: \"Permitir siempre\" permite solo esa herramienta hasta el final de la conversación. Activado: la conversación pasa al modo de omisión y nada vuelve a preguntar hasta que termine.",
+      "warning": "Todas las llamadas a herramientas posteriores de la conversación se ejecutan sin preguntar, sea cual sea la herramienta. Si un agente puede conceder los permisos de otra pestaña, también puede activar esto."
+    },
     "mcpGrants": {
       "title": "Orquestación de agentes",
       "enable": "Permitir que un agente conceda los permisos de otra pestaña",

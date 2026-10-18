@@ -1255,6 +1255,11 @@
       "hostFailed": "Impossible d'enregistrer le connecteur navigateur. Aucun navigateur compatible n'a été trouvé.",
       "toggleError": "Échec de la mise à jour de l'intégration navigateur."
     },
+    "alwaysAllowBypass": {
+      "enable": "« Toujours autoriser » contourne toutes les demandes de la conversation",
+      "enableDesc": "Désactivé : « Toujours autoriser » autorise cet outil seulement, jusqu'à la fin de la conversation. Activé : la conversation passe en mode contournement et plus rien ne demande jusqu'à sa fin.",
+      "warning": "Tous les appels d'outils suivants de la conversation s'exécutent sans demander, quel que soit l'outil. Si un agent peut accorder les autorisations d'un autre onglet, il peut aussi déclencher ce contournement."
+    },
     "mcpGrants": {
       "title": "Orchestration d'agents",
       "enable": "Laisser un agent accorder les autorisations d'un autre onglet",

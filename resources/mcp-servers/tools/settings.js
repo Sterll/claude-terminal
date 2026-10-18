@@ -120,6 +120,7 @@ const KNOWN_SETTINGS = new Set([
 const READONLY_SETTINGS = new Set([
   'skipPermissions',        // Security: bypasses Claude permissions
   'mcpPermissionGrantsEnabled', // Security: lets an agent grant another tab's permissions
+  'alwaysAllowBypassesSession', // Security: Always Allow turns off every later prompt of the session
   'cloudApiKey',            // Credentials
   'remotePersistentPinValue', // Auth PIN
   'telemetryEnabled',       // Privacy: user must opt-in via UI

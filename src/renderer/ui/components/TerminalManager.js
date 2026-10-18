@@ -63,6 +63,7 @@ const {
   detectCompletionSignal,
   parseClaudeTitle,
   extractTitleFromInput,
+  detectPermissionDialog,
   BRAILLE_SPINNER_RE,
 } = require('./terminal/claudeSignals');
 const { normalizeStoredKey, eventToNormalizedKey } = require('./terminal/keyBindings');
@@ -123,6 +124,19 @@ function clearOutputSilenceTimer(_id) { /* no-op */ }
  */
 function ptyIdOf(termData, tabId) {
   return termData?.ptyId ?? tabId;
+}
+
+const PERMISSION_DIALOG_REFUSAL = 'This tab is waiting on a permission prompt, and typing into it would approve it. '
+  + 'Granting another tab\'s permissions over MCP is turned off in the settings; let the user answer in the app.';
+
+/**
+ * Whether text sent by an agent (MCP `tab_send`, `terminal_send_command`) must
+ * not be typed into this PTY tab: it shows the CLI's approval dialog and the
+ * user has not opted in to agents granting permissions.
+ */
+function refusesAgentInput(termData) {
+  if (getSetting('mcpPermissionGrantsEnabled') === true) return false;
+  return detectPermissionDialog(termData?.terminal);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -4590,6 +4604,12 @@ class TerminalManager extends BaseComponent {
     }
 
     if (data.isBasic || data.mode === 'terminal') {
+      // Enter answers the CLI's approval dialog with its first entry, "Yes",
+      // so typing into a tab that shows one is a grant by another route than
+      // chat_respond_permission, and needs the same opt-in.
+      if (refusesAgentInput(data)) {
+        return { ok: false, error: PERMISSION_DIALOG_REFUSAL };
+      }
       try {
         this._api.terminal.input({ id: ptyIdOf(data, id), data: text + (text.endsWith('\r') || text.endsWith('\n') ? '' : '\r') });
       } catch (e) {
@@ -4862,6 +4882,7 @@ module.exports = {
   // MCP orchestration
   getTabByTabId: (tabId) => _getInstance().getTabByTabId(tabId),
   sendToTab: (tabId, content) => _getInstance().sendToTab(tabId, content),
+  refusesAgentInput,
   getStatusForTab: (tabId) => _getInstance().getStatusForTab(tabId),
   closeTabByTabId: (tabId) => _getInstance().closeTabByTabId(tabId),
   listTabsSummary: () => _getInstance().listTabsSummary(),

@@ -3800,6 +3800,7 @@ class ChatView extends BaseComponent {
     });
 
     let result;
+    let bypassSession = false;
     if (action === 'allow' || action === 'always-allow') {
       btn.classList.add('chosen');
       card.classList.add('resolved', 'allowed');
@@ -3810,9 +3811,19 @@ class ChatView extends BaseComponent {
         // Without any, allow this one tool for the rest of the session. This
         // used to switch the whole session to bypassPermissions, so approving
         // one tool silently turned off every later prompt, for every tool.
+        // That stays available, but only as an explicit opt-in
+        // (`alwaysAllowBypassesSession`), and then it goes through
+        // selectMode() so the footer and the transcript say so.
         const suggestions = JSON.parse(card.dataset.suggestions || '[]');
         const toolName = card.dataset.toolName;
-        if (suggestions.length > 0) {
+        bypassSession = getSetting('alwaysAllowBypassesSession') === true;
+        if (bypassSession) {
+          result.updatedPermissions = [{
+            type: 'setMode',
+            mode: 'bypassPermissions',
+            destination: 'session'
+          }];
+        } else if (suggestions.length > 0) {
           result.updatedPermissions = suggestions;
         } else if (toolName) {
           result.updatedPermissions = [{
@@ -3834,6 +3845,10 @@ class ChatView extends BaseComponent {
 
     _respondPermission({ requestId, result }).then((accepted) => {
       if (!accepted) { markCardStale(card); return; }
+
+      // The setMode above switches the SDK at once; selectMode() moves the
+      // footer and ChatService's app-side auto-approval with it.
+      if (bypassSession && selectedMode !== 'bypassPermissions') selectMode('bypassPermissions');
 
       // Reset status — SDK will continue processing
       setStatus('thinking', t('chat.thinking'));
