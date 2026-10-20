@@ -2,6 +2,34 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.7] - 2026-10-20
+
+### Security
+- Agents can no longer approve another tab's permission prompts. The MCP tool that answers a tab's prompt can now only deny; granting is back behind an opt-in under Settings > Claude > Agent orchestration, with a warning while it is on. Reported and fixed by Benoît Lelevé (@bleleve)
+- Agents can no longer type into a terminal tab that is showing the Claude Code approval dialog, unless that same opt-in is on
+- Always Allow now allows only the tool you clicked, instead of switching the whole conversation to bypass permissions. The old behaviour is available as an opt-in setting under the permission modes, with a warning while it is on
+
+### Added
+- **Tickets**: connect an issue tracker and work with its tickets from the app. Settings > Tickets stores a personal API key in your OS credential store. A new Tickets screen lists every ticket of your workspace as a list or a board, with search, filters, grouping, sub-issues and a detail pane where you can change status, assignee and priority or comment. You can start a Claude session from a ticket (optionally on the tracker's branch), each chat has a Tickets tab, and `@tickets` mentions a ticket in your prompt. The app suggests tickets it notices in a session and only links them when you say yes (#238, @bleleve)
+- **Linear**: the first supported tracker, connected with a personal API key, with sub-issue progress on every ticket (#239, @bleleve)
+- **Chat Git tab**: every chat session has a Git tab listing the pull requests it worked on, grouped by what needs you, with their CI status as a dot on the tab. Fix it, Resolve, Update and Address review buttons draft the right prompt in the composer (#237, @bleleve)
+- **Accounts**: "Connect an account" signs a new Claude account in through the CLI's own `claude auth login`, without touching the login your machine already uses. If the browser cannot reach the app, paste the code it shows (#240, @bleleve)
+- **Accounts**: saved accounts are now recognised by their Claude profile, so connecting an account you already saved no longer creates a duplicate
+- **Automations**: each automation can choose which Claude account it runs as, and can be skipped automatically when that account is above a usage threshold you set
+- **Automations**: the Cost tab has a new Automations view showing what each automation costs, how many runs it made, and which accounts it used. Task cards and run history show the account used
+- **Git**: a project that is a plain folder holding several repositories now works with them. The Git tab, toolbar actions, Changes panel and dashboard list the repositories one or two folders down and act on the one you pick, remembered per project
+
+### Fixed
+- Usage: an account that hit its limit no longer keeps showing the figure from before the limit, and no longer reads 100% after the limit resets (#235, #233, @bleleve)
+- macOS: the login password prompt for Claude's Keychain entries no longer comes back after every update and every few minutes (#231, @bleleve)
+- macOS: downloaded builds are now signed so they open through Privacy & Security > Open Anyway instead of being reported as damaged (#241, @bleleve)
+- macOS: account switches no longer expose credentials to other local users while they are written
+- Modals: pressing Escape or Tab in a modal opened from another modal now only affects the top one
+- Chat: the context window gauge reads the real size reported by Claude, so models with a 1M window no longer show over 300%
+- Chat: Always Allow no longer turns off every later permission prompt for every tool
+- Accounts: deleting an account that an automation uses is refused before the confirmation, not after
+- Automations: sessions created by automation steps are cleaned up correctly for project paths containing a dot or a space, and the xhigh effort level is honoured by older agent steps
+
 ## [1.3.6] - 2026-10-03
 
 ### Added
