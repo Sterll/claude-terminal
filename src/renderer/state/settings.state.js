@@ -122,6 +122,8 @@ const defaultSettings = {
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order
   parallelMaxAgents: 3, // Default number of parallel agents for Parallel Task Manager (1-10)
   maxTurns: null, // null = no limit (SDK/CLI default), or a cap on API round-trips for the whole tab
+  contextHandoffEnabled: false, // Past the threshold below, a chat writes a handoff summary and continues in a new session
+  contextHandoffThreshold: 500000, // Context window occupancy (tokens) that triggers the handoff
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions
   dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
   githubApiUrl: 'https://api.github.com', // GitHub API base URL (for GitHub Enterprise)

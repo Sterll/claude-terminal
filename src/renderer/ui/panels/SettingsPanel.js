@@ -15,6 +15,7 @@ const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
 const { getProjectsForAccount } = require('../../state/projects.state');
 const { buildAccountUsageHtml } = require('../components/accountUsage');
 const { mountTicketsSettings } = require('../components/ticketsSettings');
+const { normalizeHandoffThreshold, MIN_HANDOFF_THRESHOLD } = require('../components/chat/contextHandoff');
 
 // ── Settings search ──
 //
@@ -1676,6 +1677,27 @@ class SettingsPanel extends BasePanel {
                     value="${settings.maxTurns != null ? escapeHtml(String(settings.maxTurns)) : ''}"
                     placeholder="${t('settings.maxTurnsPlaceholder')}">
                 </div>
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
+                    <div>${t('settings.contextHandoff')}</div>
+                    <div class="settings-toggle-desc">${t('settings.contextHandoffDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="context-handoff-toggle" ${settings.contextHandoffEnabled ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-label">
+                    <div>${t('settings.contextHandoffThreshold')}</div>
+                    <div class="settings-desc">${t('settings.contextHandoffThresholdDesc')}</div>
+                  </div>
+                </div>
+                <div style="padding: 0 16px 12px;">
+                  <input type="number" id="context-handoff-threshold-input" class="settings-input-sm" style="width: 100%;"
+                    min="${MIN_HANDOFF_THRESHOLD / 1000}" step="10"
+                    value="${normalizeHandoffThreshold(settings.contextHandoffThreshold) / 1000}">
+                </div>
               </div>
             </div>
             <div class="settings-group">
@@ -2485,6 +2507,14 @@ class SettingsPanel extends BasePanel {
       const newMaxTurns = Number.isFinite(parsedMaxTurns) && parsedMaxTurns > 0
         ? parsedMaxTurns
         : null;
+      const contextHandoffToggle = document.getElementById('context-handoff-toggle');
+      const newContextHandoffEnabled = contextHandoffToggle ? contextHandoffToggle.checked : settings.contextHandoffEnabled === true;
+      // Typed in thousands of tokens, stored in tokens.
+      const handoffThresholdInput = document.getElementById('context-handoff-threshold-input');
+      const parsedHandoffThreshold = handoffThresholdInput ? parseFloat(handoffThresholdInput.value) : NaN;
+      const newContextHandoffThreshold = normalizeHandoffThreshold(
+        Number.isFinite(parsedHandoffThreshold) ? parsedHandoffThreshold * 1000 : settings.contextHandoffThreshold
+      );
       const autoClaudeMdToggle = document.getElementById('auto-claude-md-toggle');
       const newAutoClaudeMd = autoClaudeMdToggle ? autoClaudeMdToggle.checked : true;
       const chromeBridgeToggle = document.getElementById('chrome-bridge-toggle');
@@ -2585,6 +2615,8 @@ class SettingsPanel extends BasePanel {
         chromeBridgeEnabled: newChromeBridgeEnabled,
         autoClaudeMdUpdate: newAutoClaudeMd,
         maxTurns: newMaxTurns,
+        contextHandoffEnabled: newContextHandoffEnabled,
+        contextHandoffThreshold: newContextHandoffThreshold,
         telemetryEnabled: newTelemetryEnabled,
         orphanReaperEnabled: newOrphanReaperEnabled,
         telemetryCategories: newTelemetryCategories,
@@ -2747,6 +2779,10 @@ class SettingsPanel extends BasePanel {
     const personaInstructionsEl = document.getElementById('persona-instructions-input');
     if (personaNameEl) personaNameEl.addEventListener('blur', autoSave);
     if (personaInstructionsEl) personaInstructionsEl.addEventListener('blur', autoSave);
+    // Number fields commit on change (blur or Enter), not on every keystroke
+    for (const id of ['max-turns-input', 'context-handoff-threshold-input']) {
+      document.getElementById(id)?.addEventListener('change', autoSave);
+    }
 
     // Re-render settings when telemetry master toggle changes (to show/hide sub-toggles)
     const telemetryMasterToggle = document.getElementById('telemetry-enabled-toggle');

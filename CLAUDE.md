@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 304 test files)
+npm test                 # Run Jest tests (jsdom, 305 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -106,7 +106,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4366 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4376 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked)
 
 Project Types (Plugin System)
@@ -374,7 +374,7 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
-**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `gitTab` (the session's Git tab. Its open pull requests' checks are the session's CI, shown as a dot on the tab button and the only thing it reads while hidden. Nothing is read while the chat is off screen, and the first read waits until the chat is first shown, so restored background tabs cost nothing at startup; this replaced the project bar's CI pill, which read the project folder's branch and so never followed a worktree. A session that worked in worktrees is drawn as a list of its pull requests rather than a card per worktree, and the rows that need the user are counted on the tab button), `sessionPrs` (what that list is made of, pure: a row per pull request or per branch that needs one, one verdict each from the first rule that applies, so a red check is never hidden behind a pending review; groups for what needs the user, what waits on someone else, ready and done; and the prompts its buttons draft for conflicts, a base to merge in and a review to address), `ticketsTab` (the session's Tickets tab: linked tickets with live status, nested under their parent the way the Tickets screen nests them, an unlinked parent shown for context with a button to link it, Link search, state menu, pending suggestions, and a recap of the session drafted as a comment, published only on an explicit click), `ticketSuggestionCard` (the card in the conversation asking about detected tickets; DOM only, never sent to Claude nor exported, one per batch gathered over 600 ms and shown at the end of a turn), `ticketsWiring` (what ties the Tickets tab to the conversation: those cards, the Git tab's branch and PR title handed to detection, the recap draft), `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `transcriptSearch`, `attachmentTray`, `elapsedTimer`, `remoteSession` (the host bar, host hold, "connection lost" banner and resume of a remote SSH chat) and `projectMentions` (`@git` and `@todos`, read on the host of a remote project and failing closed while it is away); `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer`, `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab) and `ticketsButton` (one button in the session bar for the active terminal-mode Claude session: the Tickets component in a popover, keyed by the CLI session id the hooks report, and a toast with a Review action for what detection finds in any terminal session, once per ticket).
+**`components/chat/` and `components/terminal/`** hold what has been lifted out so far, following `src/renderer/services/markdown/`: `chat/` has `gitTab` (the session's Git tab. Its open pull requests' checks are the session's CI, shown as a dot on the tab button and the only thing it reads while hidden. Nothing is read while the chat is off screen, and the first read waits until the chat is first shown, so restored background tabs cost nothing at startup; this replaced the project bar's CI pill, which read the project folder's branch and so never followed a worktree. A session that worked in worktrees is drawn as a list of its pull requests rather than a card per worktree, and the rows that need the user are counted on the tab button), `sessionPrs` (what that list is made of, pure: a row per pull request or per branch that needs one, one verdict each from the first rule that applies, so a red check is never hidden behind a pending review; groups for what needs the user, what waits on someone else, ready and done; and the prompts its buttons draft for conflicts, a base to merge in and a review to address), `ticketsTab` (the session's Tickets tab: linked tickets with live status, nested under their parent the way the Tickets screen nests them, an unlinked parent shown for context with a button to link it, Link search, state menu, pending suggestions, and a recap of the session drafted as a comment, published only on an explicit click), `ticketSuggestionCard` (the card in the conversation asking about detected tickets; DOM only, never sent to Claude nor exported, one per batch gathered over 600 ms and shown at the end of a turn), `ticketsWiring` (what ties the Tickets tab to the conversation: those cards, the Git tab's branch and PR title handed to detection, the recap draft), `liveCards`, `resultParsing`, `contextSuggestions`, `followupChips`, `lightbox`, `exportConversation`, `contextUsage`, `contextHandoff` (past the threshold set in the chat settings, the session writes a handoff summary as one more turn at the end of a turn, and the tab carries on in a new session whose first prompt carries it, under a divider; a message typed meanwhile is held and opens that session; both prompts are tagged so a replay draws them as a notice and a divider), `transcriptSearch`, `attachmentTray`, `elapsedTimer`, `remoteSession` (the host bar, host hold, "connection lost" banner and resume of a remote SSH chat) and `projectMentions` (`@git` and `@todos`, read on the host of a remote project and failing closed while it is away); `terminal/` has `osc52`, `claudeSignals`, `keyBindings`, `sessionCards`, `markdownViewer`, `remoteTab` (the host badge, host hold, "connection lost" overlay and respawn of a remote SSH tab) and `ticketsButton` (one button in the session bar for the active terminal-mode Claude session: the Tickets component in a popover, keyed by the CLI session id the hooks report, and a toast with a Review action for what detection finds in any terminal session, once per ticket).
 
 Two things make this harder than it looks and set the shape of the modules. `ChatView.js`'s body is a single ~8,600-line closure, so every helper in it closes over the same mutable session state; a unit only comes out as a `createXxx(deps)` factory taking its dependencies explicitly, reading late-bound ones (`getPruner`, `getInputEl`, `getProject`) through getters, and owning its own `destroy()` rather than leaving listeners for `createChatView`'s to remember. And the units have real couplings worth naming rather than hiding: `attachmentTray` reaches the mention rail because an attached file *is* a chip there, and `transcriptSearch` has to suspend the pruner because it walks the mounted tree.
 
@@ -449,7 +449,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4366 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4376 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -782,7 +782,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 304 unit test files (jsdom environment)
+npm test                    # Run all 305 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -791,7 +791,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 304 test files
+- **Framework:** Jest with jsdom, 305 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
