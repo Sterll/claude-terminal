@@ -223,3 +223,69 @@ describe('trackForRepaintOnReturn', () => {
     expect(webgl.clearTextureAtlas).not.toHaveBeenCalled();
   });
 });
+
+describe('withContentBoxFit (issue #242)', () => {
+  beforeEach(() => jest.resetModules());
+
+  /**
+   * addon-fit's arithmetic, reduced to what matters here: the parent's computed
+   * size, the 14px scrollbar it reserves, and a 16x8 cell.
+   */
+  class StubFitAddon {
+    activate(terminal) { this._terminal = terminal; }
+    proposeDimensions() {
+      const style = window.getComputedStyle(this._terminal.element.parentElement);
+      return {
+        rows: Math.floor(parseInt(style.height) / 16),
+        cols: Math.floor((parseInt(style.width) - 14) / 8)
+      };
+    }
+  }
+
+  function mountTerminal(parentStyle, { core = true } = {}) {
+    const parent = document.createElement('div');
+    Object.assign(parent.style, parentStyle);
+    const element = document.createElement('div');
+    parent.appendChild(element);
+    document.body.appendChild(parent);
+    return {
+      element,
+      options: { scrollback: 5000 },
+      _core: core ? { _renderService: { dimensions: { css: { cell: { height: 16, width: 8 } } } } } : undefined
+    };
+  }
+
+  function fitFor(terminal) {
+    const { withContentBoxFit } = require(LOADER);
+    const Fit = withContentBoxFit(StubFitAddon);
+    const fit = new Fit();
+    fit.activate(terminal);
+    return fit.proposeDimensions();
+  }
+
+  it("sizes the grid for the parent's content box, not its padding", () => {
+    // A .terminal-wrapper: 787px tall with 8px padding leaves the terminal 771px.
+    const terminal = mountTerminal({
+      boxSizing: 'border-box', height: '787px', width: '1000px', padding: '8px'
+    });
+
+    // FitAddon alone would say 49 rows: the 49th is the one drawn below the window.
+    expect(fitFor(terminal)).toEqual({ rows: 48, cols: 121 });
+  });
+
+  it('leaves a content-box parent to FitAddon', () => {
+    const terminal = mountTerminal({
+      boxSizing: 'content-box', height: '787px', width: '1000px', padding: '8px'
+    });
+
+    expect(fitFor(terminal)).toEqual({ rows: 49, cols: 123 });
+  });
+
+  it("falls back to FitAddon's answer when xterm's internals are not there", () => {
+    const terminal = mountTerminal({
+      boxSizing: 'border-box', height: '787px', width: '1000px', padding: '8px'
+    }, { core: false });
+
+    expect(fitFor(terminal)).toEqual({ rows: 49, cols: 123 });
+  });
+});

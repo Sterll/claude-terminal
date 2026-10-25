@@ -45,6 +45,82 @@ function pick(mod, name) {
   return (mod && mod[name]) || (mod && mod.default && mod.default[name]);
 }
 
+/** addon-fit's own fallback for the scrollbar it reserves, inlined in its build. */
+const FIT_SCROLLBAR_WIDTH = 14;
+
+/**
+ * The padding and border a `border-box` element carries inside its computed
+ * width and height, which is the part of it a child cannot use.
+ * @param {CSSStyleDeclaration} style
+ * @returns {{ vertical: number, horizontal: number }}
+ */
+function borderBoxInset(style) {
+  if (style.getPropertyValue('box-sizing') !== 'border-box') return { vertical: 0, horizontal: 0 };
+  const px = (prop) => parseFloat(style.getPropertyValue(prop)) || 0;
+  return {
+    vertical: px('padding-top') + px('padding-bottom') + px('border-top-width') + px('border-bottom-width'),
+    horizontal: px('padding-left') + px('padding-right') + px('border-left-width') + px('border-right-width')
+  };
+}
+
+/**
+ * FitAddon, measuring the space its terminal actually gets (issue #242).
+ *
+ * FitAddon sizes the grid from its parent's computed `height` and `width`, and
+ * subtracts only the terminal element's own padding. That is right for a
+ * `content-box` parent, but base.css makes every element `border-box`, where
+ * the computed size includes the parent's padding and border too. A
+ * `.terminal-wrapper` has 8px of padding, so every terminal was sized for 16px
+ * more than it has: one row too many, the last one (the CLI's status line)
+ * drawn below the bottom of the window, and a column hidden on the right.
+ *
+ * Same arithmetic as FitAddon, minus that inset, and never more than FitAddon
+ * itself would propose. Anything unexpected falls back to FitAddon's answer,
+ * which is what every terminal used before.
+ *
+ * @param {Function} FitAddon - the addon-fit class
+ * @returns {Function} a drop-in subclass
+ */
+function withContentBoxFit(FitAddon) {
+  return class ContentBoxFitAddon extends FitAddon {
+    activate(terminal) {
+      super.activate(terminal);
+      this._ctTerminal = terminal;
+    }
+
+    proposeDimensions() {
+      const proposed = super.proposeDimensions();
+      const terminal = this._ctTerminal;
+      if (!proposed || !terminal) return proposed;
+      try {
+        const parent = terminal.element.parentElement;
+        const inset = borderBoxInset(window.getComputedStyle(parent));
+        if (!inset.vertical && !inset.horizontal) return proposed;
+
+        const cell = terminal._core._renderService.dimensions.css.cell;
+        const elementStyle = window.getComputedStyle(terminal.element);
+        const parentStyle = window.getComputedStyle(parent);
+        const px = (style, prop) => parseInt(style.getPropertyValue(prop)) || 0;
+        const scrollbarWidth = terminal.options.scrollback === 0
+          ? 0
+          : (terminal.options.overviewRuler?.width || FIT_SCROLLBAR_WIDTH);
+
+        const availableHeight = px(parentStyle, 'height') - inset.vertical
+          - px(elementStyle, 'padding-top') - px(elementStyle, 'padding-bottom');
+        const availableWidth = Math.max(0, px(parentStyle, 'width')) - inset.horizontal
+          - px(elementStyle, 'padding-left') - px(elementStyle, 'padding-right') - scrollbarWidth;
+
+        const rows = Math.max(1, Math.floor(availableHeight / cell.height));
+        const cols = Math.max(2, Math.floor(availableWidth / cell.width));
+        if (!Number.isFinite(rows) || !Number.isFinite(cols)) return proposed;
+        return { rows: Math.min(rows, proposed.rows), cols: Math.min(cols, proposed.cols) };
+      } catch (e) {
+        return proposed;
+      }
+    }
+  };
+}
+
 /**
  * Load the terminal emulator and the fit addon.
  *
@@ -66,7 +142,7 @@ function loadXterm() {
     if (typeof Terminal !== 'function' || typeof FitAddon !== 'function') {
       throw new Error('xterm loaded but exported no Terminal/FitAddon');
     }
-    _core = { Terminal, FitAddon };
+    _core = { Terminal, FitAddon: withContentBoxFit(FitAddon) };
     return _core;
   }).catch((err) => {
     _corePromise = null;
@@ -301,5 +377,6 @@ module.exports = {
   loadWebgl,
   attachWebglAddon,
   clearGlyphAtlas,
-  trackForRepaintOnReturn
+  trackForRepaintOnReturn,
+  withContentBoxFit
 };
