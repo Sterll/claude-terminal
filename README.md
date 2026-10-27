@@ -13,7 +13,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.3.7-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.3.8-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
@@ -179,6 +179,8 @@ npm install
 - **Attachments**: paste, drag-drop, or pick PNG/JPEG/GIF/WebP images (up to 20MB), plus text files and PDFs
 - **Slash commands**: auto-completing commands (/compact, /clear, /help, custom skills)
 - **Terminal handoff**: commands that act on the machine or the account rather than the conversation (/design-login, /login, /logout, /permissions, /plugin...) open a Claude terminal tab to run them, since the chat drives the CLI headless
+- **Long-conversation handoff**: past a context threshold you set (off by default), the session writes a handoff summary and the tab carries on in a fresh session that opens on it; the previous session stays whole in the history
+- **Idle tab sleep**: a chat tab left idle for 15 minutes (configurable) closes its Claude process to free memory, and the next message resumes the conversation where it was
 - **Inline @mentions**: rich contenteditable input field lets you type @mentions inline without leaving the message composition area
 - **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar

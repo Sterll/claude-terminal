@@ -2,6 +2,18 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.8] - 2026-10-27
+
+### Added
+- **Chat**: long conversations can hand themselves off. Past a context threshold you choose in the chat settings (off by default), the session writes a summary and the tab carries on in a fresh session that opens on it, under a divider. The previous session stays whole in the history
+- **Chat**: the same threshold now also bounds subagents and turns that run far past it, and each subagent card shows its own context window
+- **Chat**: idle conversations go to sleep. A tab left alone for 15 minutes (Settings > Chat, 0 to disable) closes its Claude process to free memory; the conversation stays on screen and your next message resumes it
+- **Accounts**: a signed-out account can be reconnected in place, without deleting and re-adding it
+- **Setup**: the first-launch wizard detects whether Claude Code is installed and can install it for you
+
+### Fixed
+- Terminal: the last row of the terminal, where Claude Code shows its status line, is no longer cut off (#242)
+
 ## [1.3.7] - 2026-10-20
 
 ### Security
