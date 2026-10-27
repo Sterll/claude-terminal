@@ -1629,6 +1629,17 @@ mark.chat-search-hit.current {
   font-family: 'Cascadia Code', 'Fira Code', monospace;
 }
 
+/* The subagent's own context window, next to its status */
+.chat-subagent-context {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-family: 'Cascadia Code', 'Fira Code', monospace;
+}
+
 .chat-subagent-status {
   flex-shrink: 0;
   width: 16px;

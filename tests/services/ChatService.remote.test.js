@@ -209,6 +209,26 @@ describe('local sessions are unchanged', () => {
   });
 });
 
+describe('the compaction window set by the context handoff', () => {
+  const optionsFor = async (autoCompactWindow) => {
+    const { stream } = pendingStream();
+    const query = jest.fn(() => stream);
+    const { service } = loadChatService(query);
+    await service.startSession({ cwd: '/work/app', prompt: 'hi', sessionId: `s-${autoCompactWindow}`, autoCompactWindow });
+    return query.mock.calls[0][0].options;
+  };
+
+  test('reaches the CLI as its autoCompactWindow setting', async () => {
+    expect((await optionsFor(550000)).settings).toEqual({ autoCompactWindow: 550000 });
+  });
+
+  test('is left out when absent or outside what the CLI accepts', async () => {
+    for (const value of [null, 0, 99999, 1000001, 'junk']) {
+      expect(await optionsFor(value)).not.toHaveProperty('settings');
+    }
+  });
+});
+
 describe('remote sessions', () => {
   async function startRemote(overrides = {}) {
     const pending = pendingStream();

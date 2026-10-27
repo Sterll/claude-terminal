@@ -12,6 +12,7 @@
 
 const {
   normalizeHandoffThreshold,
+  autoCompactWindowFor,
   buildHandoffRequest,
   parseHandoffRequest,
   buildHandoffSeed,
@@ -26,6 +27,12 @@ describe('context handoff prompts', () => {
     expect(normalizeHandoffThreshold('junk')).toBe(DEFAULT_HANDOFF_THRESHOLD);
     expect(normalizeHandoffThreshold(0)).toBe(DEFAULT_HANDOFF_THRESHOLD);
     expect(normalizeHandoffThreshold(1000)).toBe(MIN_HANDOFF_THRESHOLD);
+  });
+
+  it('puts the CLI compaction a margin above the threshold, inside what the CLI accepts', () => {
+    expect(autoCompactWindowFor(500000)).toBe(550000);
+    expect(autoCompactWindowFor(MIN_HANDOFF_THRESHOLD)).toBe(100000);
+    expect(autoCompactWindowFor(950000)).toBe(1000000);
   });
 
   it('recognizes its own request, and nothing else', () => {
@@ -125,6 +132,41 @@ describe('chat context handoff', () => {
 
   afterEach(() => {
     try { view?.destroy?.(); } catch (_) { /* best effort */ }
+  });
+
+  it('hands the CLI a compaction window a margin above the threshold', async () => {
+    // The opening start, made in beforeEach with the handoff on
+    expect(lastStart().autoCompactWindow).toBe(550000);
+  });
+
+  it('leaves the CLI its own compaction window when the handoff is off', async () => {
+    settings.setSetting('contextHandoffEnabled', false);
+    const { createChatView } = require('../../src/renderer/ui/components/ChatView');
+    const other = createChatView(document.createElement('div'), { id: 'p2', name: 'Other', path: '/tmp/other' });
+    other.sendMessage('hello');
+    await flush();
+    expect(lastStart().autoCompactWindow).toBeNull();
+    other.destroy();
+  });
+
+  it("shows a subagent's own context on its card, apart from the main gauge", async () => {
+    const sid = view.getSessionId();
+    listeners.onMessage({ sessionId: sid, message: { type: 'stream_event', event: { type: 'message_start', message: {} } } });
+    listeners.onMessage({ sessionId: sid, message: { type: 'stream_event', event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_agent', name: 'Agent' } } } });
+    listeners.onMessage({
+      sessionId: sid,
+      message: {
+        type: 'assistant', parent_tool_use_id: 'toolu_agent', session_id: 'real-uuid-1',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'reading' }], usage: { input_tokens: 5, cache_read_input_tokens: 600000 } },
+      },
+    });
+    await flush();
+    const badge = wrapper.querySelector('.chat-subagent-card .chat-subagent-context');
+    expect(badge?.textContent).toBe('600k');
+    // Its window is not the conversation's: no handoff off a subagent's size
+    listeners.onMessage({ sessionId: sid, message: { type: 'result', subtype: 'success', result: 'ok' } });
+    await flush();
+    expect(requests()).toHaveLength(0);
   });
 
   it('does nothing below the threshold', async () => {

@@ -41,6 +41,25 @@ function normalizeHandoffThreshold(value) {
   return Math.max(MIN_HANDOFF_THRESHOLD, n);
 }
 
+/** How far above the handoff threshold the CLI's own compaction sits. */
+const COMPACT_MARGIN = 0.1;
+
+/**
+ * The window handed to the CLI as its `autoCompactWindow` while the handoff is
+ * on. The handoff only acts at the end of a turn, on the main conversation;
+ * this covers the rest. A subagent compacts at this window, and so does a turn
+ * that runs well past the threshold before ending. A margin above the threshold
+ * keeps an ordinary turn on the handoff rather than on a compaction. Kept inside
+ * the 100k to 1M range the CLI accepts.
+ *
+ * @param {number} threshold - tokens, as normalizeHandoffThreshold gives it
+ * @returns {number}
+ */
+function autoCompactWindowFor(threshold) {
+  const window = Math.round((threshold * (1 + COMPACT_MARGIN)) / 1000) * 1000;
+  return Math.min(1000000, Math.max(100000, window));
+}
+
 function tokenCount(value) {
   const n = Math.round(Number(value));
   return Number.isFinite(n) && n > 0 ? n : 0;
@@ -237,6 +256,7 @@ module.exports = {
   DEFAULT_HANDOFF_THRESHOLD,
   MIN_HANDOFF_THRESHOLD,
   normalizeHandoffThreshold,
+  autoCompactWindowFor,
   buildHandoffRequest,
   parseHandoffRequest,
   buildHandoffSeed,

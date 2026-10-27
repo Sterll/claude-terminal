@@ -47,7 +47,7 @@ const projectFs = require('../../utils/projectFs');
 const { createTicketsTab } = require('./chat/ticketsTab');
 const { createTicketsWiring } = require('./chat/ticketsWiring');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
-const { createContextHandoff, normalizeHandoffThreshold, buildHandoffSeed, parseHandoffSeed, parseHandoffRequest } = require('./chat/contextHandoff');
+const { createContextHandoff, normalizeHandoffThreshold, autoCompactWindowFor, buildHandoffSeed, parseHandoffSeed, parseHandoffRequest } = require('./chat/contextHandoff');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
 const ATTACHMENT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
@@ -58,7 +58,7 @@ const { saveTerminalSessions } = require('../../services/TerminalSessionService'
 
 const { matchModel, resolveModelSelection, uncataloguedModelLabel, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
 const { PERMISSION_MODES, permissionModeInfo, modeFromSetting, settingFromMode } = require('../../../shared/permission-modes');
-const { contextTokensFromMessage, contextWindowFromResult } = require('../../../shared/context-usage');
+const { contextTokensFromMessage, contextTokensFromUsage, contextWindowFromResult } = require('../../../shared/context-usage');
 const { parseTerminalCommand } = require('../../../shared/terminal-commands');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 
@@ -3599,6 +3599,7 @@ class ChatView extends BaseComponent {
           effort: selectedEffort,
           enable1MContext: getSetting('enable1MContext') || false,
           maxTurns: getSetting('maxTurns') || null,
+          autoCompactWindow: handoffCompactWindow(),
           persistSession: !getSetting('ephemeralChats'),
           userMessageUuid: userMsgUuid,
           ...(project.isCloud ? { cloud: true, cloudProjectName: project.cloudProjectName } : {}),
@@ -5547,6 +5548,28 @@ class ChatView extends BaseComponent {
   }
 
   /**
+   * A subagent runs in a window of its own, which the main gauge deliberately
+   * ignores (contextTokensFromMessage skips its frames). Its card says how full
+   * that window is, read off each of its API calls the same way, so a subagent
+   * heading for its own compaction is visible before it gets there.
+   */
+  function noteSubagentContext(info, message) {
+    if (message.type !== 'assistant') return;
+    const tokens = contextTokensFromUsage(message.message?.usage);
+    if (!(tokens > 0) || tokens === info.contextTokens) return;
+    info.contextTokens = tokens;
+    let el = info.card.querySelector('.chat-subagent-context');
+    if (!el) {
+      el = document.createElement('span');
+      el.className = 'chat-subagent-context';
+      info.card.querySelector('.chat-subagent-activity')?.after(el);
+    }
+    if (!el.isConnected) return;
+    el.textContent = formatTokenCount(tokens);
+    el.title = t('chat.subagentContext', { tokens: tokens.toLocaleString() });
+  }
+
+  /**
    * Find the subagent info by parent_tool_use_id
    */
   function findSubagentByParentId(parentToolUseId) {
@@ -6857,6 +6880,12 @@ class ChatView extends BaseComponent {
     return normalizeHandoffThreshold(getSetting('contextHandoffThreshold'));
   }
 
+  /** The CLI's compaction window while the handoff is on, null otherwise. */
+  function handoffCompactWindow() {
+    const threshold = handoffThreshold();
+    return threshold > 0 ? autoCompactWindowFor(threshold) : null;
+  }
+
   /**
    * Nothing may be cut off or left behind by closing the session: no turn
    * running, no message waiting in the CLI's queue or behind a parked switch,
@@ -6910,6 +6939,7 @@ class ChatView extends BaseComponent {
       model: requestedModel(),
       effort: selectedEffort,
       permissionMode: selectedMode,
+      autoCompactWindow: handoffCompactWindow(),
       resumeSessionId: null,
       forkSession: false,
       resumeSessionAt: null,
@@ -7122,6 +7152,7 @@ class ChatView extends BaseComponent {
     if (parentId) {
       const subInfo = findSubagentByParentId(parentId);
       if (subInfo) {
+        noteSubagentContext(subInfo, message);
         handleSubagentMessage(subInfo, message);
         return;
       }
