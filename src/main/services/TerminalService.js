@@ -10,7 +10,9 @@ const { execFileSync } = require('child_process');
 const terminalCapture = require('./TerminalOutputCapture');
 const { terminalCommandArgv } = require('../../shared/terminal-commands');
 const sshCommand = require('../utils/sshCommand');
+const { resolveTerminalClaude } = require('../utils/claudeCode');
 const {
+  q,
   shC,
   terminalShellScript,
   terminalClaudeScript,
@@ -148,9 +150,14 @@ class TerminalService {
       }
     }
 
+    // Which `claude`: the one on the PATH by name when there is one (unchanged),
+    // otherwise an installed binary by path, otherwise the SDK's own. See
+    // claudeCode.js; this is what keeps a machine without Claude Code working.
+    const claudeLaunch = runClaude ? resolveTerminalClaude() : null;
+
     // If running Claude, spawn it directly via cmd.exe /c (no shell banner, no prompt)
     if (runClaude && process.platform === 'win32') {
-      const claudeArgs = ['claude'];
+      const claudeArgs = [claudeLaunch.file || 'claude'];
       if (resumeSessionId && /^[a-f0-9\-]{8,64}$/.test(resumeSessionId)) {
         claudeArgs.push('--resume', resumeSessionId);
       }
@@ -163,8 +170,14 @@ class TerminalService {
         claudeArgs.push('--rc');
       }
       claudeArgs.push(...commandArgv);
-      shellPath = 'cmd.exe';
-      shellArgs = ['/c', ...claudeArgs];
+      if (claudeLaunch.file && /\.exe$/i.test(claudeLaunch.file)) {
+        // A binary named by path needs no cmd.exe to find it.
+        shellPath = claudeArgs[0];
+        shellArgs = claudeArgs.slice(1);
+      } else {
+        shellPath = 'cmd.exe';
+        shellArgs = ['/c', ...claudeArgs];
+      }
     }
 
     if (command && typeof command.file === 'string' && Array.isArray(command.args)) {
@@ -180,8 +193,11 @@ class TerminalService {
         rows: 30,
         cwd: effectiveCwd,
         // A project pinned to an account gets that account's credential store;
-        // everything else in ~/.claude stays shared.
-        env: accountEnv ? { ...process.env, ...accountEnv } : process.env
+        // everything else in ~/.claude stays shared. The SDK's binary also
+        // gets its updater turned off (claudeLaunch.env).
+        env: (accountEnv || claudeLaunch?.env)
+          ? { ...process.env, ...(claudeLaunch?.env || {}), ...(accountEnv || {}) }
+          : process.env
       });
 
       if (!ptyProcess) {
@@ -260,7 +276,7 @@ class TerminalService {
     // Run Claude CLI on non-Windows platforms
     if (runClaude && process.platform !== 'win32') {
       setTimeout(() => {
-        let claudeCmd = 'claude';
+        let claudeCmd = claudeLaunch.file ? q(claudeLaunch.file) : 'claude';
         if (resumeSessionId) {
           // Validate session ID format to prevent shell injection via PTY
           if (/^[a-f0-9\-]{8,64}$/.test(resumeSessionId)) {

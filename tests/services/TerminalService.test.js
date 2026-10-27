@@ -35,6 +35,12 @@ jest.mock('../../src/main/services/RemoteControlService', () => ({
   launchesTerminalsConnected: () => false,
 }));
 
+// Which claude a tab launches; a claude on the PATH unless a test says otherwise.
+const mockClaudeLaunch = { value: { source: 'path', file: null, env: null } };
+jest.mock('../../src/main/utils/claudeCode', () => ({
+  resolveTerminalClaude: () => mockClaudeLaunch.value,
+}));
+
 const spawned = [];
 
 jest.mock('node-pty', () => ({
@@ -170,5 +176,66 @@ describe('TerminalService.create with a terminal-only Claude command', () => {
 
   it('refuses a command for a plain shell', () => {
     expect(terminalService.create({ cwd: null, runClaude: false, claudeCommand: '/login' }).success).toBe(false);
+  });
+});
+
+describe('TerminalService.create without Claude Code on the PATH', () => {
+  const pty = require('node-pty');
+  const realPlatform = process.platform;
+  const setPlatform = (value) => Object.defineProperty(process, 'platform', { value, configurable: true });
+  const bundled = { source: 'bundled', file: 'C:\\Program Files\\Claude Terminal\\resources\\claude.exe', env: { DISABLE_AUTOUPDATER: '1' } };
+
+  afterEach(() => {
+    setPlatform(realPlatform);
+    mockClaudeLaunch.value = { source: 'path', file: null, env: null };
+    jest.useRealTimers();
+  });
+
+  it('runs the SDK binary directly on Windows, with its updater off', () => {
+    setPlatform('win32');
+    mockClaudeLaunch.value = bundled;
+    terminalService.create({ cwd: null, runClaude: true, resumeSessionId: '0f1e2d3c-aaaa' });
+
+    const [file, args, options] = pty.spawn.mock.calls.at(-1);
+    expect(file).toBe(bundled.file);
+    expect(args).toEqual(['--resume', '0f1e2d3c-aaaa']);
+    expect(options.env.DISABLE_AUTOUPDATER).toBe('1');
+  });
+
+  it('keeps an account overlay on top of the launch environment', () => {
+    setPlatform('win32');
+    mockClaudeLaunch.value = bundled;
+    terminalService.create({ cwd: null, runClaude: true, accountEnv: { CLAUDE_SECURESTORAGE_CONFIG_DIR: '/acc' } });
+
+    const options = pty.spawn.mock.calls.at(-1)[2];
+    expect(options.env).toMatchObject({ DISABLE_AUTOUPDATER: '1', CLAUDE_SECURESTORAGE_CONFIG_DIR: '/acc' });
+  });
+
+  it('runs an npm shim found off the PATH through cmd.exe', () => {
+    setPlatform('win32');
+    mockClaudeLaunch.value = { source: 'install', file: 'C:\\Users\\A B\\AppData\\Roaming\\npm\\claude.cmd', env: null };
+    terminalService.create({ cwd: null, runClaude: true });
+
+    const [file, args, options] = pty.spawn.mock.calls.at(-1);
+    expect(file).toBe('cmd.exe');
+    expect(args).toEqual(['/c', 'C:\\Users\\A B\\AppData\\Roaming\\npm\\claude.cmd']);
+    expect(options.env).toBe(process.env);
+  });
+
+  it('types the binary path, quoted, on POSIX', () => {
+    setPlatform('linux');
+    jest.useFakeTimers();
+    mockClaudeLaunch.value = { source: 'install', file: "/home/o'neil/.local/bin/claude", env: null };
+    terminalService.create({ cwd: null, runClaude: true, claudeCommand: '/login' });
+    jest.runAllTimers();
+
+    expect(spawned.at(-1).write).toHaveBeenCalledWith("'/home/o'\\''neil/.local/bin/claude' /login\r");
+  });
+
+  it('leaves a plain shell alone', () => {
+    mockClaudeLaunch.value = bundled;
+    terminalService.create({ cwd: null, runClaude: false });
+    const options = pty.spawn.mock.calls.at(-1)[2];
+    expect(options.env).toBe(process.env);
   });
 });

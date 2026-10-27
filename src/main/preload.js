@@ -686,6 +686,9 @@ contextBridge.exposeInMainWorld('electron_api', {
     complete: (settings) => ipcRenderer.invoke('setup-wizard-complete', settings),
     skip: () => ipcRenderer.send('setup-wizard-skip'),
     rerun: () => ipcRenderer.send('setup-wizard-rerun'),
+    claudeCodeStatus: () => ipcRenderer.invoke('setup-claude-code-status'),
+    installClaudeCode: () => ipcRenderer.invoke('setup-claude-code-install'),
+    onClaudeCodeProgress: createListener('setup-claude-code-progress'),
     // Emitted by main after the wizard is re-run from the settings panel,
     // with the settings it just persisted to settings.json
     onSettingsChanged: createListener('settings-changed-externally')

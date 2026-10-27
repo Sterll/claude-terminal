@@ -97,11 +97,25 @@ function registerSetupHandlers(onComplete, onSkip) {
     if (onSkip) onSkip();
   };
 
+  // Claude Code step. Registered here rather than in src/main/ipc/: on first
+  // launch the wizard runs before registerAllHandlers().
+  const claudeCode = require('../utils/claudeCode');
+  const claudeCodeStatusHandler = () => claudeCode.getStatus();
+  const claudeCodeInstallHandler = (event) => claudeCode.installClaudeCode({
+    onProgress: (text) => {
+      if (!event.sender.isDestroyed()) event.sender.send('setup-claude-code-progress', text);
+    },
+  });
+
   // Remove previous handlers if any
   ipcMain.removeHandler('setup-wizard-complete');
+  ipcMain.removeHandler('setup-claude-code-status');
+  ipcMain.removeHandler('setup-claude-code-install');
   ipcMain.removeAllListeners('setup-wizard-skip');
 
   ipcMain.handle('setup-wizard-complete', completeHandler);
+  ipcMain.handle('setup-claude-code-status', claudeCodeStatusHandler);
+  ipcMain.handle('setup-claude-code-install', claudeCodeInstallHandler);
   ipcMain.on('setup-wizard-skip', skipHandler);
 }
 
