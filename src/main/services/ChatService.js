@@ -1540,6 +1540,67 @@ class ChatService {
   }
 
   /**
+   * Remember which MCP servers this conversation has had connected.
+   *
+   * The CLI never retries a server that drops mid-session: a claude.ai
+   * connector whose token is invalidated goes to needs-auth and stays there
+   * after the user re-authorizes it, for as long as the process lives. Knowing
+   * which servers were up once is what lets a bare `/mcp` retry just those
+   * rather than every connector the account has never authorized: the CLI
+   * runs reconnects one at a time, about a second each, and a Team account
+   * can list dozens.
+   */
+  _noteConnectedMcpServers(session) {
+    if (!session?.queryStream?.mcpServerStatus || session.isCloud) return;
+    session.queryStream.mcpServerStatus().then((servers) => {
+      if (!Array.isArray(servers)) return;
+      if (!session.mcpSeenConnected) session.mcpSeenConnected = new Set();
+      for (const s of servers) {
+        if (s?.status === 'connected') session.mcpSeenConnected.add(s.name);
+      }
+    }).catch(() => { /* the session is closing */ });
+  }
+
+  /**
+   * Retry MCP servers in a live session (the chat's local `/mcp` command).
+   * @param {string} sessionId
+   * @param {string} [filter] - case-insensitive part of a server name, or `all`
+   *   for every server that is down. Without one, retries the servers this
+   *   conversation has had connected and lost.
+   * @returns {Promise<{ results: Array<{ name: string, ok: boolean, error?: string }>, notConnected: string[] }>}
+   */
+  async reconnectMcpServers(sessionId, filter = '') {
+    const session = this.sessions.get(sessionId);
+    const qs = session?.queryStream;
+    if (!qs?.reconnectMcpServer || session.isCloud) throw new Error('No live session to reconnect');
+
+    const needle = String(filter || '').trim().toLowerCase();
+    const seen = session.mcpSeenConnected || new Set();
+    const isDown = s => s.status === 'needs-auth' || s.status === 'failed';
+    const targets = (await qs.mcpServerStatus()).filter(s => {
+      if (needle === 'all') return isDown(s);
+      if (needle) return s.status !== 'disabled' && s.name.toLowerCase().includes(needle);
+      return isDown(s) && seen.has(s.name);
+    });
+
+    // Sequential on purpose: the CLI serialises them anyway, and the outcome
+    // of each stays attributable.
+    const results = [];
+    for (const { name } of targets) {
+      try {
+        await qs.reconnectMcpServer(name);
+        seen.add(name);
+        results.push({ name, ok: true });
+      } catch (err) {
+        results.push({ name, ok: false, error: err.message });
+      }
+    }
+    session.mcpSeenConnected = seen;
+    const notConnected = (await qs.mcpServerStatus()).filter(isDown).map(s => s.name);
+    return { results, notConnected };
+  }
+
+  /**
    * Reject all pending permission requests for a session.
    * Called when the stream ends or errors to unblock the UI.
    */
@@ -1785,6 +1846,7 @@ class ChatService {
           }
         } else if (message.type === 'result') {
           flushReply();
+          this._noteConnectedMcpServers(session);
           await raisePendingAccountLimit();
         }
       }

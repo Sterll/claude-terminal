@@ -526,6 +526,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     onElicitationRequest: createListener('chat-elicitation-request'),
     reloadSkills: (params) => ipcRenderer.invoke('chat-reload-skills', params || {}),
     reloadPlugins: (params) => ipcRenderer.invoke('chat-reload-plugins', params || {}),
+    reconnectMcp: (params) => ipcRenderer.invoke('chat-reconnect-mcp', params || {}),
     analyzeSession: (params) => ipcRenderer.invoke('chat-analyze-session', params),
     applyClaudeMd: (params) => ipcRenderer.invoke('claude-md-apply', params),
     analyzeSessionForWorkspace: (params) => ipcRenderer.invoke('workspace-analyze-session', params),

@@ -109,6 +109,17 @@ function registerChatHandlers() {
     }
   });
 
+  // Retry MCP servers in a live session (local /mcp command)
+  ipcMain.handle('chat-reconnect-mcp', async (_event, { sessionId, filter } = {}) => {
+    try {
+      const result = await chatService.reconnectMcpServers(sessionId, filter || '');
+      return { success: true, ...result };
+    } catch (err) {
+      console.error('[chat-reconnect-mcp] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
   // Close the active SDK session before swapping the OAuth account on disk,
   // so the next chat-start picks up the new credentials cleanly.
   ipcMain.handle('chat-prepare-switch-account', async (_event, { sessionId }) => {

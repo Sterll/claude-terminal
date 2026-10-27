@@ -651,6 +651,29 @@ class ChatView extends BaseComponent {
     }
   }
 
+  async function reconnectMcp(filter) {
+    if (!sessionId) {
+      appendSystemNotice(t('chat.mcpNoSession'), 'command');
+      return;
+    }
+    appendSystemNotice(t('chat.mcpReconnecting'), 'command');
+    const res = await api.chat.reconnectMcp({ sessionId, filter });
+    if (!res?.success) {
+      appendSystemNotice(res?.error || t('chat.mcpFailed'), 'command');
+      return;
+    }
+    const up = res.results.filter(r => r.ok).map(r => r.name);
+    const down = res.results.filter(r => !r.ok).map(r => r.name);
+    if (up.length) appendSystemNotice(t('chat.mcpReconnected', { names: up.join(', ') }), 'command');
+    if (down.length) appendSystemNotice(t('chat.mcpStillDown', { names: down.join(', ') }), 'command');
+    if (!res.results.length) {
+      const named = filter && filter.toLowerCase() !== 'all';
+      appendSystemNotice(named ? t('chat.mcpNoMatch', { name: filter })
+        : res.notConnected.length ? t('chat.mcpNothingLost', { count: res.notConnected.length })
+          : t('chat.mcpAllConnected'), 'command');
+    }
+  }
+
   if (remoteBtn) {
     remoteBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1990,13 +2013,13 @@ class ChatView extends BaseComponent {
       '/batch', '/simplify', '/debug', '/loop', '/claude-api',
       '/security-review', '/btw', '/review',
       // Claude Terminal own commands
-      '/parallel-task', '/reload-plugins', '/remote-control',
+      '/parallel-task', '/reload-plugins', '/remote-control', '/mcp',
     ];
     // Commands this app handles itself, in handleSend, without ever reaching
     // the CLI. The session's `slash_commands` cannot know about them, so they
     // have to be merged in explicitly — otherwise they are listed before a
     // session starts and vanish the moment one does, while still working.
-    const localCommands = ['/parallel-task', '/reload-plugins', '/remote-control'];
+    const localCommands = ['/parallel-task', '/reload-plugins', '/remote-control', '/mcp'];
     // Normalize to '/name' lowercase so SDK-provided commands (sometimes without leading '/')
     // match our '/name' skill/builtin entries and don't show up twice.
     const normKey = (c) => ('/' + String(c).replace(/^\//, '')).toLowerCase();
@@ -2073,6 +2096,7 @@ class ChatView extends BaseComponent {
       '/parallel-task': t('chat.slashParallelTask'),
       '/reload-plugins': t('chat.slashReloadPlugins'),
       '/remote-control': t('chat.slashRemoteControl'),
+      '/mcp': t('chat.slashMcp'),
     };
     if (descriptions[cmd]) return descriptions[cmd];
     // Check skills for description
@@ -3448,6 +3472,20 @@ class ChatView extends BaseComponent {
       setInputText('');
       const wantOn = arg === 'on' ? true : arg === 'off' ? false : !remoteMirrored;
       await toggleRemoteControl(wantOn);
+      return;
+    }
+
+    // /mcp interception: retry MCP servers in this session.
+    //
+    // The CLI's own /mcp refuses to reconnect anything under the SDK ("Reconnect,
+    // enable, and disable aren't available in this session"), yet the CLI sends
+    // the user there whenever a connector needs authorization, and it never
+    // retries a server on its own. A connector re-authorized mid-conversation
+    // therefore stayed down until the tab was closed and reopened. The CLI's
+    // `reconnect` verb is accepted too, since that is the syntax it suggests.
+    if (text === '/mcp' || text.startsWith('/mcp ')) {
+      setInputText('');
+      await reconnectMcp(text.replace(/^\/mcp\s*/, '').replace(/^reconnect\b\s*/i, ''));
       return;
     }
 
