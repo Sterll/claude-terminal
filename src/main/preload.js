@@ -462,6 +462,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     usage: (maxAgeMs, force) => ipcRenderer.invoke('accounts-usage', { maxAgeMs, force }),
     capture: (name) => ipcRenderer.invoke('accounts-capture', { name }),
     login: (name) => ipcRenderer.invoke('accounts-login-start', { name }),
+    reconnect: (id) => ipcRenderer.invoke('accounts-login-start', { reconnectId: id }),
     loginCode: (code) => ipcRenderer.invoke('accounts-login-code', { code }),
     loginCancel: () => ipcRenderer.invoke('accounts-login-cancel'),
     onLoginProgress: createListener('accounts-login-progress'),

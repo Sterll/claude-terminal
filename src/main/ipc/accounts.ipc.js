@@ -114,7 +114,8 @@ function registerAccountsHandlers() {
 
   // Resolves when the sign-in ends, which can be minutes away: the URL and a
   // refused code reach the window that asked through accounts-login-progress.
-  ipcMain.handle('accounts-login-start', async (event, { name } = {}) => {
+  // With `reconnectId`, the same sign-in renews a saved account in place.
+  ipcMain.handle('accounts-login-start', async (event, { name, reconnectId } = {}) => {
     const send = (payload) => {
       if (!event.sender.isDestroyed()) event.sender.send('accounts-login-progress', payload);
     };
@@ -124,9 +125,16 @@ function registerAccountsHandlers() {
       const account = await AccountManager.startLogin({
         command,
         name,
+        reconnectId: typeof reconnectId === 'string' && reconnectId ? reconnectId : undefined,
         onUrl: (url) => send({ type: 'url', url }),
         onInvalidCode: () => send({ type: 'invalid-code' }),
       });
+      if (reconnectId) {
+        // The cached token is the dead one, and the backoff it earned would
+        // keep the usage figures away for up to an hour.
+        UsageService.invalidateCredentials(reconnectId);
+        UsageService.invalidateCredentials(null);
+      }
       await broadcastAccounts();
       return { success: true, data: account };
     } catch (err) {

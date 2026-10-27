@@ -2945,6 +2945,7 @@ class SettingsPanel extends BasePanel {
               ${a.id === defaultId
                 ? `<span class="account-row-status">${escapeHtml(t('accounts.isDefault') || 'Default')}</span>`
                 : `<button class="btn btn-secondary btn-sm" data-action="set-default" data-id="${a.id}">${escapeHtml(t('accounts.makeDefault') || 'Make default')}</button>`}
+              <button class="btn btn-secondary btn-sm" data-action="reconnect" data-id="${a.id}" title="${escapeHtml(t('accounts.reconnectHint'))}">${escapeHtml(t('accounts.reconnect'))}</button>
               <button class="btn btn-secondary btn-sm" data-action="rename" data-id="${a.id}">${escapeHtml(t('common.rename') || 'Rename')}</button>
               <button class="btn btn-secondary btn-sm" data-action="remove" data-id="${a.id}">${escapeHtml(t('common.delete') || 'Delete')}</button>
             </div>
@@ -3010,6 +3011,13 @@ class SettingsPanel extends BasePanel {
           // very button in the DOM — always give it back.
           btn.disabled = false;
         }
+      } else if (action === 'reconnect') {
+        const { showAccountLoginModal } = require('../components/AccountLoginModal');
+        const name = btn.closest('.account-row')?.querySelector('.account-row-name')?.textContent || '';
+        const account = await showAccountLoginModal({ reconnect: { id, name } });
+        // The list follows through accounts-changed; the figures do not, and
+        // the ones on screen are the "unavailable" of the dead login.
+        if (account) await this._loadAccountsUsage({ force: true });
       } else if (action === 'rename') {
         const { showPrompt } = require('../components/Modal');
         const newName = await showPrompt({

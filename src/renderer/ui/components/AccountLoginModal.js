@@ -10,7 +10,11 @@
  * The machine-wide login is left alone, which is the difference with "Save
  * current account": that one needs `claude /login` to replace it first.
  *
- * Resolves with the new account's summary, or null if the user gave up.
+ * With `reconnect`, the same sign-in renews a saved account whose login was
+ * lost (a refused refresh, a sign-out elsewhere) instead of adding one: no
+ * name to ask for, and main refuses a sign-in that lands on another account.
+ *
+ * Resolves with the account's summary, or null if the user gave up.
  */
 
 const { createModal, showModal, closeModal } = require('./Modal');
@@ -26,10 +30,14 @@ const { t } = require('../../i18n');
  */
 function accountErrorMessage(res, fallback) {
   if (res?.code === 'ACCOUNT_DUPLICATE') return t('accounts.duplicate', { name: res.accountName || '' });
+  if (res?.code === 'ACCOUNT_MISMATCH') return t('accounts.reconnectMismatch', { name: res.accountName || '' });
   return res?.error || fallback;
 }
 
-function showAccountLoginModal() {
+/**
+ * @param {{ reconnect?: { id: string, name: string } }} [opts]
+ */
+function showAccountLoginModal({ reconnect = null } = {}) {
   const api = window.electron_api;
 
   return new Promise((resolve) => {
@@ -49,11 +57,11 @@ function showAccountLoginModal() {
 
     const modal = createModal({
       id: 'account-login-modal',
-      title: t('accounts.loginTitle'),
+      title: reconnect ? t('accounts.reconnectTitle', { name: reconnect.name }) : t('accounts.loginTitle'),
       size: 'small',
       content: `
-        <div class="account-switch-scope">${escapeHtml(t('accounts.loginIntro'))}</div>
-        <div class="form-group">
+        <div class="account-switch-scope">${escapeHtml(reconnect ? t('accounts.reconnectIntro', { name: reconnect.name }) : t('accounts.loginIntro'))}</div>
+        <div class="form-group"${reconnect ? ' hidden' : ''}>
           <label for="account-login-name">${escapeHtml(t('accounts.loginNameLabel'))}</label>
           <input type="text" id="account-login-name" autocomplete="off" placeholder="${escapeHtml(t('accounts.loginNamePlaceholder'))}">
         </div>
@@ -132,13 +140,15 @@ function showAccountLoginModal() {
       setError('');
       setStatus(t('accounts.loginStarting'));
 
-      const res = await api.accounts.login(nameInput.value.trim());
+      const res = reconnect
+        ? await api.accounts.reconnect(reconnect.id)
+        : await api.accounts.login(nameInput.value.trim());
       running = false;
       if (done) return;
 
       if (res?.success) {
         const { showSuccess } = require('./Toast');
-        showSuccess(t('accounts.loginSuccess', { name: res.data?.name || '' }));
+        showSuccess(t(reconnect ? 'accounts.reconnectSuccess' : 'accounts.loginSuccess', { name: res.data?.name || '' }));
         closeModal(modal);
         finish(res.data || null);
         return;

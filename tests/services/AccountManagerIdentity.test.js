@@ -135,6 +135,51 @@ describe('startLogin against a captured account', () => {
   });
 });
 
+describe('startLogin with reconnectId', () => {
+  const snapshotOf = (id) => JSON.parse(fs.readFileSync(path.join(paths.dataDir, 'accounts', `${id}.json`), 'utf8'));
+  const ownStoreOf = (id) => JSON.parse(fs.readFileSync(
+    path.join(paths.dataDir, 'accounts', 'config', id, '.credentials.json'), 'utf8'));
+  const accountDirs = () => fs.readdirSync(path.join(paths.dataDir, 'accounts', 'config'));
+
+  function reconnect(id, fake = {}) {
+    for (const [key, value] of Object.entries(fake)) process.env[`FAKE_LOGIN_${key}`] = value;
+    return AccountManager.startLogin({ command: process.execPath, commandArgs: [FAKE_CLI], reconnectId: id });
+  }
+
+  test('renews the saved account in place, its own store and the machine-wide one with it', async () => {
+    mockProfiles.set('tok-a', { accountUuid: 'acct-1', email: null, organizationUuid: 'org-1' });
+    loginAs('tok-a');
+    const saved = await AccountManager.captureCurrent('Max');
+
+    const account = await reconnect(saved.id, { MODE: 'callback', TOKEN: 'token-new', ACCOUNT: 'acct-1', ORG: 'org-1' });
+
+    expect(account).toMatchObject({ id: saved.id, name: 'Max' });
+    expect(savedAccounts()).toHaveLength(1);
+    expect(snapshotOf(saved.id).claudeAiOauth.accessToken).toBe('token-new');
+    expect(ownStoreOf(saved.id).claudeAiOauth.accessToken).toBe('token-new');
+    // Captured, so it is the live account: the machine-wide store is its record.
+    const live = JSON.parse(fs.readFileSync(path.join(configDir(), '.credentials.json'), 'utf8'));
+    expect(live.claudeAiOauth.accessToken).toBe('token-new');
+    // The scratch store the sign-in ran in is gone.
+    expect(accountDirs()).toEqual([saved.id]);
+  });
+
+  test('refuses a sign-in that lands on another account and leaves the saved one alone', async () => {
+    mockProfiles.set('tok-a', { accountUuid: 'acct-1', email: null, organizationUuid: 'org-1' });
+    loginAs('tok-a');
+    const saved = await AccountManager.captureCurrent('Max');
+
+    await expect(reconnect(saved.id, { MODE: 'callback', TOKEN: 'token-other', ACCOUNT: 'acct-2', ORG: 'org-1' }))
+      .rejects.toMatchObject({ code: 'ACCOUNT_MISMATCH', accountName: 'Max' });
+    expect(snapshotOf(saved.id).claudeAiOauth.accessToken).toBe('tok-a');
+    expect(accountDirs()).toEqual([saved.id]);
+  });
+
+  test('refuses an account that does not exist before starting the CLI', async () => {
+    await expect(reconnect('nope', { MODE: 'callback' })).rejects.toThrow(/not found/);
+  });
+});
+
 describe('recordIdentity', () => {
   test('fills in an account saved without one, then stops asking', async () => {
     loginAs('tok-old');
