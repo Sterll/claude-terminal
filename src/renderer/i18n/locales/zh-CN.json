@@ -1201,6 +1201,8 @@
     "contextHandoffDesc": "当聊天的上下文超过下方阈值时，Claude 会在本轮结束时写一份交接摘要，标签页随后在以该摘要开头的新会话中继续。之前的会话保留在历史记录中。子代理以及在结束前远超阈值的单轮对话，由 CLI 自身在高于阈值 10% 处压缩。",
     "contextHandoffThreshold": "接力阈值（千令牌）",
     "contextHandoffThresholdDesc": "500 表示 500k 令牌，最小值为 50。请保持在模型的上下文窗口以下：若太接近，CLI 自身的压缩会先发生。",
+    "chatHibernate": "闲置对话进入休眠（分钟）",
+    "chatHibernateDesc": "聊天标签页闲置达到此时长后，会停止其 Claude Code 进程以释放内存。对话仍显示在屏幕上，下一条消息会从中断处继续。不会作用于当前打开的标签页，也不会在回合、提问或后台任务仍在进行时生效。0 表示从不。",
     "saveError": "保存设置失败",
     "nameRequired": "姓名为必填项",
     "itemDeleted": "项目已移除",

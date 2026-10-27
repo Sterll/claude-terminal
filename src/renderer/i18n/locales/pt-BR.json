@@ -1201,6 +1201,8 @@
     "contextHandoffDesc": "Quando o contexto de um chat passa do limite abaixo, o Claude escreve um resumo de passagem no fim do turno e a aba continua em uma nova sessão que começa a partir dele. A sessão anterior fica no histórico. Os subagentes, e um turno que passa muito do limite antes de terminar, são compactados pelo próprio CLI, 10% acima do limite.",
     "contextHandoffThreshold": "Limite do revezamento (milhares de tokens)",
     "contextHandoffThresholdDesc": "500 significa 500k tokens, mínimo 50. Mantenha abaixo da janela de contexto do modelo: perto demais, a compactação do próprio CLI acontece antes.",
+    "chatHibernate": "Suspender conversas inativas (minutos)",
+    "chatHibernateDesc": "Uma aba de chat inativa por esse tempo encerra o processo do Claude Code para liberar memória. A conversa continua na tela, e a próxima mensagem a retoma de onde parou. Nunca se aplica à aba aberta, nem enquanto um turno, uma pergunta ou uma tarefa em segundo plano ainda estiverem em andamento. 0 significa nunca.",
     "saveError": "Falha ao salvar as configurações",
     "nameRequired": "O nome é obrigatório",
     "itemDeleted": "Item removido",

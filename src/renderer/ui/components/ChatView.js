@@ -48,6 +48,7 @@ const { createTicketsTab } = require('./chat/ticketsTab');
 const { createTicketsWiring } = require('./chat/ticketsWiring');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 const { createContextHandoff, normalizeHandoffThreshold, autoCompactWindowFor, buildHandoffSeed, parseHandoffSeed, parseHandoffRequest } = require('./chat/contextHandoff');
+const { createIdleHibernation, hibernateDelayMs } = require('./chat/idleHibernation');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
 const ATTACHMENT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
@@ -106,6 +107,13 @@ class ChatView extends BaseComponent {
   const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, onRunInTerminal = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, systemPrompt = null, builtinSystemPrompt = null, draftPrompt = null, initialTickets = null } = options;
   let sessionId = null;
   let destroyed = false;
+  // Puts this tab's session to sleep once it has been idle long enough; see
+  // chat/idleHibernation.js. Created further down, once what it reads exists.
+  let idleHibernation = null;
+  // Set when the session was put to sleep: the next start resumes it on the
+  // account it was running on, and is not a new session to the workflows.
+  let wakingFromHibernation = false;
+  const noteActivity = () => { idleHibernation?.touch(); };
 
   // All starts (first prompt, account switch, fork retry) share tab ownership.
   async function startChatSession(params) {
@@ -3427,6 +3435,7 @@ class ChatView extends BaseComponent {
     const hasImages = attachments.count() > 0;
     const hasMentions = pendingMentions.length > 0;
     if ((!text && !hasImages && !hasMentions) || sendLock) return;
+    noteActivity();
 
     // /remote-control interception: a local command, never sent to the CLI.
     //
@@ -3585,7 +3594,9 @@ class ChatView extends BaseComponent {
           projectId: project.id,
           // Only an explicit binding is sent: unbound projects run against the
           // machine-wide login, which is what keeps `claude /login` capturable.
-          accountId: getProjectAccount(project.id),
+          // A session woken from sleep goes back to the account it ran on,
+          // which an account switch may have moved away from the binding.
+          accountId: wakingFromHibernation ? conversationAccountId() : getProjectAccount(project.id),
           prompt: enhancedText || '',
           // Per conversation: the footer's mode picker owns it. skipPermissions
           // (cloud tabs, quick actions, per-project override) seeded it with
@@ -3664,10 +3675,18 @@ class ChatView extends BaseComponent {
         if (handoffSeed) startOpts.prompt = buildHandoffSeed({ ...handoffSeed, text: startOpts.prompt });
         // Stash for potential account-switch restart (preserve cwd/model/effort/etc.)
         lastStartOpts = { ...startOpts };
-        const result = await startChatSession(startOpts);
+        const waking = wakingFromHibernation;
+        wakingFromHibernation = false;
+        const result = await startChatSession(waking ? { ...startOpts, hibernated: true } : startOpts);
         if (!result) return;
         if (!result.success) {
           sessionId = null;
+          // Still the same conversation: the next message tries to resume it
+          // again rather than opening a blank one.
+          if (startOpts.resumeSessionId && !startOpts.forkSession) {
+            pendingResumeId = startOpts.resumeSessionId;
+            wakingFromHibernation = waking;
+          }
           contextHandoff.restoreSeed(handoffSeed);
           appendError(result.error || t('chat.errorOccurred'));
           setStreaming(false);
@@ -6684,6 +6703,7 @@ class ChatView extends BaseComponent {
    */
   function setStreaming(streaming, { turnEnded = true } = {}) {
     isStreaming = streaming;
+    noteActivity();
     stopBtn.style.display = streaming ? '' : 'none';
     // Only meaningful while something is actually in the foreground.
     bgBtn.style.display = streaming ? '' : 'none';
@@ -7029,6 +7049,59 @@ class ChatView extends BaseComponent {
     },
   });
 
+  // ── Idle sleep ──
+  //
+  // Closes the session of a tab left idle and puts the tab back in the state a
+  // restored tab is in: the conversation stays on screen, and the next message
+  // resumes it with `--resume`. Nothing on screen says so.
+
+  const UNANSWERED_CARDS = '.chat-perm-card:not(.resolved), .chat-question-card:not(.resolved), .chat-plan-card:not(.resolved)';
+
+  function isActiveTab() {
+    // A view not owned by a terminal tab cannot say whether it is shown, so it
+    // counts as open and never sleeps.
+    if (terminalId == null) return true;
+    try {
+      const { getActiveTerminal } = require('../../state');
+      return getActiveTerminal() === terminalId;
+    } catch { return true; }
+  }
+
+  function hibernateSession() {
+    if (destroyed || !sessionId || !sdkSessionId) return;
+    // Forget the session before closing it, as the handoff does, so its last
+    // events find no tab to land in.
+    const previous = sessionId;
+    sessionId = null;
+    pendingResumeId = sdkSessionId;
+    pendingForkSession = false;
+    pendingResumeAt = null;
+    pendingDropsTurn = null;
+    wakingFromHibernation = true;
+    api.chat.close({ sessionId: previous, hibernate: true });
+  }
+
+  idleHibernation = createIdleHibernation({
+    getDelayMs: () => hibernateDelayMs(getSetting('chatHibernateMinutes')),
+    getState: () => ({
+      hasSession: !!sessionId,
+      // Without its id, or with a transcript never written to disk
+      // (ephemeral chats), the conversation could not be picked up again.
+      resumable: !!sdkSessionId && lastStartOpts?.persistSession !== false,
+      active: isActiveTab(),
+      busy: isStreaming || isAborting || sendLock || switchingAccount
+        || !!remoteChat.isConnectionLost?.(),
+      waitingOnUser: !!messagesEl.querySelector(UNANSWERED_CARDS)
+        || !!(terminalId != null && getTerminal(terminalId)?.pendingPermission),
+      queued: !!(pendingModelPush || pendingEffortPush || pendingQueuedSends.length),
+      handoff: contextHandoff.isSummarizing(),
+      runningTasks: tasksStore.listTasksForOwner(taskOwnerKey).some(task => task.status === 'running'),
+      shared: remoteMirrored,
+      cloud: !!project.isCloud,
+    }),
+    hibernate: hibernateSession,
+  });
+
   let userHasScrolled = false;
   let hasNewMessages = false;
   let lastScrollHeight = 0, lastViewportHeight = 0;
@@ -7146,6 +7219,7 @@ class ChatView extends BaseComponent {
 
   const unsubMessage = api.chat.onMessage(({ sessionId: sid, message }) => {
     if (sid !== sessionId) return;
+    noteActivity();
 
     // Route subagent messages to their card (messages with parent_tool_use_id)
     const parentId = message.parent_tool_use_id;
@@ -8428,6 +8502,7 @@ class ChatView extends BaseComponent {
   let _permTimers = new Map(); // requestId -> { pulseTimer, notifTimer, counterId }
   const unsubPerm = api.chat.onPermissionRequest((data) => {
     if (data.sessionId !== sessionId) return;
+    noteActivity();
     if (project.isCloud) return; // Cloud sessions bypass permissions
     removeThinkingIndicator();
     appendPermissionCard(data);
@@ -8611,6 +8686,7 @@ class ChatView extends BaseComponent {
   // ── MCP elicitation requests ──
   const unsubElicit = api.chat.onElicitationRequest((data) => {
     if (data.sessionId !== sessionId) return;
+    noteActivity();
     if (project.isCloud) return;
     removeThinkingIndicator();
     appendElicitationCard(data);
@@ -9408,6 +9484,7 @@ class ChatView extends BaseComponent {
           }, { projectId: project.id, projectPath: project.path || '', source: 'chat' });
         } catch (e) { /* events not ready */ }
       }
+      idleHibernation?.destroy();
       if (sessionId) api.chat.close({ sessionId });
       remoteChat.destroy();
       // Persist whatever the debounce was still holding, before the view goes.

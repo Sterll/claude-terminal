@@ -66,8 +66,8 @@ function registerChatHandlers() {
   });
 
   // Close a chat session
-  ipcMain.on('chat-close', (_event, { sessionId }) => {
-    chatService.closeSession(sessionId);
+  ipcMain.on('chat-close', (_event, { sessionId, hibernate } = {}) => {
+    chatService.closeSession(sessionId, { hibernate: hibernate === true });
   });
 
   // Permission response from renderer (allow/deny). Resolves to false when the

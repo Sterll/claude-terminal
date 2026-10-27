@@ -124,6 +124,7 @@ const defaultSettings = {
   maxTurns: null, // null = no limit (SDK/CLI default), or a cap on API round-trips for the whole tab
   contextHandoffEnabled: false, // Past the threshold below, a chat writes a handoff summary and continues in a new session
   contextHandoffThreshold: 500000, // Context window occupancy (tokens) that triggers the handoff
+  chatHibernateMinutes: 15, // A chat tab idle this long (and not the open tab) closes its CLI process; the next message resumes it. 0 = never
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions
   dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
   githubApiUrl: 'https://api.github.com', // GitHub API base URL (for GitHub Enterprise)

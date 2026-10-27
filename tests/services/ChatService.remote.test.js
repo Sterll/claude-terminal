@@ -426,3 +426,41 @@ describe('workflow prompts refuse a remote project', () => {
     await expect(service.analyzeSessionForClaudeMd([{ role: 'user', content: 'x' }], URI)).resolves.toEqual({ suggestions: [], claudeMdExists: false });
   });
 });
+
+describe('idle sleep is not a session start or end', () => {
+  async function started({ hibernated } = {}) {
+    const { stream } = pendingStream();
+    const { service } = loadChatService(jest.fn(() => stream));
+    service._emitLifecycle = jest.fn();
+    await service.startSession({ cwd: '/work/app', prompt: 'hi', sessionId: 's-1', ...(hibernated ? { hibernated } : {}) });
+    return service;
+  }
+
+  test('a tab waking from sleep marks its start, a new one does not', async () => {
+    const waking = await started({ hibernated: true });
+    expect(waking._emitLifecycle).toHaveBeenCalledWith('start', 's-1', expect.objectContaining({ hibernate: true }));
+
+    const fresh = await started();
+    const [, , extra] = fresh._emitLifecycle.mock.calls.find(([event]) => event === 'start');
+    expect(extra).not.toHaveProperty('hibernate');
+  });
+
+  test('closing for sleep marks the end, closing the tab does not', async () => {
+    const asleep = await started();
+    asleep.closeSession('s-1', { hibernate: true });
+    expect(asleep._emitLifecycle).toHaveBeenCalledWith('end', 's-1', { status: 'interrupted', hibernate: true });
+
+    const closed = await started();
+    closed.closeSession('s-1');
+    expect(closed._emitLifecycle).toHaveBeenCalledWith('end', 's-1', { status: 'interrupted' });
+  });
+
+  test('either way the CLI process is closed', async () => {
+    const { stream } = pendingStream();
+    const { service } = loadChatService(jest.fn(() => stream));
+    await service.startSession({ cwd: '/work/app', prompt: 'hi', sessionId: 's-2' });
+    service.closeSession('s-2', { hibernate: true });
+    expect(stream.close).toHaveBeenCalled();
+    expect(service.sessions.has('s-2')).toBe(false);
+  });
+});

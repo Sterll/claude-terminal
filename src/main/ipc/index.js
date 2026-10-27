@@ -165,7 +165,9 @@ function registerAllHandlers(mainWindow) {
   };
 
   chatService.setLifecycleCallback((event) => {
-    try { workflowService.onChatSessionEvent(event); } catch (e) {
+    // An idle tab going to sleep, or waking up, is the same conversation
+    // carrying on: no session start or end for the workflow triggers.
+    try { if (!event.hibernate) workflowService.onChatSessionEvent(event); } catch (e) {
       console.warn('[IPC] workflow.onChatSessionEvent failed:', e.message);
     }
     // Discord presence: "Coding in {project}" while a session runs, idle otherwise

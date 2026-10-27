@@ -1296,6 +1296,8 @@
     "contextHandoffDesc": "Quand le contexte d'un chat dépasse le seuil ci-dessous, Claude rédige un résumé de passation à la fin du tour et l'onglet continue dans une nouvelle session qui part de ce résumé. L'ancienne session reste dans l'historique. Les sous-agents, et un tour qui dépasse largement le seuil avant de finir, sont compactés par le CLI lui-même, 10 % au-dessus du seuil.",
     "contextHandoffThreshold": "Seuil du relais (milliers de tokens)",
     "contextHandoffThresholdDesc": "Ici 500 veut dire 500k tokens, minimum 50. Gardez-le sous la fenêtre de contexte du modèle : trop près, la compaction du CLI passe avant.",
+    "chatHibernate": "Mettre en veille les conversations inactives (minutes)",
+    "chatHibernateDesc": "Un onglet de chat resté inactif aussi longtemps arrête son process Claude Code pour libérer la mémoire. La conversation reste affichée, et le message suivant la reprend là où elle en était. Jamais pour l'onglet ouvert, ni tant qu'un tour, une question ou une tâche de fond est en cours. 0 pour jamais.",
     "saveError": "Erreur lors de la sauvegarde des paramètres",
     "nameRequired": "Le nom est requis",
     "itemDeleted": "Élément supprimé",

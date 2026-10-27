@@ -689,7 +689,7 @@ class ChatService {
    * @param {string[]} [params.disallowedTools] - Tools to withhold from the session.
    * @returns {Promise<string>} Session ID
    */
-  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], documents = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null, remote = null, autoCompactWindow = null }) {
+  async startSession({ cwd, projectId = null, accountId = null, prompt, permissionMode = 'default', resumeSessionId = null, sessionId = null, images = [], documents = [], mentions = [], model = null, enable1MContext = false, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, effort = null, outputFormat = null, skills = null, systemPrompt = null, settingSources = null, maxTurns = null, cloud = false, cloudProjectName = null, userMessageUuid = null, persistSession = true, allowedTools = null, disallowedTools = null, remote = null, autoCompactWindow = null, hibernated = false }) {
     if (!sessionId) sessionId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Cloud session: delegate to cloud server instead of local SDK
@@ -934,7 +934,9 @@ class ChatService {
       // Which host a remote session runs on, for its error messages
       if (remote) session.remote = { profileId: remote.profileId, host: remote.host };
 
-      this._emitLifecycle('start', sessionId, { projectId, cwd });
+      // A tab waking from idle sleep resumes a conversation that never ended:
+      // `hibernate` lets lifecycle consumers tell it from a new session.
+      this._emitLifecycle('start', sessionId, { projectId, cwd, ...(hibernated ? { hibernate: true } : {}) });
 
       // The background-task level is per CLI process and nothing is emitted at
       // startup, so the host owns the reset. Without it, a resumed tab would
@@ -2699,7 +2701,13 @@ class ChatService {
     if (gen) gen.abortController.abort();
   }
 
-  closeSession(sessionId) {
+  /**
+   * @param {string} sessionId
+   * @param {{ hibernate?: boolean }} [opts] - `hibernate`: an idle tab going to
+   *   sleep, which resumes the same conversation later. Reported as such, so
+   *   lifecycle consumers can tell it from a conversation that ended.
+   */
+  closeSession(sessionId, { hibernate = false } = {}) {
     // Emit anything still sitting in the coalescing buffer before tearing the
     // session down — a buffered delta must never be dropped.
     this._flushDeltas(sessionId);
@@ -2714,7 +2722,7 @@ class ChatService {
     }
 
     if (session.queryStream && !session._streamEnded) {
-      this._emitLifecycle('end', sessionId, { status: 'interrupted' });
+      this._emitLifecycle('end', sessionId, { status: 'interrupted', ...(hibernate ? { hibernate: true } : {}) });
     }
     this.sessions.delete(sessionId);
     if (session.abortController) session.abortController.abort();

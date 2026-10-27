@@ -1198,6 +1198,8 @@
     "contextHandoffDesc": "Cuando el contexto de un chat supera el umbral de abajo, Claude redacta un resumen de traspaso al final del turno y la pestaña continúa en una nueva sesión que parte de él. La sesión anterior queda en el historial. Los subagentes, y un turno que supera con creces el umbral antes de terminar, los compacta el propio CLI, un 10 % por encima del umbral.",
     "contextHandoffThreshold": "Umbral del relevo (miles de tokens)",
     "contextHandoffThresholdDesc": "500 significa 500k tokens, mínimo 50. Mantenlo por debajo de la ventana de contexto del modelo: si está cerca, la compactación del CLI ocurre antes.",
+    "chatHibernate": "Suspender las conversaciones inactivas (minutos)",
+    "chatHibernateDesc": "Una pestaña de chat inactiva durante este tiempo detiene su proceso de Claude Code para liberar memoria. La conversación sigue en pantalla y el siguiente mensaje la retoma donde estaba. Nunca se aplica a la pestaña abierta, ni mientras un turno, una pregunta o una tarea en segundo plano sigan en curso. 0 significa nunca.",
     "saveError": "Error al guardar los ajustes",
     "nameRequired": "El nombre es obligatorio",
     "itemDeleted": "Elemento eliminado",

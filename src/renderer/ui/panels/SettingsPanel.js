@@ -16,6 +16,7 @@ const { getProjectsForAccount } = require('../../state/projects.state');
 const { buildAccountUsageHtml } = require('../components/accountUsage');
 const { mountTicketsSettings } = require('../components/ticketsSettings');
 const { normalizeHandoffThreshold, MIN_HANDOFF_THRESHOLD } = require('../components/chat/contextHandoff');
+const { hibernateDelayMs } = require('../components/chat/idleHibernation');
 
 // ── Settings search ──
 //
@@ -1698,6 +1699,17 @@ class SettingsPanel extends BasePanel {
                     min="${MIN_HANDOFF_THRESHOLD / 1000}" step="10"
                     value="${normalizeHandoffThreshold(settings.contextHandoffThreshold) / 1000}">
                 </div>
+                <div class="settings-row">
+                  <div class="settings-label">
+                    <div>${t('settings.chatHibernate')}</div>
+                    <div class="settings-desc">${t('settings.chatHibernateDesc')}</div>
+                  </div>
+                </div>
+                <div style="padding: 0 16px 12px;">
+                  <input type="number" id="chat-hibernate-input" class="settings-input-sm" style="width: 100%;"
+                    min="0" step="5"
+                    value="${hibernateDelayMs(settings.chatHibernateMinutes) / 60000}">
+                </div>
               </div>
             </div>
             <div class="settings-group">
@@ -2515,6 +2527,12 @@ class SettingsPanel extends BasePanel {
       const newContextHandoffThreshold = normalizeHandoffThreshold(
         Number.isFinite(parsedHandoffThreshold) ? parsedHandoffThreshold * 1000 : settings.contextHandoffThreshold
       );
+      // Minutes; 0 means never. Junk keeps what was stored.
+      const hibernateInput = document.getElementById('chat-hibernate-input');
+      const parsedHibernate = hibernateInput ? parseFloat(hibernateInput.value) : NaN;
+      const newChatHibernateMinutes = Number.isFinite(parsedHibernate) && parsedHibernate >= 0
+        ? parsedHibernate
+        : (settings.chatHibernateMinutes ?? null);
       const autoClaudeMdToggle = document.getElementById('auto-claude-md-toggle');
       const newAutoClaudeMd = autoClaudeMdToggle ? autoClaudeMdToggle.checked : true;
       const chromeBridgeToggle = document.getElementById('chrome-bridge-toggle');
@@ -2617,6 +2635,7 @@ class SettingsPanel extends BasePanel {
         maxTurns: newMaxTurns,
         contextHandoffEnabled: newContextHandoffEnabled,
         contextHandoffThreshold: newContextHandoffThreshold,
+        chatHibernateMinutes: newChatHibernateMinutes,
         telemetryEnabled: newTelemetryEnabled,
         orphanReaperEnabled: newOrphanReaperEnabled,
         telemetryCategories: newTelemetryCategories,
@@ -2780,7 +2799,7 @@ class SettingsPanel extends BasePanel {
     if (personaNameEl) personaNameEl.addEventListener('blur', autoSave);
     if (personaInstructionsEl) personaInstructionsEl.addEventListener('blur', autoSave);
     // Number fields commit on change (blur or Enter), not on every keystroke
-    for (const id of ['max-turns-input', 'context-handoff-threshold-input']) {
+    for (const id of ['max-turns-input', 'context-handoff-threshold-input', 'chat-hibernate-input']) {
       document.getElementById(id)?.addEventListener('change', autoSave);
     }
 

@@ -1201,6 +1201,8 @@
     "contextHandoffDesc": "Saat konteks chat melewati ambang di bawah, Claude menulis ringkasan serah terima di akhir giliran dan tab berlanjut di sesi baru yang dimulai dari ringkasan itu. Sesi sebelumnya tetap ada di riwayat. Subagen, dan giliran yang jauh melewati ambang sebelum selesai, dipadatkan oleh CLI sendiri, 10% di atas ambang.",
     "contextHandoffThreshold": "Ambang estafet (ribuan token)",
     "contextHandoffThresholdDesc": "500 berarti 500k token, minimum 50. Jaga di bawah jendela konteks model: jika terlalu dekat, pemadatan bawaan CLI terjadi lebih dulu.",
+    "chatHibernate": "Tidurkan percakapan yang tidak aktif (menit)",
+    "chatHibernateDesc": "Tab chat yang tidak aktif selama ini menghentikan proses Claude Code-nya untuk membebaskan memori. Percakapan tetap tampil, dan pesan berikutnya melanjutkannya dari posisi terakhir. Tidak pernah berlaku untuk tab yang sedang dibuka, atau selama giliran, pertanyaan, atau tugas latar belakang masih berjalan. 0 berarti tidak pernah.",
     "saveError": "Gagal menyimpan pengaturan",
     "nameRequired": "Nama wajib diisi",
     "itemDeleted": "Item dihapus",

@@ -1201,6 +1201,8 @@
     "contextHandoffDesc": "When a chat's context passes the threshold below, Claude writes a handoff summary at the end of the turn and the tab continues in a new session that starts from it. The previous session stays in the history. Subagents, and a turn that runs well past the threshold before it ends, are compacted by the CLI itself, 10% above the threshold.",
     "contextHandoffThreshold": "Handoff threshold (thousands of tokens)",
     "contextHandoffThresholdDesc": "500 means 500k tokens, minimum 50. Keep it below the model's context window: close to it, the CLI's own compaction happens first.",
+    "chatHibernate": "Put idle conversations to sleep (minutes)",
+    "chatHibernateDesc": "A chat tab left idle this long stops its Claude Code process to free memory. The conversation stays on screen, and the next message picks it up where it was. Never applies to the tab that is open, nor while a turn, a question or a background task is still running. 0 means never.",
     "saveError": "Failed to save settings",
     "nameRequired": "Name is required",
     "itemDeleted": "Item removed",
