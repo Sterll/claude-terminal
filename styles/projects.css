@@ -218,6 +218,18 @@ body:not([data-active-tab="dashboard"]):not([data-active-tab="files"]) .project-
   color: #fff;
 }
 
+/* A session of this project needs the user (see .terminal-tab.attention-*). */
+.project-tab-sessions.attention-input {
+  background: var(--info);
+  color: #fff;
+  box-shadow: 0 0 0 2px rgba(var(--info-rgb), 0.35);
+}
+
+.project-tab-sessions.attention-error {
+  background: var(--danger);
+  color: #fff;
+}
+
 .project-tab-missing {
   color: var(--danger);
   font-weight: 700;
@@ -889,6 +901,21 @@ body.compact-projects .project-item:not(.active):hover {
 .terminal-count .working-count {
   color: var(--accent);
 }
+
+.terminal-count.attention-input,
+.folder-count.attention-input {
+  background: rgba(var(--info-rgb), 0.18);
+  box-shadow: inset 0 0 0 1px rgba(var(--info-rgb), 0.7);
+}
+
+.terminal-count.attention-error,
+.folder-count.attention-error {
+  background: rgba(var(--danger-rgb), 0.15);
+  box-shadow: inset 0 0 0 1px rgba(var(--danger-rgb), 0.6);
+}
+
+.project-tooltip-attention.input { color: var(--info); }
+.project-tooltip-attention.error { color: var(--danger-hover); }
 
 .terminal-count .count-separator {
   color: var(--text-secondary);

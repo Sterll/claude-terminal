@@ -847,6 +847,46 @@
   animation: pulse 1.5s infinite;
 }
 
+/* A session that needs the user, over whatever it is doing. Blue for an
+   answer it waits on rather than the orange of the old waiting dot, which
+   the default accent made one more "working". Red for a turn that failed.
+   The second selector of each pair outranks the status-working.substatus-*
+   rules above. */
+.terminal-tab.attention-input .status-dot,
+.terminal-tab.status-working.attention-input .status-dot {
+  position: relative;
+  background: var(--info);
+  animation: none;
+}
+
+.terminal-tab.attention-input .status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--info);
+  border-radius: 50%;
+  animation: attention-ring 1.6s ease-out infinite;
+}
+
+.terminal-tab.attention-error .status-dot,
+.terminal-tab.status-working.attention-error .status-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(var(--danger-rgb), 0.3);
+  animation: none;
+}
+
+/* Off-screen tabs are the ones that need it most: tint them so they read
+   from across the strip, not only from their dot. */
+.terminal-tab.attention-input:not(.active) {
+  background: rgba(var(--info-rgb), 0.1);
+  border-bottom-color: rgba(var(--info-rgb), 0.7);
+}
+
+.terminal-tab.attention-error:not(.active) {
+  background: rgba(var(--danger-rgb), 0.08);
+  border-bottom-color: rgba(var(--danger-rgb), 0.6);
+}
+
 /* Terminal Loading Overlay */
 .terminal-loading-overlay {
   position: absolute;

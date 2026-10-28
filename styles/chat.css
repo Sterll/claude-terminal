@@ -3843,10 +3843,16 @@ hr.chat-plan-separator {
   animation: chat-status-pulse 1.2s ease-in-out infinite;
 }
 
+/* The same blue as the tab's waiting dot: violet is the premium tier's. */
 .chat-status-dot.waiting {
-  background: #8b5cf6;
+  background: var(--info);
   opacity: 1;
   animation: chat-status-pulse 2s ease-in-out infinite;
+}
+
+.chat-status-dot.error {
+  background: var(--danger);
+  opacity: 1;
 }
 
 @keyframes chat-status-pulse {
