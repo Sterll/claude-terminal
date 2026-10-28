@@ -154,6 +154,38 @@ describe('tab attention (TerminalManager)', () => {
     expect(manager.getTerminalStatsForProject(0)).toEqual({ total: 3, working: 1, input: 1, error: 1 });
   });
 
+  // With hooks off (the default), a PTY tab's wait is read off its screen
+  // when the turn stops. The xterm buffer is faked: only what the dialog test
+  // reads of it.
+  const screen = (lines) => ({
+    rows: lines.length,
+    buffer: { active: { viewportY: 0, baseY: 0, cursorY: 0, getLine: (i) => (i < lines.length ? { translateToString: () => lines[i] } : undefined) } },
+  });
+
+  it('reads a terminal tab\'s approval dialog off its screen when the turn stops', () => {
+    const tab = seedTab('t1', { mode: 'terminal', status: 'working', terminal: screen([
+      ' Bash command',
+      '   npm run db:migrate',
+      ' Do you want to proceed?',
+      ' ❯ 1. Yes',
+      '   2. No, and tell Claude what to do differently',
+    ]) });
+
+    manager._declareReady('t1');
+
+    expect(attention('t1')).toBe('input');
+    expect(tab.classList.contains('attention-input')).toBe(true);
+  });
+
+  it('drops it when the turn stops on anything else', () => {
+    seedTab('t1', { mode: 'terminal', status: 'working', terminal: screen(['✳ Done for 12s', '> ']) });
+    manager.setTerminalAttention('t1', 'input');
+
+    manager._declareReady('t1');
+
+    expect(attention('t1')).toBeNull();
+  });
+
   it('ignores a tab that is gone', () => {
     expect(() => manager.setTerminalAttention('nope', 'input')).not.toThrow();
     expect(rendered).toBe(0);
