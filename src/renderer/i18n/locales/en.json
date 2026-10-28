@@ -1136,6 +1136,8 @@
     "confirmCloseTabDesc": "Ask for confirmation when the tab's × would end a running session",
     "aiTabNaming": "AI tab naming",
     "aiTabNamingDesc": "Use AI to generate short tab names from messages",
+    "sessionBrief": "Session brief",
+    "sessionBriefDesc": "Show the session brief at the top of the chat's right column, written by Haiku when you ask",
     "enableFollowupSuggestions": "Follow-up suggestions",
     "enableFollowupSuggestionsDesc": "Show AI-generated suggestion chips after Claude responds",
     "discordRpc": "Discord Rich Presence",
@@ -1965,6 +1967,31 @@
     }
   },
   "chat": {
+    "side": {
+      "title": "Session",
+      "brief": "Brief",
+      "collapse": "Collapse",
+      "expand": "Show the brief and tasks"
+    },
+    "brief": {
+      "intro": "A summary of this conversation: what it is for, where it stands, what was decided and what to know before carrying on.",
+      "cost": "Written by Haiku from the transcript, only when you ask.",
+      "afterFirstTurn": "Available after the first exchange.",
+      "generate": "Write the brief",
+      "generating": "Reading the session...",
+      "about": "What it is about",
+      "status": "Where it stands",
+      "decisions": "Decisions",
+      "notes": "Worth knowing",
+      "writtenAt": "Written {time}",
+      "newMessages": "New messages: {count}",
+      "upToDate": "Up to date",
+      "update": "Update",
+      "updating": "Updating...",
+      "retry": "Try again",
+      "errorEmpty": "Nothing to summarize yet.",
+      "errorFailed": "The brief could not be written. Try again in a moment."
+    },
     "title": "Chat",
     "sendMessage": "Send",
     "placeholder": "Ask Claude something...",

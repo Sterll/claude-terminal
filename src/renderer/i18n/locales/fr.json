@@ -1231,6 +1231,8 @@
     "confirmCloseTabDesc": "Demander confirmation quand le × d'un onglet met fin à une session en cours",
     "aiTabNaming": "Nommage IA des onglets",
     "aiTabNamingDesc": "Utiliser l'IA pour générer des noms courts pour les onglets à partir des messages",
+    "sessionBrief": "Brief de session",
+    "sessionBriefDesc": "Afficher le brief de la session en haut de la colonne de droite du chat, rédigé par Haiku à votre demande",
     "enableFollowupSuggestions": "Suggestions de suivi",
     "enableFollowupSuggestionsDesc": "Afficher des chips de suggestions générées par l'IA après les réponses de Claude",
     "discordRpc": "Discord Rich Presence",
@@ -1965,6 +1967,31 @@
     }
   },
   "chat": {
+    "side": {
+      "title": "Session",
+      "brief": "Brief",
+      "collapse": "Réduire",
+      "expand": "Afficher le brief et les tâches"
+    },
+    "brief": {
+      "intro": "Un résumé de cette conversation : à quoi elle sert, où elle en est, ce qui a été décidé et ce qu'il faut savoir avant de continuer.",
+      "cost": "Rédigé par Haiku à partir du transcript, seulement quand vous le demandez.",
+      "afterFirstTurn": "Disponible après le premier échange.",
+      "generate": "Rédiger le brief",
+      "generating": "Lecture de la session...",
+      "about": "De quoi il s'agit",
+      "status": "Où on en est",
+      "decisions": "Décisions",
+      "notes": "À savoir",
+      "writtenAt": "Rédigé {time}",
+      "newMessages": "Nouveaux messages : {count}",
+      "upToDate": "À jour",
+      "update": "Mettre à jour",
+      "updating": "Mise à jour...",
+      "retry": "Réessayer",
+      "errorEmpty": "Rien à résumer pour l'instant.",
+      "errorFailed": "Le brief n'a pas pu être rédigé. Réessayez dans un instant."
+    },
     "title": "Chat",
     "sendMessage": "Envoyer",
     "placeholder": "Demandez quelque chose à Claude...",

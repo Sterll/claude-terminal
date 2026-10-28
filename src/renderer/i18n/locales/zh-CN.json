@@ -1136,6 +1136,8 @@
     "confirmCloseTabDesc": "当标签页的 × 会结束正在运行的会话时要求确认",
     "aiTabNaming": "AI选项卡命名",
     "aiTabNamingDesc": "使用 AI 从消息中生成简短的选项卡名称",
+    "sessionBrief": "会话简报",
+    "sessionBriefDesc": "在聊天右侧栏顶部显示会话简报，由 Haiku 按你的请求撰写",
     "enableFollowupSuggestions": "后续建议",
     "enableFollowupSuggestionsDesc": "Claude回应后显示人工智能生成的建议芯片",
     "discordRpc": "不和谐丰富的存在",
@@ -1965,6 +1967,31 @@
     }
   },
   "chat": {
+    "side": {
+      "title": "会话",
+      "brief": "简报",
+      "collapse": "收起",
+      "expand": "显示简报和任务"
+    },
+    "brief": {
+      "intro": "这段对话的摘要：它的目的、当前进展、已做出的决定，以及继续之前需要了解的事项。",
+      "cost": "由 Haiku 根据对话记录撰写，仅在你请求时生成。",
+      "afterFirstTurn": "首次对话后可用。",
+      "generate": "生成简报",
+      "generating": "正在读取会话...",
+      "about": "关于什么",
+      "status": "当前进展",
+      "decisions": "决定",
+      "notes": "值得注意",
+      "writtenAt": "撰写于{time}",
+      "newMessages": "新消息：{count}",
+      "upToDate": "已是最新",
+      "update": "更新",
+      "updating": "正在更新...",
+      "retry": "重试",
+      "errorEmpty": "暂时没有可总结的内容。",
+      "errorFailed": "无法生成简报，请稍后再试。"
+    },
     "title": "聊天",
     "sendMessage": "发送",
     "placeholder": "问Claude一些事...",

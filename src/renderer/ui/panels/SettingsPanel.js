@@ -1618,6 +1618,16 @@ class SettingsPanel extends BasePanel {
                 </div>
                 <div class="settings-toggle-row">
                   <div class="settings-toggle-label">
+                    <div>${t('settings.sessionBrief')}</div>
+                    <div class="settings-toggle-desc">${t('settings.sessionBriefDesc')}</div>
+                  </div>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="session-brief-toggle" ${settings.sessionBriefEnabled !== false ? 'checked' : ''}>
+                    <span class="settings-toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="settings-toggle-row">
+                  <div class="settings-toggle-label">
                     <div>${t('settings.enableFollowupSuggestions')}</div>
                     <div class="settings-toggle-desc">${t('settings.enableFollowupSuggestionsDesc')}</div>
                   </div>
@@ -2505,6 +2515,8 @@ class SettingsPanel extends BasePanel {
       const newConfirmCloseTab = confirmCloseTabToggle ? confirmCloseTabToggle.checked : true;
       const aiTabNamingToggle = document.getElementById('ai-tab-naming-toggle');
       const newAiTabNaming = aiTabNamingToggle ? aiTabNamingToggle.checked : true;
+      const sessionBriefToggle = document.getElementById('session-brief-toggle');
+      const newSessionBriefEnabled = sessionBriefToggle ? sessionBriefToggle.checked : true;
       const followupSuggestionsToggle = document.getElementById('followup-suggestions-toggle');
       const newEnableFollowupSuggestions = followupSuggestionsToggle ? followupSuggestionsToggle.checked : true;
       const discordRpcToggle = document.getElementById('discord-rpc-toggle');
@@ -2626,6 +2638,7 @@ class SettingsPanel extends BasePanel {
         tabRenameOnSlashCommand: newTabRenameOnSlashCommand,
         confirmCloseTab: newConfirmCloseTab,
         aiTabNaming: newAiTabNaming,
+        sessionBriefEnabled: newSessionBriefEnabled,
         enableFollowupSuggestions: newEnableFollowupSuggestions,
         discordRpcEnabled: newDiscordRpcEnabled,
         discordRpcShowProject: newDiscordRpcShowProject,

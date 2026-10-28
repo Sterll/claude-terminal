@@ -1136,6 +1136,8 @@
     "confirmCloseTabDesc": "Minta konfirmasi ketika tombol × tab mengakhiri sesi yang sedang berjalan",
     "aiTabNaming": "Penamaan tab dengan AI",
     "aiTabNamingDesc": "Gunakan AI untuk membuat nama tab singkat dari pesan",
+    "sessionBrief": "Ringkasan sesi",
+    "sessionBriefDesc": "Tampilkan ringkasan sesi di atas kolom kanan chat, ditulis oleh Haiku saat Anda memintanya",
     "enableFollowupSuggestions": "Saran lanjutan",
     "enableFollowupSuggestionsDesc": "Tampilkan chip saran hasil AI setelah Claude menjawab",
     "discordRpc": "Discord Rich Presence",
@@ -1965,6 +1967,31 @@
     }
   },
   "chat": {
+    "side": {
+      "title": "Sesi",
+      "brief": "Ringkasan",
+      "collapse": "Ciutkan",
+      "expand": "Tampilkan ringkasan dan tugas"
+    },
+    "brief": {
+      "intro": "Ringkasan percakapan ini: tujuannya, posisinya sekarang, apa yang sudah diputuskan, dan apa yang perlu diketahui sebelum melanjutkan.",
+      "cost": "Ditulis oleh Haiku dari transkrip, hanya saat Anda memintanya.",
+      "afterFirstTurn": "Tersedia setelah percakapan pertama.",
+      "generate": "Tulis ringkasan",
+      "generating": "Membaca sesi...",
+      "about": "Tentang apa",
+      "status": "Posisi sekarang",
+      "decisions": "Keputusan",
+      "notes": "Perlu diketahui",
+      "writtenAt": "Ditulis {time}",
+      "newMessages": "Pesan baru: {count}",
+      "upToDate": "Terbaru",
+      "update": "Perbarui",
+      "updating": "Memperbarui...",
+      "retry": "Coba lagi",
+      "errorEmpty": "Belum ada yang bisa diringkas.",
+      "errorFailed": "Ringkasan tidak dapat ditulis. Coba lagi sebentar lagi."
+    },
     "title": "Chat",
     "sendMessage": "Kirim",
     "placeholder": "Tanyakan sesuatu kepada Claude...",

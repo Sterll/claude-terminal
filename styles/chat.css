@@ -5551,9 +5551,11 @@ input.chat-elicit-input[type="checkbox"] {
 
 .chat-bg-btn:disabled { opacity: 0.4; cursor: default; }
 
-/* ── Background tasks drawer ────────────────────────────────────────────────
-   Sits beside the conversation rather than replacing it: the point is to watch
-   work run while still reading the transcript. Scoped to this session. */
+/* ── Session side column ─────────────────────────────────────────────────────
+   Beside the conversation rather than replacing it: the session's brief on top,
+   its background tasks below. Collapsed (a body class, so every chat tab
+   follows), it leaves a strip on the right edge, like the projects column does
+   on the left, that still signals both. */
 
 .chat-body {
   flex: 1;
@@ -5562,11 +5564,11 @@ input.chat-elicit-input[type="checkbox"] {
   overflow: hidden;
 }
 
-/* The transcript keeps its own scrolling; the drawer takes a fixed column. */
+/* The transcript keeps its own scrolling; the side takes a fixed column. */
 .chat-body > .chat-messages { flex: 1; min-width: 0; }
 
-.chat-tasks-drawer {
-  width: 280px;
+.chat-side {
+  width: 340px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -5575,9 +5577,7 @@ input.chat-elicit-input[type="checkbox"] {
   overflow: hidden;
 }
 
-.chat-tasks-drawer[hidden] { display: none; }
-
-.chat-tasks-head {
+.chat-side-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -5585,7 +5585,7 @@ input.chat-elicit-input[type="checkbox"] {
   border-bottom: 1px solid var(--border-color);
 }
 
-.chat-tasks-title {
+.chat-side-title {
   flex: 1;
   font-size: var(--font-2xs);
   font-weight: 600;
@@ -5594,7 +5594,163 @@ input.chat-elicit-input[type="checkbox"] {
   color: var(--text-secondary);
 }
 
-.chat-tasks-close,
+.chat-side-collapse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.chat-side-collapse:hover { background: var(--bg-hover); color: var(--text-primary); }
+.chat-side-collapse svg { width: 14px; height: 14px; }
+
+/* One scroll for the whole column: the brief, then the tasks. */
+.chat-side-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.chat-side-tasks { border-top: 1px solid var(--border-color); }
+.chat-side-tasks[hidden] { display: none; }
+
+/* Each section folds from its header, which stays at the top of the column
+   while its section scrolls under it. */
+.chat-side-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chat-side-section-head:hover { background: var(--bg-tertiary); }
+.chat-side-section-head:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+.chat-side-chevron {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+
+.chat-side-section-title {
+  flex: 1;
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+body.chat-side-brief-folded .chat-side-brief .chat-side-chevron,
+body.chat-side-tasks-folded .chat-side-tasks .chat-side-chevron { transform: rotate(-90deg); }
+
+body.chat-side-brief-folded .chat-brief-body,
+body.chat-side-tasks-folded .chat-tasks-body { display: none; }
+
+/* Folded or not, a header keeps its section's signal, like the strip: a dot
+   when the brief is behind, a pulse while a task runs. */
+.chat-side-section-head.behind .chat-side-section-title::after,
+.chat-side-section-head.running .chat-side-section-title::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+.chat-side-section-head.running .chat-side-section-title::after {
+  animation: chat-tasks-pulse 1.6s ease-in-out infinite;
+}
+
+/* Collapsed: the strip. A button across its whole height, so it is hard to miss. */
+.chat-side-rail {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 32px;
+  flex-shrink: 0;
+  padding: 10px 0;
+  border: none;
+  border-left: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+body.chat-side-collapsed .chat-side { display: none; }
+body.chat-side-collapsed .chat-side-rail { display: flex; }
+
+.chat-side-rail:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.chat-side-rail svg { width: 14px; height: 14px; }
+
+.chat-side-rail-brief,
+.chat-side-rail-tasks {
+  position: relative;
+  display: flex;
+}
+
+.chat-side-rail-tasks[hidden] { display: none; }
+
+/* The brief is behind the conversation: a dot, like an unread marker. */
+.chat-side-rail-brief.behind::after {
+  content: '';
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Live work pulses the icon rather than stacking a counter on top of it: a
+   badge large enough to read covers the glyph it is meant to annotate. */
+.chat-side-rail-tasks.running {
+  color: var(--accent);
+  animation: chat-tasks-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes chat-tasks-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* Someone who asked the OS to reduce motion still needs the signal. */
+@media (prefers-reduced-motion: reduce) {
+  .chat-side-rail-tasks.running,
+  .chat-side-section-head.running .chat-side-section-title::after { animation: none; }
+}
+
+/* Brief turned off in the settings: the column is the tasks' alone, and only
+   there while the tab has some. */
+.chat-view.brief-off .chat-side-brief,
+.chat-view.brief-off .chat-side-rail-brief { display: none; }
+.chat-view.brief-off .chat-side-tasks { border-top: none; }
+.chat-view.brief-off:not(.has-tasks) .chat-side,
+.chat-view.brief-off:not(.has-tasks) .chat-side-rail { display: none; }
+
 .chat-tasks-clear {
   display: flex;
   align-items: center;
@@ -5609,17 +5765,13 @@ input.chat-elicit-input[type="checkbox"] {
   cursor: pointer;
 }
 
-.chat-tasks-close[hidden],
 .chat-tasks-clear[hidden] { display: none; }
-
-.chat-tasks-close:hover { background: var(--bg-hover); color: var(--text-primary); }
-.chat-tasks-close svg { width: 13px; height: 13px; }
 
 /* Destructive, so it says so on hover rather than only in its tooltip. */
 .chat-tasks-clear:hover { background: var(--bg-hover); color: var(--danger); }
 .chat-tasks-clear svg { width: 13px; height: 13px; }
 
-.chat-tasks-body { flex: 1; overflow-y: auto; padding: 8px; }
+.chat-tasks-body { padding: 8px; }
 
 .chat-tasks-group + .chat-tasks-group { margin-top: 14px; }
 
@@ -5698,46 +5850,99 @@ input.chat-elicit-input[type="checkbox"] {
 .chat-task-row-stop:hover:not(:disabled) { background: var(--danger); color: #fff; }
 .chat-task-row-stop:disabled { opacity: 0.4; cursor: default; }
 
-/* Footer toggle, sharing the status-row idiom with search and export: muted
-   but always present, brightening on hover. Only `hidden` when this session
-   has produced no task at all. */
-.chat-tasks-btn {
-  position: relative;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 2px 4px;
-  margin-left: 8px;
-  transition: color 0.15s;
-}
+/* ── Session brief, the side column's upper part ── */
 
-.chat-tasks-btn svg {
-  width: 12px;
-  height: 12px;
-}
-
-.chat-tasks-btn:hover {
+.chat-brief-body {
+  padding: 12px 14px;
+  font-size: var(--font-sm);
+  line-height: 1.5;
   color: var(--text-primary);
 }
 
-/* Live work pulses the icon rather than stacking a counter on top of it: a
-   badge large enough to read covers the glyph it is meant to annotate. */
-.chat-tasks-btn.has-running {
-  color: var(--accent-color, var(--accent));
-  animation: chat-tasks-pulse 1.6s ease-in-out infinite;
+.chat-brief-section + .chat-brief-section { margin-top: 14px; }
+
+.chat-brief-section h4 {
+  margin: 0 0 4px;
+  font-size: var(--font-2xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
-@keyframes chat-tasks-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+.chat-brief-section p { margin: 0; }
+
+.chat-brief-section ul { margin: 0; padding-left: 16px; }
+.chat-brief-section li + li { margin-top: 4px; }
+
+/* Pinned to the bottom of the column while the brief is in view: "N new
+   messages / Update" is what a returning reader needs first, and a long brief
+   would scroll it out of view. */
+.chat-brief-meta {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 16px -14px -12px;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
 }
 
-/* Someone who asked the OS to reduce motion still needs the signal. */
-@media (prefers-reduced-motion: reduce) {
-  .chat-tasks-btn.has-running { animation: none; }
+.chat-brief-new { color: var(--accent); }
+
+.chat-brief-update,
+.chat-brief-generate {
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: var(--font-2xs);
+  cursor: pointer;
 }
 
+.chat-brief-update { margin-left: auto; }
+.chat-brief-update:hover:not(:disabled),
+.chat-brief-generate:hover { background: var(--accent); }
+.chat-brief-update:disabled {
+  border-color: var(--border-color);
+  background: none;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.chat-brief-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-secondary);
+}
+
+.chat-brief-empty p { margin: 0; }
+.chat-brief-hint { font-size: var(--font-2xs); color: var(--text-muted); }
+.chat-brief-error { color: var(--danger); }
+
+.chat-brief-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.chat-brief-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
 /* The other tabs (Changes, Documents) are siblings of .chat-body, so the row
    has to yield when the transcript is hidden — otherwise it would keep its

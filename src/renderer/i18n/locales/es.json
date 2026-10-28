@@ -1133,6 +1133,8 @@
     "confirmCloseTabDesc": "Pedir confirmación cuando la × de una pestaña termina una sesión en curso",
     "aiTabNaming": "Nombres de pestaña con IA",
     "aiTabNamingDesc": "Usar IA para generar nombres cortos de pestaña a partir de mensajes",
+    "sessionBrief": "Resumen de la sesión",
+    "sessionBriefDesc": "Mostrar el resumen de la sesión arriba en la columna derecha del chat, escrito por Haiku a petición",
     "enableFollowupSuggestions": "Sugerencias de seguimiento",
     "enableFollowupSuggestionsDesc": "Mostrar chips de sugerencias generados por IA después de la respuesta de Claude",
     "discordRpc": "Discord Rich Presence",
@@ -1962,6 +1964,31 @@
     }
   },
   "chat": {
+    "side": {
+      "title": "Sesión",
+      "brief": "Resumen",
+      "collapse": "Contraer",
+      "expand": "Mostrar el resumen y las tareas"
+    },
+    "brief": {
+      "intro": "Un resumen de esta conversación: para qué es, en qué punto está, qué se decidió y qué conviene saber antes de seguir.",
+      "cost": "Lo escribe Haiku a partir de la transcripción, solo a petición.",
+      "afterFirstTurn": "Disponible tras el primer intercambio.",
+      "generate": "Escribir el resumen",
+      "generating": "Leyendo la sesión...",
+      "about": "De qué trata",
+      "status": "En qué punto está",
+      "decisions": "Decisiones",
+      "notes": "Conviene saber",
+      "writtenAt": "Escrito {time}",
+      "newMessages": "Mensajes nuevos: {count}",
+      "upToDate": "Al día",
+      "update": "Actualizar",
+      "updating": "Actualizando...",
+      "retry": "Reintentar",
+      "errorEmpty": "Todavía no hay nada que resumir.",
+      "errorFailed": "No se pudo escribir el resumen. Vuelve a intentarlo en un momento."
+    },
     "title": "Chat",
     "sendMessage": "Enviar",
     "placeholder": "Pregunta algo a Claude...",
