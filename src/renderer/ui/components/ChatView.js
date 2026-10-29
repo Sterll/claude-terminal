@@ -51,6 +51,8 @@ const { createContextHandoff, normalizeHandoffThreshold, autoCompactWindowFor, b
 const { createIdleHibernation, hibernateDelayMs } = require('./chat/idleHibernation');
 const { createSessionBrief } = require('./chat/sessionBrief');
 const { createSidePanel } = require('./chat/sidePanel');
+const { createSideGit } = require('./chat/sideGit');
+const { createSideTickets } = require('./chat/sideTickets');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
 const ATTACHMENT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
@@ -316,9 +318,10 @@ class ChatView extends BaseComponent {
             <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage'))}</div>
           </div>
         </div>
-        <!-- The session's side column: its brief on top, its background tasks
-             below, beside the conversation rather than replacing it. Collapsed,
-             it leaves a strip that still signals both (chat/sidePanel.js). -->
+        <!-- The session's side column: its brief on top, then its branches and
+             its tickets, its background tasks last, beside the conversation
+             rather than replacing it. Collapsed, it leaves a strip that still
+             signals each of them (chat/sidePanel.js). -->
         <aside class="chat-side">
           <div class="chat-side-head">
             <span class="chat-side-title">${escapeHtml(t('chat.side.title'))}</span>
@@ -333,6 +336,20 @@ class ChatView extends BaseComponent {
                 <span class="chat-side-section-title">${escapeHtml(t('chat.side.brief'))}</span>
               </div>
               <div class="chat-brief-body"></div>
+            </section>
+            <section class="chat-side-section chat-side-git" data-section="git" hidden>
+              <div class="chat-side-section-head" role="button" tabindex="0">
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="chat-side-section-title">${escapeHtml(t('chat.side.branches'))}<span class="chat-side-count"></span></span>
+              </div>
+              <div class="chat-side-git-body"></div>
+            </section>
+            <section class="chat-side-section chat-side-tickets" data-section="tickets" hidden>
+              <div class="chat-side-section-head" role="button" tabindex="0">
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="chat-side-section-title">${escapeHtml(t('chat.side.tickets'))}<span class="chat-side-count"></span></span>
+              </div>
+              <div class="chat-side-tickets-body"></div>
             </section>
             <section class="chat-side-section chat-side-tasks" data-section="tasks" hidden>
               <div class="chat-side-section-head" role="button" tabindex="0">
@@ -349,6 +366,8 @@ class ChatView extends BaseComponent {
         <button class="chat-side-rail" title="${escapeHtml(t('chat.side.expand'))}">
           <svg class="chat-side-rail-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
           <span class="chat-side-rail-brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>
+          <span class="chat-side-rail-git" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 5-6 4-11.5 8.5"/></svg></span>
+          <span class="chat-side-rail-tickets" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg></span>
           <span class="chat-side-rail-tasks" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
         </button>
       </div>
@@ -477,6 +496,9 @@ class ChatView extends BaseComponent {
   // Its pull requests' checks are the session's CI: a dot on the tab button
   // says where they stand without opening it, and a count beside it how many
   // of its pull requests and branches need the user.
+  // The side column's sections are drawn from these tabs' callbacks, which can
+  // only run once the column below exists.
+  let sideReady = false;
   const gitTab = createGitTab({
     api,
     panelEl: gitPanelEl,
@@ -521,6 +543,8 @@ class ChatView extends BaseComponent {
     },
     // The branch name and the PR title may name tickets: detection suggests them.
     onSummary: (summary) => observeGitForTickets(summary),
+    // The side column's Branches show the same read.
+    onOverview: () => updateSideGit(),
   });
   // Not read until the chat is first on screen: tabs restored in the
   // background do not each read a transcript, git and GitHub at startup.
@@ -544,9 +568,12 @@ class ChatView extends BaseComponent {
     onAvailable: () => {
       ticketsTabBtn.hidden = false;
       tabbarEl.hidden = false;
+      updateSideTickets();
     },
     showToast: (opts) => require('./Toast').showToast(opts),
     buildRecap: () => ticketsWiring.buildRecap(),
+    // The side column's Tickets show the same links and states.
+    onChange: () => updateSideTickets(),
   });
   ticketsTab.probe();
   for (const ticket of Array.isArray(initialTickets) ? initialTickets : []) {
@@ -586,8 +613,40 @@ class ChatView extends BaseComponent {
   const sidePanel = createSidePanel({
     sideEl: chatView.querySelector('.chat-side'),
     railEl: chatView.querySelector('.chat-side-rail'),
-    onExpand: () => renderTasks(),
+    onExpand: () => {
+      renderTasks();
+      updateSideGit();
+      updateSideTickets();
+    },
   });
+  // The session's branches and tickets, beside the conversation. Neither reads
+  // anything of its own: the Git tab's last read, the Tickets tab's links and
+  // ticket states. A row opens its tab on that branch or ticket.
+  const sideGitSectionEl = chatView.querySelector('.chat-side-git');
+  const sideTicketsSectionEl = chatView.querySelector('.chat-side-tickets');
+  const sideGit = createSideGit({
+    bodyEl: chatView.querySelector('.chat-side-git-body'),
+    onOpen: (key) => {
+      switchChatTab('git');
+      gitTab.reveal(key);
+    },
+    onOpenTab: () => switchChatTab('git'),
+    openExternal: (url) => api.dialog.openExternal(url),
+  });
+  const sideTickets = createSideTickets({
+    bodyEl: chatView.querySelector('.chat-side-tickets-body'),
+    onOpen: (ref) => {
+      switchChatTab('tickets');
+      ticketsTab.reveal(ref);
+    },
+    onOpenTab: () => switchChatTab('tickets'),
+    onLinkNew: () => {
+      switchChatTab('tickets');
+      ticketsTab.openSearch();
+    },
+    onAnswer: (ref, yes) => (yes ? ticketsTab.confirm([ref]) : ticketsTab.dismiss([ref])),
+  });
+  sideReady = true;
   const sessionBrief = createSessionBrief({
     api,
     bodyEl: chatView.querySelector('.chat-brief-body'),
@@ -602,7 +661,10 @@ class ChatView extends BaseComponent {
   // Back on screen (a tab, a chat tab or a project switched back): catch up.
   const sideScreenObserver = typeof IntersectionObserver === 'function'
     ? new IntersectionObserver((entries) => {
-      if (entries.some(entry => entry.isIntersecting)) sessionBrief.onShown();
+      if (!entries.some(entry => entry.isIntersecting)) return;
+      sessionBrief.onShown();
+      updateSideGit();
+      updateSideTickets();
     })
     : null;
   sideScreenObserver?.observe(chatBodyEl);
@@ -615,6 +677,31 @@ class ChatView extends BaseComponent {
   };
   applyBriefSetting();
   unsubscribers.push(settingsState.subscribe(applyBriefSetting));
+
+  /** The header and the strip always; the rows only while they are on the page. */
+  function updateSideGit() {
+    if (!sideReady) return;
+    const overview = gitTab.getOverview();
+    const { count, attention } = sideGit.stats(overview);
+    sidePanel.setGit({ count, attention });
+    chatView.classList.toggle('has-git', count > 0);
+    sideGitSectionEl.hidden = count === 0;
+    if (count && sidePanel.isOpen('git') && sideOnScreen()) sideGit.render(overview);
+  }
+
+  function updateSideTickets() {
+    if (!sideReady) return;
+    const available = ticketsTab.isAvailable();
+    const links = ticketsTab.getLinks();
+    const { count, suggested } = sideTickets.stats(links);
+    sidePanel.setTickets({ available, count, suggested });
+    chatView.classList.toggle('has-tickets', available);
+    sideTicketsSectionEl.hidden = !available;
+    if (!available || !sidePanel.isOpen('tickets') || !sideOnScreen()) return;
+    sideTickets.render(links, ticketsTab.getIssue);
+    // States not read yet, or older than the tab's 30 s: read now, redrawn through onChange.
+    ticketsTab.loadIssues();
+  }
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
   const statusElapsedEl = chatView.querySelector('.chat-status-elapsed');
@@ -9562,6 +9649,8 @@ class ChatView extends BaseComponent {
       gitTab.destroy();
       sessionBrief.destroy();
       sidePanel.destroy();
+      sideGit.destroy();
+      sideTickets.destroy();
       sideScreenObserver?.disconnect();
       ticketsTab.destroy();
       ticketsWiring.destroy();

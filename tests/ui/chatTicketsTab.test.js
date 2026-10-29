@@ -133,6 +133,48 @@ test('the tab only appears once a tracker is connected', async () => {
   tab.destroy();
 });
 
+test('the side column reads through the tab: one request per ticket however many ask, and told once it is read', async () => {
+  // What each notification could see: the link store's own broadcasts land at
+  // any moment under load, so the calls are not counted, they are looked at.
+  let tab = null;
+  const seen = [];
+  const onChange = jest.fn(() => seen.push(!!tab?.getIssue('fake:#1')?.issue));
+  tab = makeTab({ onChange });
+  expect(tab.isAvailable()).toBe(false);
+  await tab.probe();
+  expect(tab.isAvailable()).toBe(true);
+
+  await tab.linkTicket({ ref: 'fake:#1', connectionId: conn.id, title: 'Crash when the tab closes' }, 'start');
+  expect(onChange).toHaveBeenCalled();
+  expect(tab.getIssue('fake:#1')).toBeNull();
+  expect(seen).not.toContain(true);
+
+  api.issueTrackers.getIssue.mockClear();
+  // The tab shown and the column asking at the same moment.
+  await Promise.all([tab.loadIssues(), tab.loadIssues()]);
+  expect(api.issueTrackers.getIssue).toHaveBeenCalledTimes(1);
+  expect(tab.getIssue('fake:#1').issue.title).toBe('Crash when the tab closes');
+  expect(seen).toContain(true);
+
+  // Fresh: not read again.
+  await tab.loadIssues();
+  expect(api.issueTrackers.getIssue).toHaveBeenCalledTimes(1);
+  tab.destroy();
+});
+
+test('from the side column: the search opens, and the ticket named is pointed at', async () => {
+  const tab = makeTab();
+  await tab.probe();
+  await tab.linkTicket({ ref: 'fake:#1', connectionId: conn.id, title: 'x' }, 'manual');
+  tab.show();
+  tab.openSearch();
+  expect(panel().querySelector('.session-tickets-search-input')).not.toBeNull();
+  tab.reveal('fake:#1');
+  const row = panel().querySelector('.session-tickets-row[data-ref="fake:#1"]');
+  expect(row.classList.contains('chat-task-flash')).toBe(true);
+  tab.destroy();
+});
+
 test('linking from the search shows the ticket with its live status and fills the badge', async () => {
   const tab = makeTab();
   await tab.probe();

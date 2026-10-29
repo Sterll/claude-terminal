@@ -1971,7 +1971,16 @@
       "title": "会话",
       "brief": "简报",
       "collapse": "收起",
-      "expand": "显示简报和任务"
+      "expand": "显示会话侧栏",
+      "branches": "分支",
+      "tickets": "工单",
+      "worktree": "工作树",
+      "openGitTab": "Git 标签页",
+      "openTicketsTab": "工单标签页",
+      "showInGitTab": "在 Git 标签页中查看",
+      "showInTicketsTab": "在工单标签页中查看",
+      "suggested": "待确认：{count}",
+      "noTickets": "尚未关联工单。"
     },
     "brief": {
       "intro": "这段对话的摘要：它的目的、当前进展、已做出的决定，以及继续之前需要了解的事项。",

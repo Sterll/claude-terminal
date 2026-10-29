@@ -1968,7 +1968,16 @@
       "title": "Sesión",
       "brief": "Resumen",
       "collapse": "Contraer",
-      "expand": "Mostrar el resumen y las tareas"
+      "expand": "Mostrar la columna de la sesión",
+      "branches": "Ramas",
+      "tickets": "Tickets",
+      "worktree": "worktree",
+      "openGitTab": "Pestaña Git",
+      "openTicketsTab": "Pestaña Tickets",
+      "showInGitTab": "Ver en la pestaña Git",
+      "showInTicketsTab": "Ver en la pestaña Tickets",
+      "suggested": "Por confirmar: {count}",
+      "noTickets": "Aún no hay ningún ticket vinculado."
     },
     "brief": {
       "intro": "Un resumen de esta conversación: para qué es, en qué punto está, qué se decidió y qué conviene saber antes de seguir.",

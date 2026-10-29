@@ -1971,7 +1971,16 @@
       "title": "Sesi",
       "brief": "Ringkasan",
       "collapse": "Ciutkan",
-      "expand": "Tampilkan ringkasan dan tugas"
+      "expand": "Tampilkan kolom sesi",
+      "branches": "Branch",
+      "tickets": "Tiket",
+      "worktree": "worktree",
+      "openGitTab": "Tab Git",
+      "openTicketsTab": "Tab Tiket",
+      "showInGitTab": "Lihat di tab Git",
+      "showInTicketsTab": "Lihat di tab Tiket",
+      "suggested": "Perlu dikonfirmasi: {count}",
+      "noTickets": "Belum ada tiket yang ditautkan."
     },
     "brief": {
       "intro": "Ringkasan percakapan ini: tujuannya, posisinya sekarang, apa yang sudah diputuskan, dan apa yang perlu diketahui sebelum melanjutkan.",

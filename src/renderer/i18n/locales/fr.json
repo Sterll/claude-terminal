@@ -1971,7 +1971,16 @@
       "title": "Session",
       "brief": "Brief",
       "collapse": "Réduire",
-      "expand": "Afficher le brief et les tâches"
+      "expand": "Afficher la colonne de session",
+      "branches": "Branches",
+      "tickets": "Tickets",
+      "worktree": "worktree",
+      "openGitTab": "Onglet Git",
+      "openTicketsTab": "Onglet Tickets",
+      "showInGitTab": "Voir dans l'onglet Git",
+      "showInTicketsTab": "Voir dans l'onglet Tickets",
+      "suggested": "À confirmer : {count}",
+      "noTickets": "Aucun ticket lié pour l'instant."
     },
     "brief": {
       "intro": "Un résumé de cette conversation : à quoi elle sert, où elle en est, ce qui a été décidé et ce qu'il faut savoir avant de continuer.",
