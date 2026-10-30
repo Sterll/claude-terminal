@@ -139,6 +139,26 @@ function refusesAgentInput(termData) {
   return detectPermissionDialog(termData?.terminal);
 }
 
+/**
+ * Record the id a chat view reports when it starts a session.
+ *
+ * That id is ChatService's own (`chat-<ts>-<rand>`), not the CLI's: the CLI's
+ * arrives with the first message, and ChatView writes it over this one only
+ * when it differs from the id the view already knew. So it may stand in for a
+ * tab with no conversation yet, never replace one the tab already holds. A tab
+ * restored, woken from idle sleep or switched from terminal mode resumes under
+ * the same CLI id, nothing writes that id back, and the next restart resumed an
+ * id with no transcript: an empty "Conversation resumed" and the conversation
+ * gone from the tab.
+ *
+ * @param {string} terminalId
+ * @param {string} sid - ChatService session id
+ */
+function noteChatSessionStart(terminalId, sid) {
+  if (getTerminal(terminalId)?.claudeSessionId) return;
+  updateTerminal(terminalId, { claudeSessionId: sid });
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // ── TerminalManager Class ──
 // ════════════════════════════════════════════════════════════════════════════
@@ -4195,7 +4215,7 @@ class TerminalManager extends BaseComponent {
       ...(systemPrompt ? { systemPrompt } : {}),
       onSessionStart: (sid) => {
         _chatSessionId = sid;
-        updateTerminal(id, { claudeSessionId: sid });
+        noteChatSessionStart(id, sid);
         // A tab renamed before its session existed persists the name now
         const td = getTerminal(id);
         if (td?.nameCustom && td.name) self._setSessionCustomName(sid, td.name);
@@ -4329,7 +4349,7 @@ class TerminalManager extends BaseComponent {
         initialModel: projSettings.chatModel || null,
         initialEffort: projSettings.effortLevel || null,
         builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
-        onSessionStart: (sid) => updateTerminal(id, { claudeSessionId: sid }),
+        onSessionStart: (sid) => noteChatSessionStart(id, sid),
         onTabRename: (name) => self.updateTerminalTabName(id, name),
         onStatusChange: (status, substatus) => self._updateChatTerminalStatus(id, status, substatus),
         onModelChange: ({ family, tier }) => self._setChatTabModelTag(id, family, tier),
@@ -4831,6 +4851,7 @@ let _instance = null;
 function _getInstance() { if (!_instance) _instance = new TerminalManager(); return _instance; }
 
 module.exports = {
+  noteChatSessionStart,
   TerminalManager,
   createTerminal: (project, options) => _getInstance().createTerminal(project, options),
   closeTerminal: (id) => _getInstance().closeTerminal(id),
