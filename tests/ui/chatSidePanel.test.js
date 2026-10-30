@@ -40,14 +40,16 @@ describe('chat side column', () => {
     ({ createSidePanel, STORAGE_KEY } = require('../../src/renderer/ui/components/chat/sidePanel'));
   });
 
-  test('starts expanded, and comes back collapsed if it was left so', () => {
-    expect(createSidePanel(markup()).isCollapsed()).toBe(false);
-
-    jest.resetModules();
-    localStorage.setItem(STORAGE_KEY, 'true');
-    ({ createSidePanel } = require('../../src/renderer/ui/components/chat/sidePanel'));
+  test('starts collapsed, and comes back open if it was left so', () => {
     expect(createSidePanel(markup()).isCollapsed()).toBe(true);
     expect(document.body.classList.contains('chat-side-collapsed')).toBe(true);
+
+    jest.resetModules();
+    document.body.className = '';
+    localStorage.setItem(STORAGE_KEY, 'false');
+    ({ createSidePanel } = require('../../src/renderer/ui/components/chat/sidePanel'));
+    expect(createSidePanel(markup()).isCollapsed()).toBe(false);
+    expect(document.body.classList.contains('chat-side-collapsed')).toBe(false);
   });
 
   test('collapsing in one tab collapses every tab, and the strip brings all of them back', () => {

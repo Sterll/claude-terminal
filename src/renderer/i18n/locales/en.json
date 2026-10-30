@@ -1990,7 +1990,8 @@
       "updating": "Updating...",
       "retry": "Try again",
       "errorEmpty": "Nothing to summarize yet.",
-      "errorFailed": "The brief could not be written. Try again in a moment."
+      "errorFailed": "The brief could not be written. Try again in a moment.",
+      "errorRead": "The saved brief could not be read."
     },
     "title": "Chat",
     "sendMessage": "Send",

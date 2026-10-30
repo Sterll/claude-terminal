@@ -56,7 +56,9 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
   let destroyed = false;
 
   function errorText(code) {
-    return code === 'empty' ? t('chat.brief.errorEmpty') : t('chat.brief.errorFailed');
+    if (code === 'empty') return t('chat.brief.errorEmpty');
+    if (code === 'read') return t('chat.brief.errorRead');
+    return t('chat.brief.errorFailed');
   }
 
   /** Behind the conversation: new messages, or written in a language the UI has left since. */
@@ -85,7 +87,7 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
         <span>${escapeHtml(written)}</span>
         ${error ? `<span class="chat-brief-error">${escapeHtml(errorText(error))}</span>` : ''}
         ${behind
-          ? `<span class="chat-brief-new">${escapeHtml(data.newMessages > 0 ? t('chat.brief.newMessages', { count: data.newMessages }) : '')}</span>`
+          ? `<span class="chat-brief-new">${escapeHtml(data.newMessages > 0 ? t('chat.brief.newMessages', { count: data.newMessagesAtLeast ? `${data.newMessages}+` : data.newMessages }) : '')}</span>`
           : `<span class="chat-brief-current">${escapeHtml(t('chat.brief.upToDate'))}</span>`}
         <button class="chat-brief-update" ${updating || !behind ? 'disabled' : ''}>${escapeHtml(updating ? t('chat.brief.updating') : t('chat.brief.update'))}</button>
       </div>`);
@@ -111,7 +113,7 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
       bodyEl.innerHTML = `
         <div class="chat-brief-empty">
           <p class="chat-brief-error">${escapeHtml(errorText(error))}</p>
-          <button class="chat-brief-generate">${escapeHtml(t('chat.brief.retry'))}</button>
+          <button class="${error === 'read' ? 'chat-brief-reload' : 'chat-brief-generate'}">${escapeHtml(t('chat.brief.retry'))}</button>
         </div>`;
     } else {
       bodyEl.innerHTML = `
@@ -146,7 +148,9 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
       data = { ...res, sessionId };
       phase = res.brief ? 'ready' : 'empty';
     } else {
-      error = res?.error || 'failed';
+      // A read that failed (a remote host away, say) is retried as a read:
+      // the retry button must not turn it into a model call nobody asked for.
+      error = 'read';
       phase = 'error';
     }
     render();
@@ -178,7 +182,8 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
   }
 
   const onClick = (e) => {
-    if (e.target.closest('.chat-brief-generate, .chat-brief-update')) generate();
+    if (e.target.closest('.chat-brief-reload')) refreshStatus();
+    else if (e.target.closest('.chat-brief-generate, .chat-brief-update')) generate();
   };
   bodyEl.addEventListener('click', onClick);
   render();

@@ -1990,7 +1990,8 @@
       "updating": "Memperbarui...",
       "retry": "Coba lagi",
       "errorEmpty": "Belum ada yang bisa diringkas.",
-      "errorFailed": "Ringkasan tidak dapat ditulis. Coba lagi sebentar lagi."
+      "errorFailed": "Ringkasan tidak dapat ditulis. Coba lagi sebentar lagi.",
+      "errorRead": "Ringkasan yang tersimpan tidak dapat dibaca."
     },
     "title": "Chat",
     "sendMessage": "Kirim",

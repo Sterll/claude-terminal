@@ -1990,7 +1990,8 @@
       "updating": "Mise à jour...",
       "retry": "Réessayer",
       "errorEmpty": "Rien à résumer pour l'instant.",
-      "errorFailed": "Le brief n'a pas pu être rédigé. Réessayez dans un instant."
+      "errorFailed": "Le brief n'a pas pu être rédigé. Réessayez dans un instant.",
+      "errorRead": "Le brief enregistré n'a pas pu être lu."
     },
     "title": "Chat",
     "sendMessage": "Envoyer",

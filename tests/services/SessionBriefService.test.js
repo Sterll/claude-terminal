@@ -135,10 +135,32 @@ describe('SessionBriefService', () => {
 
   const params = { projectPath: '/p', sessionId: 'sess-1', language: 'fr' };
 
-  test('status before any brief: nothing cached, every message is new, and no model call', async () => {
+  test('status before any brief: nothing cached, no transcript read, no model call', async () => {
+    const loadMessages = jest.fn(async () => transcript);
+    const loadTail = jest.fn();
+    service = new SessionBriefService({ loadMessages, loadTail, runPrompt, dir, now: () => 1000 });
     const status = await service.status(params);
-    expect(status).toMatchObject({ success: true, brief: null, newMessages: 2 });
+    expect(status).toMatchObject({ success: true, brief: null, newMessages: null });
+    expect(loadMessages).not.toHaveBeenCalled();
+    expect(loadTail).not.toHaveBeenCalled();
     expect(runPrompt).not.toHaveBeenCalled();
+  });
+
+  test('status with a brief reads the tail only, and says when the cursor is older than it', async () => {
+    await service.generate(params);
+    const loadMessages = jest.fn(async () => transcript);
+    let tail = { messages: [...transcript, user('More', 'u2')], truncated: true };
+    const loadTail = jest.fn(async () => tail);
+    service = new SessionBriefService({ loadMessages, loadTail, runPrompt, dir, now: () => 1000 });
+
+    expect(await service.status(params)).toMatchObject({ brief: BRIEF, newMessages: 1 });
+    expect(loadTail).toHaveBeenCalledWith('/p', 'sess-1', expect.any(Number));
+    expect(loadMessages).not.toHaveBeenCalled();
+
+    // The cursor fell out of the window: at least what the window holds is new.
+    tail = { messages: [user('Much later', 'u9'), said('ok', 'a9')], truncated: true };
+    expect(await service.status(params)).toMatchObject({ newMessages: 2, newMessagesAtLeast: true });
+    expect(loadMessages).not.toHaveBeenCalled();
   });
 
   test('the first brief reads the whole session, in the language asked, and is cached', async () => {

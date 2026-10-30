@@ -66,6 +66,19 @@ describe('session brief', () => {
     expect(view.body().querySelector('.chat-brief-generate')).not.toBeNull();
   });
 
+  test('a read that failed is retried as a read, never as a model call', async () => {
+    const view = setup({ status: { success: false, error: 'Connection lost' } });
+    view.brief.sync();
+    await flush();
+    expect(view.body().textContent).toContain(t('chat.brief.errorRead'));
+    expect(view.body().querySelector('.chat-brief-generate')).toBeNull();
+
+    view.body().querySelector('.chat-brief-reload').click();
+    await flush();
+    expect(view.api.claude.sessionBrief).toHaveBeenCalledTimes(2);
+    expect(view.api.claude.generateSessionBrief).not.toHaveBeenCalled();
+  });
+
   test('writing renders the sections, the model text escaped and its code spans kept', async () => {
     const view = setup();
     view.brief.sync();

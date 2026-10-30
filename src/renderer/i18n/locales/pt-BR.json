@@ -1990,7 +1990,8 @@
       "updating": "Atualizando...",
       "retry": "Tentar novamente",
       "errorEmpty": "Ainda não há nada para resumir.",
-      "errorFailed": "Não foi possível escrever o resumo. Tente novamente em instantes."
+      "errorFailed": "Não foi possível escrever o resumo. Tente novamente em instantes.",
+      "errorRead": "Não foi possível ler o resumo salvo."
     },
     "title": "Chat",
     "sendMessage": "Enviar",

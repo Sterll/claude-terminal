@@ -33,6 +33,13 @@ const DEFAULT_BUDGET = 60_000;
 // Spawning the CLI alone takes several seconds, and the prompt is large.
 const PROMPT_TIMEOUT_MS = 90_000;
 
+// What status() reads to count the messages since the cached brief. It runs at
+// the end of every turn of the visible tab, so it reads the tail, never the
+// whole transcript: a long session is tens of megabytes, parsed in main (and
+// carried over the channel for a remote project). A cursor older than this
+// window is reported as "at least" this many.
+const STATUS_TAIL = 400;
+
 // Two passes: the full rendering, then a compact one if it does not fit.
 const FULL = { user: 1500, assistant: 1500, toolLines: 12, plan: 1200 };
 const COMPACT = { user: 600, assistant: 500, toolLines: 0, plan: 500 };
@@ -281,13 +288,16 @@ class SessionBriefService {
   /**
    * @param {object} deps
    * @param {(projectPath: string, sessionId: string) => Promise<Array<object>>} deps.loadMessages
+   * @param {(projectPath: string, sessionId: string, limit: number) => Promise<{messages: Array<object>, truncated: boolean}>} [deps.loadTail]
+   *   The last `limit` messages, for status(). Defaults to the whole transcript.
    * @param {(opts: {systemPrompt: string, prompt: string, timeoutMs: number}) => Promise<string|null>} deps.runPrompt
    * @param {string} deps.dir - Where briefs are cached, one file per session
    * @param {number} [deps.budget]
    * @param {() => number} [deps.now]
    */
-  constructor({ loadMessages, runPrompt, dir, budget = DEFAULT_BUDGET, now = Date.now }) {
+  constructor({ loadMessages, loadTail, runPrompt, dir, budget = DEFAULT_BUDGET, now = Date.now }) {
     this.loadMessages = loadMessages;
+    this.loadTail = loadTail || (async (projectPath, sessionId) => ({ messages: await loadMessages(projectPath, sessionId), truncated: false }));
     this.runPrompt = runPrompt;
     this.dir = dir;
     this.budget = budget;
@@ -323,24 +333,29 @@ class SessionBriefService {
 
   /**
    * The cached brief and how far the session has moved since. No model call.
-   * @returns {Promise<{success: true, brief: object|null, generatedAt: number|null, language: string|null, newMessages: number, totalMessages: number}>}
+   *
+   * Without a brief the transcript is not read at all: nothing on screen uses
+   * a count then, and this runs at the end of every turn. With one, only the
+   * tail is, and `newMessagesAtLeast` says the cursor was older than it.
+   *
+   * @returns {Promise<{success: true, brief: object|null, generatedAt: number|null, language: string|null, newMessages: number|null, newMessagesAtLeast?: boolean}>}
    */
   async status({ projectPath, sessionId }) {
     checkSessionId(sessionId);
-    const [cached, messages] = await Promise.all([this._read(sessionId), this.loadMessages(projectPath, sessionId)]);
-    const totalMessages = countMessages(messages);
+    const cached = await this._read(sessionId);
     if (!cached) {
-      return { success: true, brief: null, generatedAt: null, language: null, newMessages: totalMessages, totalMessages };
+      return { success: true, brief: null, generatedAt: null, language: null, newMessages: null };
     }
+    const brief = { success: true, brief: cached.brief, generatedAt: cached.generatedAt, language: cached.language || null };
+    // A cursor with no uuid is an index from the start, which a tail cannot place.
+    const { messages, truncated } = cached.cursor?.uuid
+      ? await this.loadTail(projectPath, sessionId, STATUS_TAIL)
+      : { messages: await this.loadMessages(projectPath, sessionId), truncated: false };
     const since = messagesSince(messages, cached.cursor);
-    return {
-      success: true,
-      brief: cached.brief,
-      generatedAt: cached.generatedAt,
-      language: cached.language || null,
-      newMessages: countMessages(since || messages),
-      totalMessages,
-    };
+    // Not found in a window that holds the whole session: rewritten under the
+    // cursor (a rewind), so all of it is new, as generate() will treat it.
+    if (since || !truncated) return { ...brief, newMessages: countMessages(since || messages) };
+    return { ...brief, newMessages: countMessages(messages), newMessagesAtLeast: true };
   }
 
   /**

@@ -8,6 +8,7 @@
  * keep saying what is hidden: a dot when the brief is behind the conversation,
  * a pulse while a task runs. A click anywhere on the strip brings it back.
  *
+ * It starts collapsed: the strip is all a tab shows until the user opens it.
  * Collapsed or not, and each fold, is one choice for every chat tab,
  * remembered across launches: body classes, so every open tab follows at once
  * without being told, plus an event for the tabs that have something to
@@ -58,11 +59,15 @@ function restoreState() {
   if (restored) return;
   restored = true;
   try {
-    if (localStorage.getItem(STORAGE_KEY) === 'true') document.body.classList.add(BODY_CLASS);
+    // Collapsed unless the user opened it: a column 340px wide on every chat
+    // tab is the user's to ask for, not a default to dismiss.
+    if (localStorage.getItem(STORAGE_KEY) !== 'false') document.body.classList.add(BODY_CLASS);
     for (const section of SECTIONS) {
       if (localStorage.getItem(foldKey(section)) === 'true') document.body.classList.add(foldClass(section));
     }
-  } catch { /* stays expanded */ }
+  } catch {
+    document.body.classList.add(BODY_CLASS);
+  }
 }
 
 /**

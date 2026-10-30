@@ -2164,6 +2164,7 @@ function sessionBriefs() {
     const { dataDir } = require('../utils/paths');
     _sessionBriefs = new SessionBriefService({
       loadMessages: async (projectPath, sessionId) => (await loadSessionHistory(projectPath, sessionId, { limit: 0 })).messages,
+      loadTail: (projectPath, sessionId, limit) => loadSessionHistory(projectPath, sessionId, { limit }),
       runPrompt: (opts) => require('../services/ChatService').runHaikuPrompt(opts),
       dir: path.join(dataDir, 'session-briefs'),
     });

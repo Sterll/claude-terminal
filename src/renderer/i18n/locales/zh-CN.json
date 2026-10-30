@@ -1990,7 +1990,8 @@
       "updating": "正在更新...",
       "retry": "重试",
       "errorEmpty": "暂时没有可总结的内容。",
-      "errorFailed": "无法生成简报，请稍后再试。"
+      "errorFailed": "无法生成简报，请稍后再试。",
+      "errorRead": "无法读取已保存的简报。"
     },
     "title": "聊天",
     "sendMessage": "发送",
