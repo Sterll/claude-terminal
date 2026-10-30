@@ -430,6 +430,12 @@ class TerminalManager extends BaseComponent {
     this._postEnterExtended.delete(id);
     this._terminalSubstatus.delete(id);
     this.updateTerminalStatus(id, 'ready');
+    // The turn stopped either on an approval dialog or for good; the strict
+    // dialog test rather than the loose 'permission' signal, which also
+    // matches the word "allow" anywhere in Claude's last lines.
+    if (this._scrapesAttention(id)) {
+      this.setTerminalAttention(id, detectPermissionDialog(getTerminal(id).terminal) ? 'input' : null);
+    }
     if (this._scrapingEventCallback) this._scrapingEventCallback(id, 'done', {});
     const ctx = this._terminalContext.get(id);
     if (ctx) {
@@ -474,6 +480,7 @@ class TerminalManager extends BaseComponent {
       }
 
       this.updateTerminalStatus(id, 'working');
+      if (this._scrapesAttention(id)) this.setTerminalAttention(id, null);
       if (this._scrapingEventCallback) this._scrapingEventCallback(id, 'working', { tool: parsed.tool || null });
 
     } else if (title.includes('\u2733')) {
@@ -1130,6 +1137,58 @@ class TerminalManager extends BaseComponent {
         tab.classList.add('substatus-thinking');
       }
     }
+
+    // Read off the same stream: a permission, question or plan card is
+    // `waiting`, a turn that ended on an error banner is `error`. Any new turn
+    // supersedes both; going idle only drops a question that is gone.
+    if (substatus === 'waiting') this.setTerminalAttention(id, 'input');
+    else if (substatus === 'error') this.setTerminalAttention(id, 'error');
+    else if (status === 'working' || termData.attention === 'input') this.setTerminalAttention(id, null);
+  }
+
+  /**
+   * Flag a tab as needing the user: `input` while its session waits on an
+   * answer (permission, question, plan), `error` after a turn that failed.
+   *
+   * Kept apart from `status` on purpose. A failed chat turn is still ready for
+   * the next message, and MCP's `tab_wait` reads `status === 'ready'` as
+   * exactly that, so the error cannot be a status of its own. The flag is what
+   * the tab, the project list and the project bar draw from.
+   *
+   * @param {number|string} id
+   * @param {'input'|'error'|null} kind
+   */
+  setTerminalAttention(id, kind) {
+    const termData = getTerminal(id);
+    if (!termData) return;
+    const next = kind || null;
+    if ((termData.attention || null) === next) return;
+    updateTerminal(id, { attention: next });
+    const tab = document.querySelector(`.terminal-tab[data-id="${id}"]`);
+    if (tab) {
+      tab.classList.toggle('attention-input', next === 'input');
+      tab.classList.toggle('attention-error', next === 'error');
+      const dot = tab.querySelector('.status-dot');
+      if (dot) {
+        if (next) dot.title = t(next === 'input' ? 'terminals.attentionInput' : 'terminals.attentionError');
+        else dot.removeAttribute('title');
+      }
+    }
+    if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
+  }
+
+  /**
+   * Whether this PTY tab's attention flag is read off its screen. Only when
+   * the hooks cannot say it: they are off, or the tab runs on a remote host,
+   * whose CLI never reaches the local hook server. With hooks on they are the
+   * one source, so the two never overwrite each other.
+   */
+  _scrapesAttention(id) {
+    const termData = getTerminal(id);
+    if (!termData?.terminal) return false;
+    let hooksActive = false;
+    try { hooksActive = require('../../events').getActiveProvider() === 'hooks'; } catch (e) { /* not ready */ }
+    return !hooksActive || isRemoteProject(termData.project);
   }
 
   // ── Tab rename ──
@@ -1388,6 +1447,12 @@ class TerminalManager extends BaseComponent {
           history.push(id);
           if (history.length > 50) history.shift();
         }
+      }
+
+      // Opening the tab is reading the error. A pending answer stays flagged:
+      // looking at the question does not answer it.
+      if (prevActiveId !== id && termData.attention === 'error') {
+        this.setTerminalAttention(id, null);
       }
 
       if (this._callbacks.onActiveTerminalChange) {
@@ -2607,20 +2672,25 @@ class TerminalManager extends BaseComponent {
   }
 
   getTerminalStatsForProject(projectIndex) {
-    if (projectIndex === null || projectIndex === undefined) return { total: 0, working: 0 };
+    const empty = { total: 0, working: 0, input: 0, error: 0 };
+    if (projectIndex === null || projectIndex === undefined) return empty;
     const projects = projectsState.get().projects;
     const project = projects[projectIndex];
-    if (!project) return { total: 0, working: 0 };
+    if (!project) return empty;
     let total = 0;
     let working = 0;
+    let input = 0;
+    let error = 0;
     const terminals = terminalsState.get().terminals;
     terminals.forEach(termData => {
       if (termData.project && (sameProject(termData.project, project) || (termData.parentProjectId && termData.parentProjectId === project.id)) && termData.type !== 'fivem' && termData.type !== 'webapp' && termData.type !== 'file' && !termData.isBasic) {
         total++;
         if (termData.status === 'working') working++;
+        if (termData.attention === 'input') input++;
+        else if (termData.attention === 'error') error++;
       }
     });
-    return { total, working };
+    return { total, working, input, error };
   }
 
   showAll() {
@@ -4310,6 +4380,8 @@ class TerminalManager extends BaseComponent {
     // A worktree tab runs somewhere other than the project root; project.path
     // would silently move it back to the main checkout.
     const cwd = termData.cwd || project.path;
+    // The session that was waiting or had failed is the one being closed.
+    this.setTerminalAttention(id, null);
 
     if (currentMode === 'terminal') {
       this._api.terminal.kill({ id: ptyIdOf(termData, id) });
@@ -4864,6 +4936,7 @@ module.exports = {
   showAll: () => _getInstance().showAll(),
   setCallbacks: (cbs) => _getInstance().setCallbacks(cbs),
   updateTerminalStatus: (id, status) => _getInstance().updateTerminalStatus(id, status),
+  setTerminalAttention: (id, kind) => _getInstance().setTerminalAttention(id, kind),
   getTerminalSubstatus: (id) => _getInstance()._terminalSubstatus.get(id) || null,
   getTerminalLastTool: (id) => _getInstance()._terminalContext.get(id)?.lastTool || null,
   resumeSession: (project, sessionId, options) => _getInstance().resumeSession(project, sessionId, options),

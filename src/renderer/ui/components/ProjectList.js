@@ -378,6 +378,25 @@ class ProjectList extends BaseComponent {
     }, 100);
   }
 
+  /**
+   * The strongest attention flag among a folder's sessions, subfolders
+   * included: `input` over `error`, null when nothing is waiting.
+   * @param {string} folderId
+   * @returns {'input'|'error'|null}
+   */
+  _folderAttention(folderId) {
+    let found = null;
+    const visit = (id) => {
+      for (const project of getProjectsInFolder(id)) {
+        const stats = this._callbacks.getTerminalStatsForProject(getProjectIndex(project.id));
+        if (stats?.input > 0) return true;
+        if (stats?.error > 0) found = 'error';
+      }
+      return getChildFolders(id).some(child => visit(child.id));
+    };
+    return visit(folderId) ? 'input' : found;
+  }
+
   _renderFolderHtml(folder, depth, searchQuery = '') {
     const projectCount = countProjectsRecursive(folder.id);
     const childFolders = getChildFolders(folder.id);
@@ -441,6 +460,9 @@ class ProjectList extends BaseComponent {
     const colorStyle = safeFolderColor ? `style="color: ${safeFolderColor}"` : '';
     const colorIndicator = safeFolderColor ? `<span class="color-indicator" style="background: ${safeFolderColor}"></span>` : '';
     const folderIcon = folder.icon || null;
+    // A collapsed folder hides its projects' markers, so it carries them.
+    const folderAttention = folder.collapsed && !searchQuery ? this._folderAttention(folder.id) : null;
+    const folderCountClass = folderAttention ? ` attention-${folderAttention}` : '';
 
     // Build folder icon HTML - show custom emoji or default folder icon
     const folderIconHtml = folderIcon
@@ -456,7 +478,7 @@ class ProjectList extends BaseComponent {
         ${colorIndicator}
         ${folderIconHtml}
         <span class="folder-name">${escapeHtml(folder.name)}</span>
-        <span class="folder-count">${projectCount}</span>
+        <span class="folder-count${folderCountClass}"${folderAttention ? ` title="${escapeHtml(t(folderAttention === 'input' ? 'terminals.attentionInput' : 'terminals.attentionError'))}"` : ''}>${projectCount}</span>
         <button class="btn-folder-color" data-folder-id="${folder.id}" title="${t('projects.customize')}">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.01-.23-.26-.38-.61-.38-.99 0-.83.67-1.5 1.5-1.5H16c2.76 0 5-2.24 5-5 0-4.42-4.03-8-9-8zm-5.5 9c-.83 0-1.5-.67-1.5-1.5S5.67 9 6.5 9 8 9.67 8 10.5 7.33 12 6.5 12zm3-4C8.67 8 8 7.33 8 6.5S8.67 5 9.5 5s1.5.67 1.5 1.5S10.33 8 9.5 8zm5 0c-.83 0-1.5-.67-1.5-1.5S13.67 5 14.5 5s1.5.67 1.5 1.5S15.33 8 14.5 8zm3 4c-.83 0-1.5-.67-1.5-1.5S16.67 9 17.5 9s1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/></svg>
         </button>
@@ -750,6 +772,14 @@ class ProjectList extends BaseComponent {
     if (terminalStats.total > 0) {
       tooltipLines.push(`<div class="project-tooltip-terminals">${terminalStats.working}/${terminalStats.total} terminaux</div>`);
     }
+    if (terminalStats.input > 0) {
+      tooltipLines.push(`<div class="project-tooltip-attention input">${escapeHtml(t('projects.sessionsAwaitingInput', { count: terminalStats.input }))}</div>`);
+    }
+    if (terminalStats.error > 0) {
+      tooltipLines.push(`<div class="project-tooltip-attention error">${escapeHtml(t('projects.sessionsFailed', { count: terminalStats.error }))}</div>`);
+    }
+    // A wait outranks an error: that session is stuck until answered.
+    const attentionClass = terminalStats.input > 0 ? ' attention-input' : terminalStats.error > 0 ? ' attention-error' : '';
     const tooltipHtml = `<div class="project-tooltip">${tooltipLines.join('')}</div>`;
 
     // As a popover this closes the moment a project is picked, so an active
@@ -769,7 +799,7 @@ class ProjectList extends BaseComponent {
           ${colorIndicator}
           ${projectIconHtml}
           <span>${escapeHtml(project.name)}</span>
-          ${terminalStats.total > 0 ? `<span class="terminal-count"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
+          ${terminalStats.total > 0 ? `<span class="terminal-count${attentionClass}"><span class="working-count">${terminalStats.working}</span><span class="count-separator">/</span><span class="total-count">${terminalStats.total}</span></span>` : ''}
           ${project.isWorktree && project.worktreeBranch ? `<span class="project-worktree-badge" title="Worktree: ${escapeHtml(project.worktreeBranch)}">${escapeHtml(project.worktreeBranch)}</span>` : project.isWorktree ? '<span class="project-worktree-badge" title="Worktree">WT</span>' : ''}
           ${(() => { const pws = getWorkspacesForProject(project.id); return pws.length > 0 ? `<span class="project-workspace-badge" title="${escapeHtml(pws.map(w => w.name).join(', '))}" style="color: ${sanitizeColor(pws[0].color) || 'var(--accent)'}">${escapeHtml(pws[0].icon || t('workspace.badge'))}</span>` : ''; })()}
           ${pathMissing ? `<span class="path-missing-badge" title="${t('projects.pathMissingTitle')}"><svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg></span>` : ''}${buildHostBadgeHtml(project, { compact: true })}

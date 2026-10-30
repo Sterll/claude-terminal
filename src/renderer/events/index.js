@@ -310,6 +310,36 @@ function wireDashboardStatsConsumer() {
   );
 }
 
+// Tools whose call is itself a question to the user.
+// Tool name (case-insensitive) → { type, i18nKey }
+const attentionTools = {
+  'askuserquestion': { type: 'question', key: 'notifQuestion' },
+  'exitplanmode':    { type: 'plan',     key: 'notifPlan' },
+};
+
+// Tools `acceptEdits` answers on its own — everything else still prompts in that mode.
+const AUTO_ACCEPTED_EDIT_TOOLS = new Set([
+  'edit', 'write', 'multiedit', 'notebookedit', 'applypatch'
+]);
+
+/**
+ * True when the session's permission mode means the CLI will never put a prompt
+ * on screen for this tool — so the notification would ask the user to decide
+ * something that has already been decided.
+ *
+ * The PermissionRequest hook is an extension point, not the prompt itself: it
+ * fires on every permission decision, including the ones the mode short-circuits.
+ * `plan` and `auto` are deliberately left out — both can still end up asking.
+ *
+ * @param {string|null} mode - `permission_mode` from the hook payload
+ * @param {string|null} tool - Tool being requested
+ */
+function modeAnswersItself(mode, tool) {
+  if (mode === 'bypassPermissions' || mode === 'dontAsk') return true;
+  if (mode === 'acceptEdits') return AUTO_ACCEPTED_EDIT_TOOLS.has(String(tool || '').toLowerCase());
+  return false;
+}
+
 // ── Consumer: Attention Needed (hooks-only — AskUserQuestion, PermissionRequest) ──
 // These events mean Claude is waiting for user input — notify immediately.
 // Dedup: AskUserQuestion triggers both PreToolUse AND PermissionRequest, so we
@@ -320,40 +350,11 @@ function wireAttentionConsumer() {
   const lastAttentionNotif = new Map(); // projectId -> timestamp
   const DEDUP_MS = 5000;
 
-  // Tool name (case-insensitive) → { type, i18nKey }
-  const attentionTools = {
-    'askuserquestion': { type: 'question', key: 'notifQuestion' },
-    'exitplanmode':    { type: 'plan',     key: 'notifPlan' },
-  };
-
   function shouldNotify(projectId) {
     const last = lastAttentionNotif.get(projectId) || 0;
     if (Date.now() - last < DEDUP_MS) return false;
     lastAttentionNotif.set(projectId, Date.now());
     return true;
-  }
-
-  // Tools `acceptEdits` answers on its own — everything else still prompts in that mode.
-  const AUTO_ACCEPTED_EDIT_TOOLS = new Set([
-    'edit', 'write', 'multiedit', 'notebookedit', 'applypatch'
-  ]);
-
-  /**
-   * True when the session's permission mode means the CLI will never put a prompt
-   * on screen for this tool — so the notification would ask the user to decide
-   * something that has already been decided.
-   *
-   * The PermissionRequest hook is an extension point, not the prompt itself: it
-   * fires on every permission decision, including the ones the mode short-circuits.
-   * `plan` and `auto` are deliberately left out — both can still end up asking.
-   *
-   * @param {string|null} mode - `permission_mode` from the hook payload
-   * @param {string|null} tool - Tool being requested
-   */
-  function modeAnswersItself(mode, tool) {
-    if (mode === 'bypassPermissions' || mode === 'dontAsk') return true;
-    if (mode === 'acceptEdits') return AUTO_ACCEPTED_EDIT_TOOLS.has(String(tool || '').toLowerCase());
-    return false;
   }
 
   consumerUnsubscribers.push(
@@ -478,6 +479,13 @@ function wireTerminalStatusConsumer() {
     } catch (err) { /* TerminalManager not ready */ }
   };
 
+  const setAttention = (terminalId, kind) => {
+    try {
+      const TerminalManager = require('../ui/components/TerminalManager');
+      TerminalManager.setTerminalAttention(terminalId, kind);
+    } catch (err) { /* TerminalManager not ready */ }
+  };
+
   /**
    * The PTY tab this event belongs to, or null if that cannot be established.
    * Chat tabs are filtered out: they drive their badge from the SDK stream
@@ -512,7 +520,34 @@ function wireTerminalStatusConsumer() {
     // so its completion is what keeps the watchdog from firing mid-work.
     eventBus.on(EVENT_TYPES.TOOL_END, (e) => {
       const terminalId = terminalTab(e, { adopt: false });
-      if (terminalId !== null && idleWatchdogs.has(terminalId)) armIdleWatchdog(terminalId, setStatus);
+      if (terminalId === null) return;
+      if (idleWatchdogs.has(terminalId)) armIdleWatchdog(terminalId, setStatus);
+      // The tool the user was asked about ran, so they answered.
+      setAttention(terminalId, null);
+    }),
+
+    // The tab waits on the user: an approval the mode does not settle itself,
+    // or a tool whose call is a question. Anything else the session does next
+    // means it moved on: a denial gets no PostToolUse, only the next tool or
+    // the end of the turn.
+    eventBus.on(EVENT_TYPES.CLAUDE_PERMISSION, (e) => {
+      const terminalId = terminalTab(e, { adopt: false });
+      if (terminalId === null) return;
+      if (modeAnswersItself(e.data?.permissionMode || null, e.data?.tool || null)) return;
+      setAttention(terminalId, 'input');
+    }),
+    eventBus.on(EVENT_TYPES.TOOL_START, (e) => {
+      const terminalId = terminalTab(e, { adopt: false });
+      if (terminalId === null) return;
+      setAttention(terminalId, attentionTools[String(e.data?.toolName || '').toLowerCase()] ? 'input' : null);
+    }),
+    eventBus.on(EVENT_TYPES.TOOL_ERROR, (e) => {
+      const terminalId = terminalTab(e, { adopt: false });
+      if (terminalId !== null) setAttention(terminalId, null);
+    }),
+    eventBus.on(EVENT_TYPES.PROMPT_SUBMIT, (e) => {
+      const terminalId = terminalTab(e, { adopt: false });
+      if (terminalId !== null) setAttention(terminalId, null);
     }),
 
     // Session end (Stop/SessionEnd) → set tab to 'ready'
@@ -524,6 +559,7 @@ function wireTerminalStatusConsumer() {
       if (terminalId === null) return;
       clearIdleWatchdog(terminalId);
       setStatus(terminalId, 'ready');
+      setAttention(terminalId, null);
     }),
 
     // PreCompact → show compacting notification for terminal-mode projects

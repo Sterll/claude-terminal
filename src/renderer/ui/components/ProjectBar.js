@@ -175,8 +175,19 @@ class ProjectBar extends BaseComponent {
       : '';
 
     const stats = this._callbacks.getTerminalStatsForProject(getProjectIndex(project.id)) || { total: 0, working: 0 };
+    // Only the open project's tabs are on screen, so this pill is the one
+    // place a session waiting in another project can say so. A wait outranks
+    // an error: that session is stuck until answered.
+    const sessionState = stats.input > 0 ? ' attention-input'
+      : stats.error > 0 ? ' attention-error'
+      : stats.working > 0 ? ' working' : '';
+    const sessionTitle = [
+      t('projects.openSessions', { count: stats.total }),
+      stats.input > 0 ? t('projects.sessionsAwaitingInput', { count: stats.input }) : null,
+      stats.error > 0 ? t('projects.sessionsFailed', { count: stats.error }) : null,
+    ].filter(Boolean).join('\n');
     const sessionBadge = stats.total > 0
-      ? `<span class="project-tab-sessions${stats.working > 0 ? ' working' : ''}" title="${escapeHtml(t('projects.openSessions', { count: stats.total }))}">${stats.total}</span>`
+      ? `<span class="project-tab-sessions${sessionState}" title="${escapeHtml(sessionTitle)}">${stats.total}</span>`
       : '';
 
     const missing = isPathMissing(project.id)

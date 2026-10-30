@@ -39,7 +39,9 @@
   --warning: #f59e0b;
   --danger: #ef4444;
   --danger-hover: #f87171;
+  --danger-rgb: 239, 68, 68;
   --info: #3b82f6;
+  --info-rgb: 59, 130, 246;
   --purple: #a855f7;
   --purple-hover: #9333ea;
 
@@ -255,6 +257,13 @@ select:focus-visible {
 @keyframes pulse-waiting {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
+}
+
+/* A ring spreading out of a status dot: transform and opacity only, so it
+   stays on the compositor. */
+@keyframes attention-ring {
+  0% { transform: scale(0.6); opacity: 0.9; }
+  100% { transform: scale(1.8); opacity: 0; }
 }
 
 @keyframes shake {
