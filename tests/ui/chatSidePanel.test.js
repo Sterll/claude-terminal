@@ -132,6 +132,9 @@ describe('chat side column', () => {
   test('a section is open when the column is and the section is not folded', () => {
     const els = markup();
     const panel = createSidePanel(els);
+    // Collapsed at first: nothing is open until the user opens the column.
+    expect(panel.isOpen('git')).toBe(false);
+    els.railEl.click();
     expect(panel.isOpen('git')).toBe(true);
     els.sideEl.querySelector('[data-section="git"] .chat-side-section-head').click();
     expect(panel.isOpen('git')).toBe(false);
