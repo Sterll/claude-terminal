@@ -511,6 +511,7 @@ function sessionHtml(o, { decoratePrTitle = null, view = defaultView() } = {}) {
  * @param {(opts: object) => void} deps.showToast
  * @param {(title: string) => string} [deps.decoratePrTitle]
  * @param {(summary: object) => void} [deps.onSummary] every summary read: a hook for the features that read branches and PR titles
+ * @param {(overview: object) => void} [deps.onOverview] each read whole, for the side column's Branches (chat/sideGit.js)
  * @param {(ci: object|null) => void} [deps.onCiStatus] the session's CI, see ciStatus(), each time it changes
  * @param {(count: number) => void} [deps.onAttention] how many rows need the user, each time it changes
  * @param {() => boolean} [deps.isOnScreen] whether the session is on screen: nothing is read while it is not. Always, when left out
@@ -558,6 +559,7 @@ function createGitTab(deps) {
     stale = false;
     reportCi();
     reportAttention();
+    deps.onOverview?.(summary);
     if (summary?.mode === 'session') {
       // A reader of branches and titles gets every one the session has.
       for (const ws of summary.workspaces) deps.onSummary?.(ws);
@@ -786,6 +788,34 @@ function createGitTab(deps) {
 
     /** The branch the session worked on last, for the features that read it. */
     getSummary: () => (summary?.mode === 'session' ? summary.workspaces[0] || null : summary),
+
+    /** The last read whole: every branch and pull request of the session. */
+    getOverview: () => summary,
+
+    /**
+     * Shown from the side column: the row it named unfolded and pointed at.
+     * A branch with no row of its own (nothing to do, no pull request) is in
+     * the worktrees list, unfolded instead. Call after show().
+     */
+    reveal(key) {
+      if (!summary?.isRepo) return;
+      const row = rowsOf(summary).find((r) => r.key === key);
+      if (row) {
+        view.filter = null;
+        if (row.verdict.group === 'done') view.doneOpen = true;
+        view.expanded.add(key);
+      } else if (summary.mode === 'session') {
+        view.worktreesOpen = true;
+      }
+      render();
+      const target = row
+        ? [...panelEl.querySelectorAll('.session-git-row')].find((el) => el.dataset.key === key)
+        : panelEl.querySelector('.session-git-worktrees');
+      if (!target) return;
+      target.scrollIntoView?.({ block: 'nearest' });
+      target.classList.add('chat-task-flash');
+      setTimeout(() => target.classList.remove('chat-task-flash'), 1400);
+    },
 
     destroy() {
       destroyed = true;

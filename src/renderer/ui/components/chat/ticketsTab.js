@@ -54,6 +54,7 @@ function sourceLabel(source) {
  * @param {() => string|null} deps.getProjectId
  * @param {(opts: object) => void} deps.showToast
  * @param {() => string} [deps.buildRecap] the session's recap, offered as a comment draft
+ * @param {() => void} [deps.onChange] the links or a ticket's state changed: the side column's Tickets redraw (chat/sideTickets.js)
  */
 function createTicketsTab(deps) {
   const { api, panelEl } = deps;
@@ -63,6 +64,7 @@ function createTicketsTab(deps) {
   let providers = [];
   let links = [];
   const issues = new Map(); // ref → { issue?, error?, at }
+  const fetching = new Set(); // refs on their way: the tab and the side column ask for the same ones
   const metadata = new Map(); // connectionId → metadata
   const contextParents = new Map(); // ref → { issue, connectionId } of the dimmed parents last drawn
   let visible = false;
@@ -90,6 +92,7 @@ function createTicketsTab(deps) {
   const keyOf = (ref) => ref.slice(ref.indexOf(':') + 1);
 
   function updateBadge() {
+    deps.onChange?.();
     if (!deps.badgeEl) return;
     const n = linked().length;
     const pending = suggested().length;
@@ -150,19 +153,27 @@ function createTicketsTab(deps) {
 
   async function fetchIssues({ force = false } = {}) {
     const due = linked().filter((l) => {
+      if (fetching.has(l.ref)) return false;
       const hit = issues.get(l.ref);
       return force || !hit || Date.now() - hit.at > ISSUE_TTL_MS;
     });
+    due.forEach((l) => fetching.add(l.ref));
     await Promise.all(due.map(async (l) => {
-      const conn = connectionFor(l);
-      if (!conn) {
-        issues.set(l.ref, { error: { code: 'NOT_FOUND' }, at: Date.now() });
-        return;
+      try {
+        const conn = connectionFor(l);
+        if (!conn) {
+          issues.set(l.ref, { error: { code: 'NOT_FOUND' }, at: Date.now() });
+          return;
+        }
+        const res = await api.issueTrackers.getIssue(conn.id, keyOf(l.ref));
+        issues.set(l.ref, res?.ok ? { issue: res.issue, at: Date.now() } : { error: res, at: Date.now() });
+      } finally {
+        fetching.delete(l.ref);
       }
-      const res = await api.issueTrackers.getIssue(conn.id, keyOf(l.ref));
-      issues.set(l.ref, res?.ok ? { issue: res.issue, at: Date.now() } : { error: res, at: Date.now() });
     }));
-    if (!destroyed && visible && due.length) render();
+    if (destroyed || !due.length) return;
+    if (visible) render();
+    deps.onChange?.();
   }
 
   async function search(text) {
@@ -198,6 +209,7 @@ function createTicketsTab(deps) {
     if (res?.ok) issues.set(ref, { issue: res.issue, at: Date.now() });
     else deps.showToast({ type: 'error', title: t('tickets.errors.updateFailed', { key: hit.issue.key }), message: res?.error || '' });
     if (visible) render();
+    if (res?.ok) deps.onChange?.();
   }
 
   // ── Rendering ──
@@ -723,6 +735,35 @@ function createTicketsTab(deps) {
 
     getKey: () => key,
     getLinks: () => links.slice(),
+
+    /** A tracker is connected: there is something to link to. */
+    isAvailable: () => connections.length > 0,
+
+    /** What is known of a linked ticket: `{ issue }`, `{ error }`, or null before its first read. */
+    getIssue: (ref) => issues.get(ref) || null,
+
+    /** The linked tickets' states, for the side column: the tab's cache, so each is read once per 30 s whoever asks. */
+    loadIssues: () => fetchIssues(),
+
+    /** From the side column's "Link a ticket": the search, open. Call after show(). */
+    openSearch() {
+      if (searching) {
+        panelEl.querySelector('.session-tickets-search-input')?.focus();
+        return;
+      }
+      searching = true;
+      render({ focusSearch: true });
+      if (searchResults === null) search('');
+    },
+
+    /** From the side column: the ticket's row, pointed at. Call after show(). */
+    reveal(ref) {
+      const row = [...panelEl.querySelectorAll('.session-tickets-row')].find((el) => el.dataset.ref === ref);
+      if (!row) return;
+      row.scrollIntoView?.({ block: 'nearest' });
+      row.classList.add('chat-task-flash');
+      setTimeout(() => row.classList.remove('chat-task-flash'), 1400);
+    },
 
     destroy() {
       destroyed = true;

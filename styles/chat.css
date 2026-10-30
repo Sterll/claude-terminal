@@ -5618,7 +5618,14 @@ input.chat-elicit-input[type="checkbox"] {
   overflow-y: auto;
 }
 
-.chat-side-tasks { border-top: 1px solid var(--border-color); }
+/* A line between two sections on the page, never above the first one: the
+   brief can be off in the settings, and the other three only show once they
+   have something. */
+.chat-view:not(.brief-off) .chat-side-brief ~ .chat-side-section:not([hidden]),
+.chat-side-git:not([hidden]) ~ .chat-side-section:not([hidden]),
+.chat-side-tickets:not([hidden]) ~ .chat-side-section:not([hidden]) { border-top: 1px solid var(--border-color); }
+.chat-side-git[hidden],
+.chat-side-tickets[hidden],
 .chat-side-tasks[hidden] { display: none; }
 
 /* Each section folds from its header, which stays at the top of the column
@@ -5659,14 +5666,20 @@ input.chat-elicit-input[type="checkbox"] {
 }
 
 body.chat-side-brief-folded .chat-side-brief .chat-side-chevron,
+body.chat-side-git-folded .chat-side-git .chat-side-chevron,
+body.chat-side-tickets-folded .chat-side-tickets .chat-side-chevron,
 body.chat-side-tasks-folded .chat-side-tasks .chat-side-chevron { transform: rotate(-90deg); }
 
 body.chat-side-brief-folded .chat-brief-body,
+body.chat-side-git-folded .chat-side-git-body,
+body.chat-side-tickets-folded .chat-side-tickets-body,
 body.chat-side-tasks-folded .chat-tasks-body { display: none; }
 
 /* Folded or not, a header keeps its section's signal, like the strip: a dot
-   when the brief is behind, a pulse while a task runs. */
+   when the brief is behind or a detected ticket waits, a red one when a
+   branch needs the user, a pulse while a task runs. */
 .chat-side-section-head.behind .chat-side-section-title::after,
+.chat-side-section-head.attention .chat-side-section-title::after,
 .chat-side-section-head.running .chat-side-section-title::after {
   content: '';
   display: inline-block;
@@ -5678,8 +5691,20 @@ body.chat-side-tasks-folded .chat-tasks-body { display: none; }
   vertical-align: middle;
 }
 
+.chat-side-section-head.attention .chat-side-section-title::after { background: var(--danger); }
+
 .chat-side-section-head.running .chat-side-section-title::after {
   animation: chat-tasks-pulse 1.6s ease-in-out infinite;
+}
+
+/* How many branches, how many tickets: beside the title, quieter than it. */
+.chat-side-count {
+  margin-left: 5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Collapsed: the strip. A button across its whole height, so it is hard to miss. */
@@ -5706,15 +5731,22 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 .chat-side-rail svg { width: 14px; height: 14px; }
 
 .chat-side-rail-brief,
+.chat-side-rail-git,
+.chat-side-rail-tickets,
 .chat-side-rail-tasks {
   position: relative;
   display: flex;
 }
 
+.chat-side-rail-git[hidden],
+.chat-side-rail-tickets[hidden],
 .chat-side-rail-tasks[hidden] { display: none; }
 
-/* The brief is behind the conversation: a dot, like an unread marker. */
-.chat-side-rail-brief.behind::after {
+/* The brief is behind the conversation, or a detected ticket waits for an
+   answer: a dot, like an unread marker. A branch that needs the user: red. */
+.chat-side-rail-brief.behind::after,
+.chat-side-rail-tickets.behind::after,
+.chat-side-rail-git.attention::after {
   content: '';
   position: absolute;
   top: -3px;
@@ -5727,6 +5759,8 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 
 /* Live work pulses the icon rather than stacking a counter on top of it: a
    badge large enough to read covers the glyph it is meant to annotate. */
+.chat-side-rail-git.attention::after { background: var(--danger); }
+
 .chat-side-rail-tasks.running {
   color: var(--accent);
   animation: chat-tasks-pulse 1.6s ease-in-out infinite;
@@ -5743,13 +5777,12 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
   .chat-side-section-head.running .chat-side-section-title::after { animation: none; }
 }
 
-/* Brief turned off in the settings: the column is the tasks' alone, and only
-   there while the tab has some. */
+/* Brief turned off in the settings: the column is for the other three, and
+   only there while one of them has something to show. */
 .chat-view.brief-off .chat-side-brief,
 .chat-view.brief-off .chat-side-rail-brief { display: none; }
-.chat-view.brief-off .chat-side-tasks { border-top: none; }
-.chat-view.brief-off:not(.has-tasks) .chat-side,
-.chat-view.brief-off:not(.has-tasks) .chat-side-rail { display: none; }
+.chat-view.brief-off:not(.has-tasks):not(.has-git):not(.has-tickets) .chat-side,
+.chat-view.brief-off:not(.has-tasks):not(.has-git):not(.has-tickets) .chat-side-rail { display: none; }
 
 .chat-tasks-clear {
   display: flex;
@@ -5943,6 +5976,216 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* ── Branches and Tickets, the side column's middle ──
+   One line of what it is, one line of where it stands. A row opens its tab. */
+
+.chat-side-git-body,
+.chat-side-tickets-body { padding: 6px 8px 8px; }
+
+.chat-side-branch,
+.chat-side-ticket {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.chat-side-branch:hover,
+.chat-side-ticket:hover { background: var(--bg-tertiary); }
+.chat-side-branch:focus-visible,
+.chat-side-ticket:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+
+.chat-side-branch-main,
+.chat-side-ticket-main { flex: 1; min-width: 0; }
+
+.chat-side-branch-glyph {
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  margin-top: 1px;
+  color: var(--text-muted);
+}
+
+.chat-side-branch-line,
+.chat-side-ticket-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-side-branch-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-side-branch.removed .chat-side-branch-name { color: var(--text-muted); }
+
+.chat-side-branch-meta,
+.chat-side-ticket-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 8px;
+  margin-top: 3px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-side-branch-dirty { color: var(--warning); }
+
+.chat-side-verdict.action { color: var(--danger); }
+.chat-side-verdict.waiting { color: var(--warning); }
+.chat-side-verdict.ready { color: var(--success); }
+.chat-side-verdict.done { color: var(--purple); }
+
+/* The pull request: coloured by its verdict, marked with its CI. Opens it. */
+.chat-side-pr {
+  --side-pr-color: var(--text-muted);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 5px;
+  border: 1px solid color-mix(in srgb, var(--side-pr-color) 45%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--side-pr-color) 10%, transparent);
+  color: var(--side-pr-color);
+  font: inherit;
+  font-size: var(--font-2xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.chat-side-pr:hover { background: color-mix(in srgb, var(--side-pr-color) 22%, transparent); }
+.chat-side-pr svg { width: 10px; height: 10px; }
+.chat-side-pr.action { --side-pr-color: var(--danger); }
+.chat-side-pr.waiting { --side-pr-color: var(--warning); }
+.chat-side-pr.ready { --side-pr-color: var(--success); }
+.chat-side-pr.done { --side-pr-color: var(--purple); }
+
+.chat-side-ci-running {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: chat-tasks-pulse 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-side-ci-running { animation: none; }
+}
+
+.chat-side-ticket .issue-state { margin-top: 2px; }
+
+.chat-side-ticket-key {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.chat-side-ticket-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-xs);
+  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-side-ticket-meta .issue-priority { width: 12px; height: 12px; }
+.chat-side-ticket-meta .issue-priority svg { width: 11px; height: 11px; }
+.chat-side-ticket-meta .issue-progress { font-size: var(--font-2xs); }
+.chat-side-ticket-meta .issue-progress svg { width: 11px; height: 11px; }
+
+/* Detected, not linked yet: dashed, answered from here. */
+.chat-side-ticket.suggested {
+  align-items: center;
+  border: 1px dashed var(--border-color);
+}
+
+.chat-side-ticket.suggested .chat-side-ticket-title { color: var(--text-secondary); }
+.chat-side-ticket-why { color: var(--accent); }
+
+.chat-side-ticket-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.chat-side-ticket-confirm {
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-2xs);
+  cursor: pointer;
+}
+
+.chat-side-ticket-confirm:hover { background: var(--accent); }
+
+.chat-side-ticket-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.chat-side-ticket-dismiss:hover { background: var(--bg-hover); color: var(--text-primary); }
+.chat-side-ticket-dismiss svg { width: 11px; height: 11px; }
+
+.chat-side-empty {
+  padding: 4px 8px 2px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.chat-side-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 4px 0;
+}
+
+.chat-side-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--font-2xs);
+  cursor: pointer;
+}
+
+.chat-side-link:hover { background: var(--bg-hover); color: var(--text-primary); }
+.chat-side-link svg { width: 11px; height: 11px; }
+.chat-side-link.end { margin-left: auto; }
 
 /* The other tabs (Changes, Documents) are siblings of .chat-body, so the row
    has to yield when the transcript is hidden — otherwise it would keep its

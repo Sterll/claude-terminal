@@ -477,6 +477,15 @@ describe('createGitTab', () => {
     });
   });
 
+  test('every read is handed over whole, for the side column', async () => {
+    const onOverview = jest.fn();
+    const tab = createGitTab({ ...deps, onOverview });
+    await tab.probe();
+    expect(onOverview).toHaveBeenCalledTimes(1);
+    expect(onOverview.mock.calls[0][0]).toBe(tab.getOverview());
+    expect(tab.getOverview().branch).toBe('feat/x');
+  });
+
   test('a summary that arrives after destroy is dropped', async () => {
     let release;
     api.git.sessionSummary.mockImplementationOnce(() => new Promise((r) => { release = r; }));
@@ -582,6 +591,27 @@ describe('a session that worked in its own worktrees', () => {
     o.createdPrs[0].pullRequest.repo = 'upstream/app';
     document.body.innerHTML = sessionHtml(o);
     expect(document.querySelector('[data-key="https://github.com/acme/app/pull/3"] .session-git-repo').textContent).toBe('upstream');
+  });
+
+  test('shown from the side column, the row it named is unfolded, a done one with its group; a branch with no row opens the worktrees', async () => {
+    document.body.innerHTML = '<div class="panel"></div>';
+    const panelEl = document.querySelector('.panel');
+    const api = { git: { sessionOverview: jest.fn(async () => overviewOf()) }, dialog: { openExternal: jest.fn() } };
+    const tab = createGitTab({
+      api, panelEl, getCwd: () => '/repo', getSessionId: () => 'sess', sessionStartedAt: 0,
+      onAvailable: jest.fn(), openGitScreen: jest.fn(), openSettings: jest.fn(), showToast: jest.fn(),
+    });
+    await tab.probe();
+    tab.show();
+    const merged = 'https://github.com/acme/app/pull/4';
+    tab.reveal(merged);
+    const row = [...panelEl.querySelectorAll('.session-git-row')].find((el) => el.dataset.key === merged);
+    expect(row.classList.contains('expanded')).toBe(true);
+    expect(row.classList.contains('chat-task-flash')).toBe(true);
+
+    tab.reveal('branch:/wt/elsewhere');
+    expect(panelEl.querySelector('.session-git-worktrees').classList.contains('folded')).toBe(false);
+    tab.destroy();
   });
 
   test('a lookup that failed is said once, above the rows; nothing at all says so', () => {

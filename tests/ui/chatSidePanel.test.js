@@ -2,7 +2,8 @@
  * The chat's side column. What it must get right: one collapsed-or-not choice,
  * and one fold per section, for every chat tab, remembered across launches;
  * and a collapsed strip, or a folded header, that still says when the brief is
- * behind and when a task runs.
+ * behind, when a branch needs the user, when a detected ticket waits, and when
+ * a task runs.
  */
 
 'use strict';
@@ -15,6 +16,12 @@ function markup() {
       <section class="chat-side-section" data-section="brief">
         <div class="chat-side-section-head" role="button" tabindex="0"><span class="chat-side-section-title"></span></div>
       </section>
+      <section class="chat-side-section" data-section="git">
+        <div class="chat-side-section-head" role="button" tabindex="0"><span class="chat-side-section-title"><span class="chat-side-count"></span></span></div>
+      </section>
+      <section class="chat-side-section" data-section="tickets">
+        <div class="chat-side-section-head" role="button" tabindex="0"><span class="chat-side-section-title"><span class="chat-side-count"></span></span></div>
+      </section>
       <section class="chat-side-section" data-section="tasks">
         <div class="chat-side-section-head" role="button" tabindex="0">
           <span class="chat-side-section-title"></span><button class="chat-tasks-clear"></button>
@@ -23,6 +30,8 @@ function markup() {
     </aside>
     <button class="chat-side-rail">
       <span class="chat-side-rail-brief"></span>
+      <span class="chat-side-rail-git" hidden></span>
+      <span class="chat-side-rail-tickets" hidden></span>
       <span class="chat-side-rail-tasks" hidden></span>
     </button>`;
   document.body.appendChild(root);
@@ -89,6 +98,50 @@ describe('chat side column', () => {
     expect(tasks.classList.contains('running')).toBe(true);
     panel.setTasks({ count: 2, running: 0 });
     expect(tasks.classList.contains('running')).toBe(false);
+  });
+
+  test('the strip and the headers signal a branch that needs the user and a ticket to confirm', () => {
+    const els = markup();
+    const panel = createSidePanel(els);
+    const git = els.railEl.querySelector('.chat-side-rail-git');
+    const tickets = els.railEl.querySelector('.chat-side-rail-tickets');
+    const head = (section) => els.sideEl.querySelector(`[data-section="${section}"] .chat-side-section-head`);
+
+    panel.setGit({ count: 3, attention: 1 });
+    expect(git.hidden).toBe(false);
+    expect(git.classList.contains('attention')).toBe(true);
+    expect(head('git').classList.contains('attention')).toBe(true);
+    expect(head('git').querySelector('.chat-side-count').textContent).toBe('3');
+    panel.setGit({ count: 3, attention: 0 });
+    expect(git.classList.contains('attention')).toBe(false);
+    panel.setGit({ count: 0, attention: 0 });
+    expect(git.hidden).toBe(true);
+    expect(head('git').querySelector('.chat-side-count').textContent).toBe('');
+
+    // A connected tracker shows the icon even before anything is linked.
+    panel.setTickets({ available: true, count: 0, suggested: 0 });
+    expect(tickets.hidden).toBe(false);
+    panel.setTickets({ available: true, count: 2, suggested: 1 });
+    expect(tickets.classList.contains('behind')).toBe(true);
+    expect(head('tickets').classList.contains('behind')).toBe(true);
+    expect(head('tickets').querySelector('.chat-side-count').textContent).toBe('2');
+    panel.setTickets({ available: false, count: 0, suggested: 0 });
+    expect(tickets.hidden).toBe(true);
+  });
+
+  test('a section is open when the column is and the section is not folded', () => {
+    const els = markup();
+    const panel = createSidePanel(els);
+    // Collapsed at first: nothing is open until the user opens the column.
+    expect(panel.isOpen('git')).toBe(false);
+    els.railEl.click();
+    expect(panel.isOpen('git')).toBe(true);
+    els.sideEl.querySelector('[data-section="git"] .chat-side-section-head').click();
+    expect(panel.isOpen('git')).toBe(false);
+    expect(panel.isOpen('tickets')).toBe(true);
+    expect(localStorage.getItem('chat-side-folded-git')).toBe('true');
+    els.sideEl.querySelector('.chat-side-collapse').click();
+    expect(panel.isOpen('tickets')).toBe(false);
   });
 
   test('each section folds from its header, for every tab, and comes back folded', () => {

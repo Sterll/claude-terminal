@@ -1,12 +1,15 @@
 /**
- * The chat's side column: the session's brief on top, its background tasks
- * below, scrolled as one. Each section folds from its header, which stays at
- * the top of the column while its section scrolls under it.
+ * The chat's side column: the session's brief on top, then its branches and
+ * its tickets, its background tasks last, scrolled as one. Each section folds
+ * from its header, which stays at the top of the column while its section
+ * scrolls under it.
  *
  * Collapsed, the column leaves a strip on the right edge, the way the projects
  * column leaves one on the left. The strip, and a folded section's header,
  * keep saying what is hidden: a dot when the brief is behind the conversation,
- * a pulse while a task runs. A click anywhere on the strip brings it back.
+ * a red one when a branch needs the user, one when a detected ticket waits for
+ * an answer, a pulse while a task runs. A click anywhere on the strip brings
+ * it back.
  *
  * It starts collapsed: the strip is all a tab shows until the user opens it.
  * Collapsed or not, and each fold, is one choice for every chat tab,
@@ -17,10 +20,12 @@
 
 'use strict';
 
+const { t } = require('../../../i18n');
+
 const STORAGE_KEY = 'chat-side-collapsed';
 const BODY_CLASS = 'chat-side-collapsed';
 const EVENT = 'chat-side-toggled';
-const SECTIONS = ['brief', 'tasks'];
+const SECTIONS = ['brief', 'git', 'tickets', 'tasks'];
 
 const foldClass = (section) => `chat-side-${section}-folded`;
 const foldKey = (section) => `chat-side-folded-${section}`;
@@ -79,6 +84,8 @@ function restoreState() {
 function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
   restoreState();
   const briefSignal = railEl.querySelector('.chat-side-rail-brief');
+  const gitSignal = railEl.querySelector('.chat-side-rail-git');
+  const ticketsSignal = railEl.querySelector('.chat-side-rail-tickets');
   const tasksSignal = railEl.querySelector('.chat-side-rail-tasks');
   const headOf = (section) => sideEl.querySelector(`.chat-side-section[data-section="${section}"] .chat-side-section-head`);
 
@@ -111,13 +118,41 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
   railEl.addEventListener('click', onRailClick);
   window.addEventListener(EVENT, onToggled);
 
+  /** The number beside a section's title. */
+  const setCount = (section, count) => {
+    const el = headOf(section)?.querySelector('.chat-side-count');
+    if (el) el.textContent = count ? String(count) : '';
+  };
+
   return {
     isCollapsed,
     isFolded,
+    /** A section's content is on the page: the column open, the section unfolded. */
+    isOpen: (section) => !isCollapsed() && !isFolded(section),
     /** The brief is behind the conversation: a dot on the strip and on its header. */
     setBriefBehind(behind) {
       briefSignal.classList.toggle('behind', !!behind);
       headOf('brief')?.classList.toggle('behind', !!behind);
+    },
+    /** The session's branches: a count, and a red dot while one needs the user. */
+    setGit({ count, attention }) {
+      setCount('git', count);
+      gitSignal.hidden = !count;
+      gitSignal.classList.toggle('attention', attention > 0);
+      headOf('git')?.classList.toggle('attention', attention > 0);
+      const label = attention > 0 ? t('chat.git.attention', { count: attention }) : '';
+      gitSignal.title = label;
+      headOf('git')?.setAttribute('title', label);
+    },
+    /** The session's tickets: shown once a tracker is connected, a dot while a detected one waits. */
+    setTickets({ available, count, suggested }) {
+      setCount('tickets', count);
+      ticketsSignal.hidden = !available;
+      ticketsSignal.classList.toggle('behind', suggested > 0);
+      headOf('tickets')?.classList.toggle('behind', suggested > 0);
+      const label = suggested > 0 ? t('chat.side.suggested', { count: suggested }) : '';
+      ticketsSignal.title = label;
+      headOf('tickets')?.setAttribute('title', label);
     },
     /** This tab's tasks: the strip's icon only once it has some, pulsing while one runs. */
     setTasks({ count, running }) {

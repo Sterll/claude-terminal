@@ -298,6 +298,7 @@ module.exports = {
   GROUPS,
   prVerdict,
   branchVerdict,
+  workspacesOf,
   rowsOf,
   groupRows,
   attentionCount,

@@ -1971,7 +1971,16 @@
       "title": "Session",
       "brief": "Brief",
       "collapse": "Collapse",
-      "expand": "Show the brief and tasks"
+      "expand": "Show the session column",
+      "branches": "Branches",
+      "tickets": "Tickets",
+      "worktree": "worktree",
+      "openGitTab": "Git tab",
+      "openTicketsTab": "Tickets tab",
+      "showInGitTab": "Show in the Git tab",
+      "showInTicketsTab": "Show in the Tickets tab",
+      "suggested": "To confirm: {count}",
+      "noTickets": "No ticket linked yet."
     },
     "brief": {
       "intro": "A summary of this conversation: what it is for, where it stands, what was decided and what to know before carrying on.",
