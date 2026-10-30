@@ -49,11 +49,13 @@ const { createTicketsWiring } = require('./chat/ticketsWiring');
 const { formatTokenCount, contextSummaryText, contextSummaryHtml, contextUsageRows } = require('./chat/contextUsage');
 const { createContextHandoff, normalizeHandoffThreshold, autoCompactWindowFor, buildHandoffSeed, parseHandoffSeed, parseHandoffRequest } = require('./chat/contextHandoff');
 const { createIdleHibernation, hibernateDelayMs } = require('./chat/idleHibernation');
+const { createSessionBrief } = require('./chat/sessionBrief');
+const { createSidePanel } = require('./chat/sidePanel');
 
 /** Paperclip, for the chip an attached file leaves in the composer. */
 const ATTACHMENT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>';
 
-const { getSetting, setSetting, isNotificationsEnabled } = require('../../state/settings.state');
+const { getSetting, setSetting, isNotificationsEnabled, settingsState } = require('../../state/settings.state');
 const { updateTerminal, getTerminal } = require('../../state/terminals.state');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
@@ -314,21 +316,41 @@ class ChatView extends BaseComponent {
             <div class="chat-welcome-text">${escapeHtml(t('chat.welcomeMessage'))}</div>
           </div>
         </div>
-        <!-- Background tasks for THIS session, beside the conversation rather
-             than replacing it: the point is to watch work run while still
-             reading the transcript. -->
-        <aside class="chat-tasks-drawer" hidden>
-          <div class="chat-tasks-head">
-            <span class="chat-tasks-title">${escapeHtml(t('tasks.navTitle') || 'Background tasks')}</span>
-            <button class="chat-tasks-clear" title="${escapeHtml(t('tasks.clearFinished') || 'Clear finished tasks')}" hidden>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
-            </button>
-            <button class="chat-tasks-close" title="${escapeHtml(t('common.close') || 'Close')}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <!-- The session's side column: its brief on top, its background tasks
+             below, beside the conversation rather than replacing it. Collapsed,
+             it leaves a strip that still signals both (chat/sidePanel.js). -->
+        <aside class="chat-side">
+          <div class="chat-side-head">
+            <span class="chat-side-title">${escapeHtml(t('chat.side.title'))}</span>
+            <button class="chat-side-collapse" title="${escapeHtml(t('chat.side.collapse'))}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
             </button>
           </div>
-          <div class="chat-tasks-body"></div>
+          <div class="chat-side-scroll">
+            <section class="chat-side-section chat-side-brief" data-section="brief">
+              <div class="chat-side-section-head" role="button" tabindex="0">
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="chat-side-section-title">${escapeHtml(t('chat.side.brief'))}</span>
+              </div>
+              <div class="chat-brief-body"></div>
+            </section>
+            <section class="chat-side-section chat-side-tasks" data-section="tasks" hidden>
+              <div class="chat-side-section-head" role="button" tabindex="0">
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <span class="chat-side-section-title">${escapeHtml(t('tasks.navTitle') || 'Background tasks')}</span>
+                <button class="chat-tasks-clear" title="${escapeHtml(t('tasks.clearFinished') || 'Clear finished tasks')}" hidden>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
+                </button>
+              </div>
+              <div class="chat-tasks-body"></div>
+            </section>
+          </div>
         </aside>
+        <button class="chat-side-rail" title="${escapeHtml(t('chat.side.expand'))}">
+          <svg class="chat-side-rail-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          <span class="chat-side-rail-brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>
+          <span class="chat-side-rail-tasks" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        </button>
       </div>
       <div class="chat-changes-panel" hidden></div>
       <div class="session-git-panel" hidden></div>
@@ -397,9 +419,6 @@ class ChatView extends BaseComponent {
             <span class="chat-status-elapsed" title="${escapeHtml(t('chat.elapsedTitle') || 'Time spent on this turn')}" hidden></span>
             <button class="chat-search-btn" title="${escapeHtml(t('chat.searchConversation') || 'Search in conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            </button>
-            <button class="chat-tasks-btn" title="${escapeHtml(t('tasks.navTitle') || 'Background tasks')}" hidden>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
             <button class="chat-export-btn" title="${escapeHtml(t('chat.exportConversation') || 'Export conversation')}">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -555,10 +574,47 @@ class ChatView extends BaseComponent {
   const sendBtn = chatView.querySelector('.chat-send-btn');
   const stopBtn = chatView.querySelector('.chat-stop-btn');
   const bgBtn = chatView.querySelector('.chat-bg-btn');
-  const tasksDrawerEl = chatView.querySelector('.chat-tasks-drawer');
+  const chatBodyEl = chatView.querySelector('.chat-body');
+  const tasksSectionEl = chatView.querySelector('.chat-side-tasks');
   const tasksBodyEl = chatView.querySelector('.chat-tasks-body');
-  const tasksBtn = chatView.querySelector('.chat-tasks-btn');
   const tasksClearEl = chatView.querySelector('.chat-tasks-clear');
+  // Hidden behind another chat tab, another terminal tab or another project.
+  const sideOnScreen = () => chatBodyEl.offsetParent !== null;
+  // Off in the settings: no brief and nothing read for it. The column stays
+  // for the tasks, and only once there are some (`.brief-off` in chat.css).
+  const briefEnabled = () => getSetting('sessionBriefEnabled') !== false;
+  const sidePanel = createSidePanel({
+    sideEl: chatView.querySelector('.chat-side'),
+    railEl: chatView.querySelector('.chat-side-rail'),
+    onExpand: () => renderTasks(),
+  });
+  const sessionBrief = createSessionBrief({
+    api,
+    bodyEl: chatView.querySelector('.chat-brief-body'),
+    // A cloud session's transcript is not on this machine to read.
+    getSessionId: () => (project.isCloud ? null : sdkSessionId || (resumeSessionId && !forkSession ? resumeSessionId : null)),
+    getProjectPath: () => project.path,
+    // Read collapsed too: the strip's dot says when the brief is behind.
+    isOnScreen: () => briefEnabled() && sideOnScreen(),
+    onChange: ({ behind }) => sidePanel.setBriefBehind(behind),
+  });
+  sessionBrief.sync();
+  // Back on screen (a tab, a chat tab or a project switched back): catch up.
+  const sideScreenObserver = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((entries) => {
+      if (entries.some(entry => entry.isIntersecting)) sessionBrief.onShown();
+    })
+    : null;
+  sideScreenObserver?.observe(chatBodyEl);
+  // Followed live: turned back on, the brief catches up at once.
+  const applyBriefSetting = () => {
+    const off = !briefEnabled();
+    if (chatView.classList.contains('brief-off') === off) return;
+    chatView.classList.toggle('brief-off', off);
+    if (!off) sessionBrief.onShown();
+  };
+  applyBriefSetting();
+  unsubscribers.push(settingsState.subscribe(applyBriefSetting));
   const statusDot = chatView.querySelector('.chat-status-dot');
   const statusTextEl = chatView.querySelector('.chat-status-text');
   const statusElapsedEl = chatView.querySelector('.chat-status-elapsed');
@@ -7062,6 +7118,7 @@ class ChatView extends BaseComponent {
       const previous = sessionId;
       sessionId = null;
       sdkSessionId = null;
+      sessionBrief.sync();
       api.chat.close({ sessionId: previous });
       // A mirror to claude.ai belonged to that session and ended with it
       if (remoteMirrored) paintRemoteBtn(false, null);
@@ -7982,6 +8039,7 @@ class ChatView extends BaseComponent {
     // Capture real SDK session UUID (needed for fork/resume)
     if (msg.session_id && msg.session_id !== sdkSessionId) {
       sdkSessionId = msg.session_id;
+      sessionBrief.sync();
       // The session's ticket links follow it to its real id.
       ticketsTab.onSessionId(msg.session_id);
       // Its transcript now has a name: the Git tab can say where it worked.
@@ -8472,6 +8530,7 @@ class ChatView extends BaseComponent {
       completeSubagentCard(info.card);
       taskToolIndices.delete(idx);
     }
+    sessionBrief.onTurnEnd();
   });
   unsubscribers.push(unsubDone);
 
@@ -8736,9 +8795,9 @@ class ChatView extends BaseComponent {
   unsubscribers.push(unsubElicit);
 
 
-  // ── Background tasks drawer (this tab only) ──
+  // ── Background tasks (this tab only), the side column's lower section ──
   //
-  // Reads the shared registry but shows only this tab's work: the drawer sits
+  // Reads the shared registry but shows only this tab's work: the section sits
   // next to the conversation that produced it, so anything from another tab
   // would just be noise here. Keyed on the owner rather than on the current
   // session id, so the history survives the ids rotating under it.
@@ -8746,9 +8805,6 @@ class ChatView extends BaseComponent {
   const { backgroundTasksState, listTasksForOwner, getTask: getStoredTask } = tasksStore;
 
   let tasksTicker = null;
-  // Tasks already announced to the user, so the drawer opens on the moment a
-  // task starts and not again on every later change to it.
-  const announcedTaskIds = new Set();
 
   function tabTasks() {
     return listTasksForOwner(taskOwnerKey);
@@ -8768,17 +8824,27 @@ class ChatView extends BaseComponent {
     return total >= 1000 ? `${(total / 1000).toFixed(1)}k` : String(total);
   }
 
-  function renderTasksDrawer() {
+  function renderTasks() {
     const tasks = tabTasks();
     const running = tasks.filter(task => task.status === 'running');
 
-    // The toggle only earns its place once this tab has produced a task.
-    tasksBtn.hidden = tasks.length === 0;
-    tasksBtn.classList.toggle('has-running', running.length > 0);
+    sidePanel.setTasks({ count: tasks.length, running: running.length });
+    chatView.classList.toggle('has-tasks', tasks.length > 0);
+    // The section only earns its place once this tab has produced a task.
+    tasksSectionEl.hidden = tasks.length === 0;
     // Nothing finished to forget, nothing to offer.
     tasksClearEl.hidden = tasks.length === running.length;
-    if (!tasks.length) tasksDrawerEl.hidden = true;
-    if (tasksDrawerEl.hidden) return;
+    // Durations are read off the clock, so something has to repaint them while
+    // a task runs; nothing does once none is.
+    if (running.length && !tasksTicker) {
+      tasksTicker = setInterval(() => {
+        if (!sidePanel.isCollapsed() && !sidePanel.isFolded('tasks') && sideOnScreen()) renderTasks();
+      }, 1000);
+    } else if (!running.length && tasksTicker) {
+      clearInterval(tasksTicker);
+      tasksTicker = null;
+    }
+    if (!tasks.length) return;
 
     const row = (task) => {
       const live = task.status === 'running';
@@ -8817,36 +8883,11 @@ class ChatView extends BaseComponent {
       </div>` : ''}`;
   }
 
-  function toggleTasksDrawer(force) {
-    const open = force !== undefined ? force : tasksDrawerEl.hidden;
-    tasksDrawerEl.hidden = !open;
-    // Durations are read off the clock, so nothing repaints them while the
-    // drawer is shut — and a ticker on a hidden panel is pure waste.
-    if (open && !tasksTicker) {
-      tasksTicker = setInterval(() => {
-        if (!tasksDrawerEl.hidden && tabTasks().some(task => task.status === 'running')) renderTasksDrawer();
-      }, 1000);
-    } else if (!open && tasksTicker) {
-      clearInterval(tasksTicker);
-      tasksTicker = null;
-    }
-    renderTasksDrawer();
-  }
-
-  tasksBtn.addEventListener('click', () => toggleTasksDrawer());
-  tasksDrawerEl.querySelector('.chat-tasks-close').addEventListener('click', () => toggleTasksDrawer(false));
   // Clearing forgets this tab's finished tasks only: another conversation's
-  // history is not this drawer's to throw away, and running work is never
-  // dropped. Announced ids go with them, so a task id the CLI reuses can open
-  // the drawer again rather than being taken for one already seen.
+  // history is not this section's to throw away, and running work is never
+  // dropped. With nothing left, the section goes with the last row.
   tasksClearEl.addEventListener('click', () => {
-    const dropped = tabTasks().filter(task => task.status !== 'running').map(task => task.taskId);
-    if (!tasksStore.clearFinished(taskOwnerKey)) return;
-    for (const taskId of dropped) announcedTaskIds.delete(taskId);
-    // A drawer left open on an empty list reads as broken, so it closes with
-    // the last row when nothing is still running.
-    if (!tabTasks().length) toggleTasksDrawer(false);
-    else renderTasksDrawer();
+    if (tasksStore.clearFinished(taskOwnerKey)) renderTasks();
   });
   /**
    * Where a task lives in the transcript.
@@ -8905,22 +8946,9 @@ class ChatView extends BaseComponent {
     setTimeout(() => row.classList.remove('chat-task-row-noanchor'), 700);
   });
 
-  /**
-   * A task starting is the one moment the drawer has something new to say, so
-   * it opens itself then — but only then. Reacting to every state change would
-   * re-open a drawer the user just closed, on the next duration tick.
-   */
-  function onTasksChanged() {
-    const fresh = tabTasks().filter(task => !announcedTaskIds.has(task.taskId));
-    for (const task of fresh) announcedTaskIds.add(task.taskId);
-    if (tasksDrawerEl.hidden && fresh.some(task => task.status === 'running')) {
-      toggleTasksDrawer(true); // renders on the way through
-      return;
-    }
-    renderTasksDrawer();
-  }
-
-  unsubscribers.push(backgroundTasksState.subscribe(onTasksChanged));
+  // A collapsed column is not reopened for a task: the strip pulses instead.
+  unsubscribers.push(backgroundTasksState.subscribe(() => renderTasks()));
+  renderTasks();
   unsubscribers.push(() => { if (tasksTicker) clearInterval(tasksTicker); tasksTicker = null; });
 
   // ── Background task lifecycle (live task list with stop button) ──
@@ -9532,6 +9560,9 @@ class ChatView extends BaseComponent {
       artifactRegistry.flush();
       transcriptPruner?.destroy();
       gitTab.destroy();
+      sessionBrief.destroy();
+      sidePanel.destroy();
+      sideScreenObserver?.disconnect();
       ticketsTab.destroy();
       ticketsWiring.destroy();
       scrollResizeObserver?.disconnect();

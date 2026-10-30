@@ -2156,6 +2156,22 @@ function remoteFailure(err) {
   return isTransportError(err) ? { disconnected: true, host: err.host || '' } : {};
 }
 
+// Built on first use: most sessions never ask for a brief.
+let _sessionBriefs = null;
+function sessionBriefs() {
+  if (!_sessionBriefs) {
+    const { SessionBriefService } = require('../services/SessionBriefService');
+    const { dataDir } = require('../utils/paths');
+    _sessionBriefs = new SessionBriefService({
+      loadMessages: async (projectPath, sessionId) => (await loadSessionHistory(projectPath, sessionId, { limit: 0 })).messages,
+      loadTail: (projectPath, sessionId, limit) => loadSessionHistory(projectPath, sessionId, { limit }),
+      runPrompt: (opts) => require('../services/ChatService').runHaikuPrompt(opts),
+      dir: path.join(dataDir, 'session-briefs'),
+    });
+  }
+  return _sessionBriefs;
+}
+
 /**
  * Register Claude IPC handlers
  */
@@ -2232,6 +2248,27 @@ function registerClaudeHandlers() {
     } catch (err) {
       console.error('[claude-move-session] Error:', err.message);
       return { success: false, code: 'io-error', error: err.message };
+    }
+  });
+
+  // The session brief: what a conversation is for, where it stands, what was
+  // decided. Reading the cached one costs nothing; writing one is a Haiku call,
+  // so it only happens when the user asks.
+  ipcMain.handle('claude-session-brief', async (event, { projectPath, sessionId }) => {
+    try {
+      return await sessionBriefs().status({ projectPath, sessionId });
+    } catch (err) {
+      console.error('[claude-session-brief] Error:', err.message);
+      return { success: false, error: 'failed', ...remoteFailure(err) };
+    }
+  });
+
+  ipcMain.handle('claude-session-brief-generate', async (event, { projectPath, sessionId, language }) => {
+    try {
+      return await sessionBriefs().generate({ projectPath, sessionId, language });
+    } catch (err) {
+      console.error('[claude-session-brief-generate] Error:', err.message);
+      return { success: false, error: 'failed', ...remoteFailure(err) };
     }
   });
 

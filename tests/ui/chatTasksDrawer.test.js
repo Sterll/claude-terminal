@@ -1,5 +1,6 @@
 /**
- * Background tasks drawer — the duration each row reports.
+ * Background tasks, the side column's lower section — the duration each row
+ * reports, and when the section and the collapsed strip show them.
  *
  * ChatView holds two same-named duration helpers: `fmtDur` counts seconds,
  * `utils/format`'s export counts milliseconds. The drawer computes seconds, so
@@ -27,7 +28,7 @@ Object.defineProperty(global, 'crypto', {
   configurable: true,
 });
 
-describe('background tasks drawer', () => {
+describe('background tasks section', () => {
   let listeners, wrapper, view, sessionId, store, now;
 
   /** The clock both the store and the drawer read. */
@@ -74,11 +75,29 @@ describe('background tasks drawer', () => {
     try { view?.destroy?.(); } catch (_) { /* teardown is best effort */ }
   });
 
-  it('opens on the first task and counts it in seconds', async () => {
+  it('shows on the first task and counts it in seconds', async () => {
+    expect(wrapper.querySelector('.chat-side-tasks').hidden).toBe(true);
     await start('t1');
 
-    expect(wrapper.querySelector('.chat-tasks-drawer').hidden).toBe(false);
+    expect(wrapper.querySelector('.chat-side-tasks').hidden).toBe(false);
     expect(timeOf('t1')).toBe('0s');
+  });
+
+  it('pulses on the collapsed strip while a task runs, without reopening the column', async () => {
+    document.body.classList.add('chat-side-collapsed');
+    try {
+      await start('t1');
+      const signal = wrapper.querySelector('.chat-side-rail-tasks');
+      expect(signal.hidden).toBe(false);
+      expect(signal.classList.contains('running')).toBe(true);
+      expect(document.body.classList.contains('chat-side-collapsed')).toBe(true);
+
+      store.taskEnded({ taskId: 't1', sessionId, status: 'completed' });
+      await flush();
+      expect(signal.classList.contains('running')).toBe(false);
+    } finally {
+      document.body.classList.remove('chat-side-collapsed');
+    }
   });
 
   it('reports a running task in minutes and seconds, not "0m"', async () => {
@@ -132,7 +151,6 @@ describe('background tasks drawer', () => {
     const { createChatView } = require('../../src/renderer/ui/components/ChatView');
     const view2 = createChatView(reopened, { id: 'p1', name: 'Test', path: '/tmp/test' }, { resumeSessionId: 'uuid-a' });
     try {
-      reopened.querySelector('.chat-tasks-btn').click();
       expect(reopened.querySelector('.chat-task-row[data-task-id="earlier"]')).not.toBeNull();
     } finally {
       view2?.destroy?.();
@@ -150,6 +168,36 @@ describe('background tasks drawer', () => {
     expect(timeOf('done')).toBeUndefined();
     // A clear that stopped reporting running tasks would be a lie.
     expect(timeOf('live')).toBe('0s');
+  });
+
+  it('with the brief turned off, the column is the tasks\' alone, live', async () => {
+    const settings = require('../../src/renderer/state/settings.state');
+    const chat = wrapper.querySelector('.chat-view');
+    expect(chat.classList.contains('brief-off')).toBe(false);
+
+    settings.setSetting('sessionBriefEnabled', false);
+    await flush();
+    expect(chat.classList.contains('brief-off')).toBe(true);
+    // No tasks yet: the stylesheet hides the column and its strip.
+    expect(chat.classList.contains('has-tasks')).toBe(false);
+
+    await start('t1');
+    expect(chat.classList.contains('has-tasks')).toBe(true);
+
+    settings.setSetting('sessionBriefEnabled', true);
+    await flush();
+    expect(chat.classList.contains('brief-off')).toBe(false);
+  });
+
+  it('goes with the last row once nothing is left', async () => {
+    await start('done');
+    store.taskEnded({ taskId: 'done', sessionId, status: 'completed' });
+    await flush();
+
+    wrapper.querySelector('.chat-tasks-clear').click();
+    await flush();
+
+    expect(wrapper.querySelector('.chat-side-tasks').hidden).toBe(true);
   });
 
   it('offers the clear only once something has finished', async () => {

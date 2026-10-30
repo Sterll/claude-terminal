@@ -453,7 +453,9 @@ contextBridge.exposeInMainWorld('electron_api', {
     sessionChanges: (params) => ipcRenderer.invoke('claude-session-changes', params),
     deleteSession: (params) => ipcRenderer.invoke('claude-delete-session', params),
     exportSession: (params) => ipcRenderer.invoke('claude-export-session', params),
-    moveSession: (params) => ipcRenderer.invoke('claude-move-session', params)
+    moveSession: (params) => ipcRenderer.invoke('claude-move-session', params),
+    sessionBrief: (params) => ipcRenderer.invoke('claude-session-brief', params),
+    generateSessionBrief: (params) => ipcRenderer.invoke('claude-session-brief-generate', params)
   },
 
   // ==================== ACCOUNTS (multi Claude OAuth) ====================
