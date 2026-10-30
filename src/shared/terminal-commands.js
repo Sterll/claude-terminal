@@ -10,9 +10,9 @@
  * terminal does exactly what the user asked: `/design-login`, which
  * `/design consent` sends the user to after a 403, is why this exists.
  *
- * Left out on purpose: anything the CLI also runs headless (`/config`, `/mcp`,
+ * Left out on purpose: anything the CLI also runs headless (`/config`,
  * `/import`, `/usage-credits`...), since the chat already gets an answer for
- * those, and `/remote-control`, which the chat handles itself.
+ * those, and `/remote-control` and `/mcp`, which the chat handles itself.
  *
  * Shared by the renderer, which decides to hand a command off, and the main
  * process, which re-validates it before it reaches a shell: the command line is
