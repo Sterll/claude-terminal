@@ -155,6 +155,7 @@ function bootstrapApp() {
           // are never looked at again, so drop any left pointing at a removed install.
           const pruneResult = require('./src/main/services/HooksService').pruneDeadHooks();
           if (pruneResult.pruned > 0) console.log(`[Hooks] Pruned ${pruneResult.pruned} hooks pointing at a removed install`);
+          if (pruneResult.migrated > 0) console.log(`[Hooks] Rewrote ${pruneResult.migrated} hooks in the form Windows runs without Git Bash`);
         }
       }
     } catch (e) {
