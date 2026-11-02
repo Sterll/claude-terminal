@@ -60,6 +60,7 @@ const { showContextMenu } = require('./ContextMenu');
 const { showConfirm } = require('./Modal');
 const ContextPromptService = require('../../services/ContextPromptService');
 const { registerOsc52Handler } = require('./terminal/osc52');
+const { attachProgramStatus, attentionOf, attentionSource } = require('./terminal/programStatus');
 const {
   detectCompletionSignal,
   parseClaudeTitle,
@@ -200,6 +201,8 @@ class TerminalManager extends BaseComponent {
     this._postEnterExtended = new Set();
     this._postSpinnerExtended = new Set();
     this._terminalSubstatus = new Map();
+    // Tab id -> the last OSC 7501 status of its main session, while it speaks it.
+    this._programStatus = new Map();
     this._lastTerminalData = new Map();
     this._terminalContext = new Map();
     this._tabActivationHistory = new Map();
@@ -1322,17 +1325,51 @@ class TerminalManager extends BaseComponent {
   }
 
   /**
-   * Whether this PTY tab's attention flag is read off its screen. Only when
-   * the hooks cannot say it: they are off, or the tab runs on a remote host,
-   * whose CLI never reaches the local hook server. With hooks on they are the
-   * one source, so the two never overwrite each other.
+   * Which one source sets this PTY tab's attention flag, so two never
+   * overwrite each other: the hooks when they are on, except on a remote
+   * host, whose CLI never reaches the local hook server; otherwise the
+   * session's own OSC 7501 status once it speaks it; otherwise its screen.
+   * @returns {'hooks'|'osc'|'screen'|null} null for a tab with no PTY
    */
-  _scrapesAttention(id) {
+  _attentionSourceOf(id) {
     const termData = getTerminal(id);
-    if (!termData?.terminal) return false;
+    if (!termData?.terminal) return null;
     let hooksActive = false;
     try { hooksActive = require('../../events').getActiveProvider() === 'hooks'; } catch (e) { /* not ready */ }
-    return !hooksActive || isRemoteProject(termData.project);
+    return attentionSource({
+      hooksActive,
+      remote: isRemoteProject(termData.project),
+      programStatus: this._programStatus.has(id),
+    });
+  }
+
+  /** Whether this PTY tab's attention flag is read off its screen. */
+  _scrapesAttention(id) {
+    return this._attentionSourceOf(id) === 'screen';
+  }
+
+  /**
+   * Title changes and OSC 7501 of one PTY tab, for its whole life. `onTitle`
+   * gets the title the working / ready machine reads (see programStatus.js for
+   * why it may be rebuilt), and an OSC 7501 status moves the attention flag
+   * when that is the tab's source.
+   */
+  _attachProgramStatus(id, terminal, onTitle) {
+    this._programStatus.delete(id);
+    attachProgramStatus(terminal, {
+      onTitle,
+      onStatus: (status) => {
+        if (status) this._programStatus.set(id, status);
+        else this._programStatus.delete(id);
+        // A clear means the CLI is gone: what it flagged goes with it, and the
+        // screen takes over from here.
+        if (!status) {
+          if (this._attentionSourceOf(id) === 'screen') this.setTerminalAttention(id, null);
+          return;
+        }
+        if (this._attentionSourceOf(id) === 'osc') this.setTerminalAttention(id, attentionOf(status));
+      },
+    });
   }
 
   // ── Tab rename ──
@@ -1779,6 +1816,7 @@ class TerminalManager extends BaseComponent {
       this._loadingTimeouts.delete(id);
     }
     this._terminalSubstatus.delete(id);
+    this._programStatus.delete(id);
     this._lastTerminalData.delete(id);
     this._terminalContext.delete(id);
     this._errorOverlays.delete(closedProjectIndex);
@@ -2087,12 +2125,9 @@ class TerminalManager extends BaseComponent {
 
     terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-    let lastTitle = '';
     let promptSent = false;
     const self = this;
-    terminal.onTitleChange(title => {
-      if (title === lastTitle) return;
-      lastTitle = title;
+    this._attachProgramStatus(id, terminal, title => {
       self._handleClaudeTitleChange(id, title, initialPrompt ? {
         onPendingPrompt: () => {
           const td = getTerminal(id);
@@ -3592,13 +3627,8 @@ class TerminalManager extends BaseComponent {
 
     terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-    let lastTitle = '';
     const self = this;
-    terminal.onTitleChange(title => {
-      if (title === lastTitle) return;
-      lastTitle = title;
-      self._handleClaudeTitleChange(id, title);
-    });
+    this._attachProgramStatus(id, terminal, title => self._handleClaudeTitleChange(id, title));
 
     this._registerTerminalHandler(id,
       (data) => {
@@ -3764,12 +3794,9 @@ class TerminalManager extends BaseComponent {
 
     terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-    let lastTitle = '';
     let promptSent = false;
     const self = this;
-    terminal.onTitleChange(title => {
-      if (title === lastTitle) return;
-      lastTitle = title;
+    this._attachProgramStatus(id, terminal, title => {
       self._handleClaudeTitleChange(id, title, {
         onPendingPrompt: () => {
           const td = getTerminal(id);
@@ -4779,12 +4806,7 @@ class TerminalManager extends BaseComponent {
       this._setupRightClickHandler(wrapper, terminal, id, 'terminal-input');
       terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-      let lastTitle = '';
-      terminal.onTitleChange(title => {
-        if (title === lastTitle) return;
-        lastTitle = title;
-        self._handleClaudeTitleChange(id, title);
-      });
+      this._attachProgramStatus(id, terminal, title => self._handleClaudeTitleChange(id, title));
 
       this._registerTerminalHandler(ptyId,
         (data) => {
