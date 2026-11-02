@@ -232,6 +232,22 @@ describe('getClaudeSessions caching', () => {
     expect(second.map(s => s.sessionId)).toContain('c3');
   });
 
+  test('a session added in the same clock tick as the listing shows up too', async () => {
+    // Windows file times move about every 15 ms, so a transcript created right
+    // after a listing can leave the directory mtime where it was. Pinned here,
+    // so every platform sees what Windows CI saw.
+    const pin = () => fs.utimesSync(sessionsDir(), 1_700_000_000, 1_700_000_000);
+    writeSession({ sessionId: 'c5', customTitle: 'First', padding: 1 });
+    pin();
+    await getClaudeSessions(PROJECT_PATH);
+
+    writeSession({ sessionId: 'c6', customTitle: 'Second', padding: 1 });
+    pin();
+
+    const second = await getClaudeSessions(PROJECT_PATH);
+    expect(second.map(s => s.sessionId)).toContain('c6');
+  });
+
   test('invalidateSessionsCache forces the next call to re-read', async () => {
     writeSession({ sessionId: 'c4', customTitle: 'Kept', padding: 1 });
     await getClaudeSessions(PROJECT_PATH);
