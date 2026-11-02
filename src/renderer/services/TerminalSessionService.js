@@ -40,6 +40,19 @@ function takeRemoteTabs(projectId) {
 }
 
 /**
+ * Whether an id is ChatService's own handle (`chat-<ts>-<rand>`) rather than
+ * the CLI's session id. Only the CLI's id names a transcript, so only it can
+ * be resumed: a handle in its place means the tab never learned its
+ * conversation's id, and resuming it fails with "no conversation found".
+ *
+ * @param {*} id
+ * @returns {boolean}
+ */
+function isChatServiceHandle(id) {
+  return typeof id === 'string' && id.startsWith('chat-');
+}
+
+/**
  * Get the session data file path.
  */
 function getSessionFilePath() {
@@ -70,6 +83,11 @@ async function loadSessionData() {
     for (const session of Object.values(data.projects)) {
       for (const tab of (session?.tabs || [])) {
         if (!tab.nameCustom && isCliFailureText(tab.name)) tab.name = null;
+        // A tab saved under ChatService's handle: a fresh tab closed before its
+        // first answer, or one whose CLI id a woken or restored session wrote
+        // over. Resuming it fails on every restart, leaving an empty tab the
+        // user has to close; it reopens as a new conversation under its name.
+        if (isChatServiceHandle(tab.claudeSessionId)) tab.claudeSessionId = null;
       }
     }
 
@@ -229,6 +247,7 @@ async function clearAllSessions() {
 }
 
 module.exports = {
+  isChatServiceHandle,
   loadSessionData,
   saveTerminalSessions,
   saveTerminalSessionsImmediate,

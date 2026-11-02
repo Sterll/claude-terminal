@@ -4,6 +4,8 @@
  * Before the naming guard, a lapsed login was persisted as the tab's own name,
  * so the tab came back called "Not logged in · Please run /login" on every
  * launch — the guard stops new ones, it cannot undo the ones already on disk.
+ *
+ * Nor may it resume a tab on ChatService's handle, which names no transcript.
  */
 
 jest.mock('../../src/renderer/state/settings.state', () => ({
@@ -69,5 +71,40 @@ describe('loadSessionData name healing', () => {
     readFile.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }));
 
     expect(await loadSessionData()).toBeNull();
+  });
+});
+
+describe('loadSessionData drops ChatService handles', () => {
+  // A handle names no transcript: resuming it fails with "no conversation
+  // found" on every restart, and the tab opens empty until the user closes it.
+  test('a tab saved under a handle restores as a new conversation, keeping its name', async () => {
+    onDisk({
+      p1: {
+        tabs: [
+          { cwd: '/repo', mode: 'chat', claudeSessionId: 'chat-1793613128112-bylaf5', name: 'Design Ripple', nameCustom: true },
+          { cwd: '/repo', mode: 'chat', claudeSessionId: '1612b7f8-fc55-4c2e-9a51-3f0e2d1c7b44', name: 'Sandbox startup' },
+          { cwd: '/repo', mode: 'chat', claudeSessionId: null },
+        ],
+      },
+    });
+
+    const [handle, cli, none] = (await loadSessionData()).projects.p1.tabs;
+
+    expect(handle.claudeSessionId).toBeNull();
+    expect(handle.name).toBe('Design Ripple');
+    expect(handle.nameCustom).toBe(true);
+    expect(cli.claudeSessionId).toBe('1612b7f8-fc55-4c2e-9a51-3f0e2d1c7b44');
+    expect(none.claudeSessionId).toBeNull();
+  });
+});
+
+describe('isChatServiceHandle', () => {
+  const { isChatServiceHandle } = require('../../src/renderer/services/TerminalSessionService');
+
+  test('tells ChatService handles from CLI ids', () => {
+    expect(isChatServiceHandle('chat-1793613128112-bylaf5')).toBe(true);
+    expect(isChatServiceHandle('1612b7f8-fc55-4c2e-9a51-3f0e2d1c7b44')).toBe(false);
+    expect(isChatServiceHandle(null)).toBe(false);
+    expect(isChatServiceHandle(undefined)).toBe(false);
   });
 });
