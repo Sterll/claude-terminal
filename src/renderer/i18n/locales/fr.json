@@ -2201,6 +2201,7 @@
     "todoTitle": "Tâches",
     "todoAllDone": "Terminé",
     "subagentLaunching": "Lancement de l'agent...",
+    "subagentFork": "Fork de la conversation",
     "subagentRunning": "Agent en cours...",
     "subagentThinking": "Réflexion...",
     "compacting": "Compaction de la conversation...",

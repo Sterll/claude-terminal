@@ -192,4 +192,85 @@ describe('chat streaming lifecycle (characterization)', () => {
       expect(compacting()).toBeNull();
     });
   });
+
+  // ── Liveness pings ──
+
+  describe('liveness pings', () => {
+    // CLI 2.1.285+: during a non-streaming fallback request, with partial
+    // messages on, the CLI sends a `ping` stream event every 30 s. It says the
+    // turn is alive and nothing else, so it must leave the transcript alone.
+    const ping = (extra = {}) => emit({ type: 'stream_event', event: { type: 'ping' }, ...extra });
+    const text = (s, index = 0) => streamEvent({ type: 'content_block_delta', index, delta: { type: 'text_delta', text: s } });
+
+    it('adds nothing to the transcript and does not end the turn', () => {
+      const before = wrapper.querySelector('.chat-messages').innerHTML;
+      ping();
+      ping();
+
+      expect(wrapper.querySelector('.chat-messages').innerHTML).toBe(before);
+      expect(wrapper.querySelector('.chat-stop-btn')).toBeTruthy();
+    });
+
+    it('does not split or cut a reply it lands in the middle of', () => {
+      streamEvent({ type: 'message_start', message: {} });
+      streamEvent({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
+      text('Hel');
+      ping();
+      text('lo');
+      streamEvent({ type: 'content_block_stop', index: 0 });
+
+      const replies = [...wrapper.querySelectorAll('.chat-msg-assistant')].map(el => el.textContent.trim()).filter(Boolean);
+      expect(replies).toEqual(['Hello']);
+    });
+
+    it("leaves a subagent's card alone too", () => {
+      streamEvent({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_agent', name: 'Agent' } });
+      const card = wrapper.querySelector('.chat-subagent-card');
+      const before = card.innerHTML;
+
+      ping({ parent_tool_use_id: 'toolu_agent' });
+
+      expect(card.innerHTML).toBe(before);
+    });
+  });
+
+  // ── Fork subagents ──
+
+  describe('fork subagents', () => {
+    // Since CLI 2.1.302 forks are on by default in SDK sessions: an Agent call
+    // with `subagent_type: "fork"` and no specialised agent behind it.
+    const agentCall = (id, input, index = 0) => {
+      streamEvent({ type: 'content_block_start', index, content_block: { type: 'tool_use', id, name: 'Agent' } });
+      streamEvent({ type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } });
+      streamEvent({ type: 'content_block_stop', index });
+      return [...wrapper.querySelectorAll('.chat-subagent-card')].pop();
+    };
+
+    it('is called a fork of the conversation, not the bare word', () => {
+      const card = agentCall('toolu_fork', { subagent_type: 'fork', description: 'Check the tests', prompt: 'Run them' });
+
+      expect(card.querySelector('.chat-subagent-type').textContent).toBe('Fork of this conversation');
+      expect(card.querySelector('.chat-subagent-desc').textContent).toBe('Check the tests');
+    });
+
+    it('keeps the name it was given, and other agents keep their type', () => {
+      expect(agentCall('toolu_a', { subagent_type: 'fork', name: 'checker', description: 'd', prompt: 'p' }, 0)
+        .querySelector('.chat-subagent-type').textContent).toBe('checker');
+      expect(agentCall('toolu_b', { subagent_type: 'Explore', description: 'd', prompt: 'p' }, 1)
+        .querySelector('.chat-subagent-type').textContent).toBe('Explore');
+    });
+
+    it("routes the fork's own tool calls into its card, not the main transcript", () => {
+      const card = agentCall('toolu_fork', { subagent_type: 'fork', description: 'd', prompt: 'p' });
+      const mainToolCards = wrapper.querySelectorAll('.chat-tool-card').length;
+
+      emit({
+        type: 'stream_event', parent_tool_use_id: 'toolu_fork',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_sub', name: 'Read' } },
+      });
+
+      expect(card.querySelectorAll('.sa-tool')).toHaveLength(1);
+      expect(wrapper.querySelectorAll('.chat-tool-card')).toHaveLength(mainToolCards);
+    });
+  });
 });

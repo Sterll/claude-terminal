@@ -318,6 +318,15 @@ describe('ChatService conversation context', () => {
     expect(fired[0].sdkSessionId).toBe('sdk-1234');
   });
 
+  test('keeps the Claude Code version the init reports, for Remote Control', async () => {
+    await drive([{ ...init('sdk-1'), claude_code_version: '2.1.316' }, assistant('Done.'), result()]);
+    expect(chatService.sessions.get(SESSION).claudeCodeVersion).toBe('2.1.316');
+
+    // An init without one leaves what was known alone.
+    await drive([init('sdk-1'), assistant('Again.'), result()]);
+    expect(chatService.sessions.get(SESSION).claudeCodeVersion).toBe('2.1.316');
+  });
+
   test('records the files the turn wrote, in order and without duplicates', async () => {
     await drive([
       init('sdk-1'),

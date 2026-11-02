@@ -2191,6 +2191,7 @@
     "todoTitle": "Tareas",
     "todoAllDone": "Todo listo",
     "subagentLaunching": "Lanzando agente...",
+    "subagentFork": "Bifurcación de esta conversación",
     "subagentRunning": "Agente ejecutándose...",
     "subagentThinking": "Pensando...",
     "compacting": "Compactando conversación...",

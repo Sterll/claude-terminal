@@ -1804,6 +1804,11 @@ class ChatService {
         // handle the CLI has never heard of.
         if (message.type === 'system' && message.subtype === 'init' && message.session_id && session) {
           session.sdkSessionId = message.session_id;
+          // What actually runs the turns, which for a remote session is the
+          // host's own claude. Remote Control hands it to claude.ai.
+          if (typeof message.claude_code_version === 'string' && message.claude_code_version) {
+            session.claudeCodeVersion = message.claude_code_version;
+          }
           // The transcript does not record the account; the cost screen needs
           // to know which one this session ran on from here on. A remote
           // session's transcript is written on its host, out of the cost

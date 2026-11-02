@@ -49,6 +49,7 @@ const fs = require('fs');
 const { randomUUID } = require('crypto');
 const { settingsFile, managedSettingsPaths } = require('../utils/paths');
 const { loadBridge, getUnavailableReason, getApiBaseUrl } = require('../utils/claudeBridge');
+const { bundledCliVersion } = require('../utils/sshClaudeSpawn');
 const {
   readAccessToken,
   readCredentialsForDir,
@@ -482,6 +483,21 @@ class RemoteControlService {
     }
   }
 
+  /**
+   * The Claude Code version the session's turns run on, for claude.ai to gate
+   * features on before the first `system/init` reaches it. The init the
+   * session already received is the truth, and the only source for a remote
+   * session, whose turns run on the host's own claude. Before it, a local
+   * session runs the bundled CLI. Unknown is `undefined`: the bridge then
+   * omits the field and claude.ai waits for the init, as it always did.
+   */
+  _claudeCodeVersion(sessionId) {
+    const session = this._chatService?.sessions?.get(sessionId);
+    if (typeof session?.claudeCodeVersion === 'string' && session.claudeCodeVersion) return session.claudeCodeVersion;
+    if (!session || session.remote) return undefined;
+    return bundledCliVersion() || undefined;
+  }
+
   /** Create the CCR session, mint worker credentials, attach the transport. */
   async _attach(sessionId) {
     const mirror = this._mirrors.get(sessionId);
@@ -543,6 +559,7 @@ class RemoteControlService {
       // passing it back skips a redundant registerWorker round trip.
       epoch: creds.worker_epoch,
       outboundOnly: !this.allowsDriving(),
+      claudeCodeVersion: this._claudeCodeVersion(sessionId),
       onInboundMessage: msg => this._onInboundMessage(sessionId, msg),
       onInterrupt: () => this._onInterrupt(sessionId),
       onPermissionResponse: res => this._onPermissionResponse(sessionId, res),

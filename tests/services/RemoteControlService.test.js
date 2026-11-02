@@ -256,6 +256,31 @@ describe('attach', () => {
     expect((await service.getStatus()).activeSessions).toBe(1);
   });
 
+  describe('claudeCodeVersion', () => {
+    const bundled = JSON.parse(jest.requireActual('fs').readFileSync(
+      require('path').join(__dirname, '../../node_modules/@anthropic-ai/claude-agent-sdk/package.json'), 'utf8',
+    )).claudeCodeVersion;
+
+    test('is the version the session reported in its init', async () => {
+      await startMirror(freshService(), fakeChatService(), { claudeCodeVersion: '2.1.399' });
+      expect(mockAttachOpts.claudeCodeVersion).toBe('2.1.399');
+    });
+
+    test("before the init, a local session's is the bundled CLI's, in the CLI's numbering", async () => {
+      await startMirror(freshService(), fakeChatService());
+      expect(bundled).toMatch(/^2\.\d+\.\d+$/);
+      expect(mockAttachOpts.claudeCodeVersion).toBe(bundled);
+    });
+
+    test("a remote session's is the host's, so it stays unknown until its init", async () => {
+      await startMirror(freshService(), fakeChatService(), { remote: { profileId: 'p1', host: 'box' } });
+      expect(mockAttachOpts).toHaveProperty('claudeCodeVersion', undefined);
+
+      await startMirror(freshService(), fakeChatService(), { remote: { profileId: 'p1', host: 'box' }, claudeCodeVersion: '2.1.300' });
+      expect(mockAttachOpts.claudeCodeVersion).toBe('2.1.300');
+    });
+  });
+
   test('attaches outbound-only when driving is switched off', async () => {
     mockSettings = { claudeRemoteControlEnabled: true, claudeRemoteControlDrive: false };
     const service = freshService();

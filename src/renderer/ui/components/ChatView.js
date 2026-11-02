@@ -5702,10 +5702,22 @@ class ChatView extends BaseComponent {
     return el;
   }
 
+  /**
+   * What a subagent card is called. A fork (`subagent_type: "fork"`, on by
+   * default in SDK sessions since CLI 2.1.302) is no specialised agent but a
+   * copy of this conversation, on its model and effort, so it is said as such
+   * rather than shown as the bare word.
+   */
+  function subagentLabel(input) {
+    if (input?.name) return input.name;
+    if (input?.subagent_type === 'fork') return t('chat.subagentFork') || 'Fork of this conversation';
+    return input?.subagent_type || 'agent';
+  }
+
   function updateSubagentCard(el, input) {
     if (!el || !input) return;
     const typeEl = el.querySelector('.chat-subagent-type');
-    const name = input.name || input.subagent_type || 'agent';
+    const name = subagentLabel(input);
     const desc = input.description || '';
     if (typeEl) typeEl.textContent = name;
     const descEl = el.querySelector('.chat-subagent-desc');
@@ -7802,7 +7814,7 @@ class ChatView extends BaseComponent {
             const taskInfo = taskToolIndices.get(stopIdx);
             if (taskInfo) {
               updateSubagentCard(taskInfo.card, toolInput);
-              setStatus('working', `${toolInput.name || toolInput.subagent_type || 'Agent'}...`);
+              setStatus('working', `${toolInput.name || toolInput.subagent_type ? subagentLabel(toolInput) : 'Agent'}...`);
               break;
             }
 
@@ -9500,7 +9512,7 @@ class ChatView extends BaseComponent {
 
           if (msg.toolName === 'Task' || msg.toolName === 'Agent') {
             const input = msg.toolInput || {};
-            const name = input.name || input.subagent_type || 'agent';
+            const name = subagentLabel(input);
             const desc = input.description || '';
             const el = document.createElement('div');
             // `done`, not `completed`: the finished state is styled off `.done`

@@ -2201,6 +2201,7 @@
     "todoTitle": "Tugas",
     "todoAllDone": "Semua selesai",
     "subagentLaunching": "Menjalankan agent...",
+    "subagentFork": "Cabang dari percakapan ini",
     "subagentRunning": "Agent sedang berjalan...",
     "subagentThinking": "Berpikir...",
     "compacting": "Meringkas percakapan...",
