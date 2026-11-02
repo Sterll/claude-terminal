@@ -54,7 +54,33 @@ jest.mock('node-pty', () => ({
 
 const fs = require('fs');
 const os = require('os');
+const path = require('path');
 const { spawnSync } = require('child_process');
+
+/**
+ * The whole suite runs under an invented environment, installed before any
+ * test is collected. Several assertions are about what reaches node-pty's
+ * `env` (the environment untouched, an account overlay merged or kept out),
+ * and against the real one they depended on the machine: a test run from a
+ * Claude Terminal tab bound to an account inherits
+ * CLAUDE_SECURESTORAGE_CONFIG_DIR, which is exactly the variable they check
+ * is absent. Only the OS plumbing a real sh needs to start is copied (and
+ * FAKE_SSH_SH, the helper's own knob); HOME, USERPROFILE and SHELL are made up.
+ * This is the environment JavaScript reads, which is what TerminalService
+ * hands node-pty; native lookups such as os.homedir() still see the process's
+ * own, and no assertion here compares them with a variable.
+ */
+const REAL_ENV = process.env;
+const OS_PLUMBING = /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|TEMP|TMP|TMPDIR|FAKE_SSH_SH)$/i;
+const HERMETIC_HOME = path.join(os.tmpdir(), 'ct-hermetic-home');
+process.env = {
+  ...Object.fromEntries(Object.entries(REAL_ENV).filter(([name]) => OS_PLUMBING.test(name))),
+  HOME: HERMETIC_HOME,
+  USERPROFILE: HERMETIC_HOME,
+  SHELL: '/bin/hermetic-sh',
+  CT_HERMETIC_CANARY: '1',
+};
+afterAll(() => { process.env = REAL_ENV; });
 const pty = require('node-pty');
 const terminalService = require('../../src/main/services/TerminalService');
 const { findSh } = require('../helpers/fake-ssh');
@@ -130,6 +156,16 @@ afterEach(() => {
   terminalService.onExitCallback = null;
   terminalService.setMainWindow(null);
   jest.restoreAllMocks();
+});
+
+test('the suite runs under its own environment, not the machine it runs on', () => {
+  expect(process.env.CT_HERMETIC_CANARY).toBe('1');
+  expect(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBeUndefined();
+  expect(Object.keys(process.env).filter(name => !OS_PLUMBING.test(name)).sort())
+    .toEqual(['CT_HERMETIC_CANARY', 'HOME', 'SHELL', 'USERPROFILE']);
+
+  terminalService.create({ cwd: null, runClaude: false });
+  expect(last().options.env.CT_HERMETIC_CANARY).toBe('1');
 });
 
 describe('remote create', () => {
