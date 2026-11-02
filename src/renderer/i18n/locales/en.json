@@ -1219,6 +1219,8 @@
     "chatSubagentEffort": "Subagent effort",
     "chatSubagentEffortDesc": "The effort subagents run at when nothing else sets one (their own definition, or Claude asking for a level). By default they use the conversation's effort. Applies from the next session, with Claude Code 2.1.316 or later.",
     "chatSubagentEffortInherit": "Same as the conversation",
+    "chatBlockWritesOutsideCwd": "Refuse file writes outside the project",
+    "chatBlockWritesOutsideCwdDesc": "Write, Edit and NotebookEdit refuse any path outside the session's working directories, in every permission mode, bypass included. Claude also loses EnterWorktree and ExitWorktree, so it can no longer move into a git worktree of its own, and cannot edit Claude Code's settings files. Shell commands and MCP tools are not limited. Applies from the next session, with Claude Code 2.1.314 or later.",
     "saveError": "Failed to save settings",
     "nameRequired": "Name is required",
     "itemDeleted": "Item removed",

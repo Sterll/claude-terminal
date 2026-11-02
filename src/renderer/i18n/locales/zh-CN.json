@@ -1219,6 +1219,8 @@
     "chatSubagentEffort": "子代理推理强度",
     "chatSubagentEffortDesc": "没有其他设置（子代理自身的定义，或 Claude 请求的级别）指定时，子代理使用的推理强度。默认沿用对话的推理强度。从下一个会话开始生效，需要 Claude Code 2.1.316 或更高版本。",
     "chatSubagentEffortInherit": "与对话相同",
+    "chatBlockWritesOutsideCwd": "拒绝在项目之外写入文件",
+    "chatBlockWritesOutsideCwdDesc": "在所有权限模式下（包括 bypass），Write、Edit 和 NotebookEdit 都会拒绝会话工作目录之外的任何路径。Claude 也会失去 EnterWorktree 和 ExitWorktree，因此无法再进入它自己的 git worktree，也无法修改 Claude Code 的设置文件。Shell 命令和 MCP 工具不受限制。从下一个会话开始生效，需要 Claude Code 2.1.314 或更高版本。",
     "saveError": "保存设置失败",
     "nameRequired": "姓名为必填项",
     "itemDeleted": "项目已移除",

@@ -1219,6 +1219,8 @@
     "chatSubagentEffort": "Effort subagen",
     "chatSubagentEffortDesc": "Effort yang dipakai subagen saat tidak ada yang lain menetapkannya (definisinya sendiri, atau Claude yang meminta suatu level). Secara bawaan mereka memakai effort percakapan. Berlaku mulai sesi berikutnya, dengan Claude Code 2.1.316 atau lebih baru.",
     "chatSubagentEffortInherit": "Sama dengan percakapan",
+    "chatBlockWritesOutsideCwd": "Tolak penulisan file di luar proyek",
+    "chatBlockWritesOutsideCwdDesc": "Write, Edit, dan NotebookEdit menolak path apa pun di luar folder kerja sesi, di semua mode izin, termasuk bypass. Claude juga kehilangan EnterWorktree dan ExitWorktree, sehingga tidak bisa lagi pindah ke git worktree miliknya sendiri, dan tidak bisa mengubah file pengaturan Claude Code. Perintah shell dan tool MCP tidak dibatasi. Berlaku mulai sesi berikutnya, dengan Claude Code 2.1.314 atau lebih baru.",
     "saveError": "Gagal menyimpan pengaturan",
     "nameRequired": "Nama wajib diisi",
     "itemDeleted": "Item dihapus",

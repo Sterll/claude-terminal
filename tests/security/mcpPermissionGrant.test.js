@@ -372,3 +372,31 @@ describe('alwaysAllowBypassesSession over MCP', () => {
     expect(onDisk.alwaysAllowBypassesSession).toBe(false);
   });
 });
+
+describe('chatBlockWritesOutsideCwd over MCP', () => {
+  let dataDir;
+
+  beforeEach(() => {
+    dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-mcp-block-writes-'));
+    process.env.CT_DATA_DIR = dataDir;
+    jest.resetModules();
+  });
+
+  afterEach(() => {
+    fs.rmSync(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  });
+
+  it('can be read but not turned off through settings_set', async () => {
+    fs.writeFileSync(path.join(dataDir, 'settings.json'), JSON.stringify({ chatBlockWritesOutsideCwd: true }), 'utf8');
+    const settingsTool = require('../../resources/mcp-servers/tools/settings.js');
+
+    const read = await settingsTool.handle('settings_get', { key: 'chatBlockWritesOutsideCwd' });
+    expect(read.isError).toBeFalsy();
+    expect(read.content[0].text).toBe('chatBlockWritesOutsideCwd: yes (read-only)');
+
+    const res = await settingsTool.handle('settings_set', { key: 'chatBlockWritesOutsideCwd', value: false });
+    expect(res.isError).toBe(true);
+    const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'settings.json'), 'utf8'));
+    expect(onDisk.chatBlockWritesOutsideCwd).toBe(true);
+  });
+});

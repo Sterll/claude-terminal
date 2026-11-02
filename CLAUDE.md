@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 323 test files)
+npm test                 # Run Jest tests (jsdom, 324 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -106,7 +106,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4449 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4451 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked), focusGuard (keeps the user's focus and caret across a tab update an agent made)
 
 Project Types (Plugin System)
@@ -451,7 +451,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4449 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4451 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -763,6 +763,7 @@ Worker); neither is bundled into the desktop app.
 - **Remote Control (claude.ai):** decided per conversation, never globally. `claudeRemoteControlEnabled` only says the feature may be used; a session reaches claude.ai when the user asks for it in that tab, via the footer button or the local `/remote-control` command (`enableForSession` / `disableForSession`). Nothing is backfilled: claude.ai joins from the moment it is enabled. Attaches the session to `@anthropic-ai/claude-agent-sdk/bridge` so it appears at claude.ai/code and in the Claude mobile app. The bridge export is ESM-only and `@alpha` — loaded through `src/main/utils/claudeBridge.js`, which resolves it out of `app.asar.unpacked` and feature-detects every function it uses. `claudeRemoteControlDrive` decides between a read-only mirror (`outboundOnly`) and full driving; `claudeRemoteControlTerminals` adds `--rc` to the CLI in terminal tabs. Honours the `disableRemoteControl` kill switch, read from Claude Code's own managed-settings file (`managedSettingsPaths()` in `src/main/utils/paths.js`) rather than from this app's user-writable settings.json, so a user cannot lift an org policy
 - **Model, effort and permission mode are per conversation:** the chat footer's chip (model · effort, right) and mode picker (left, as Claude Desktop places it) change the current tab only. The stored `chatModel` / `effortLevel` / `executionMode` are the defaults a new tab starts from, moved only through each menu's "Use for new conversations" row — a pick never writes them, so the last choice in one tab cannot silently become every later tab's. The model menu lists models only: the CLI's `default` alias is read for the model it points at (`recommendedModelId`, surfaced as the catalog's `recommended`) and then dropped (`dropDefaultAlias`), so an unpinned tab shows that model **by name** instead of a "Default (recommended)" row that stood for whichever model the CLI favoured that week. `chatModel: null` still means "nothing pinned"; pinning always stores a concrete id. Modes are the SDK's (`default`, `acceptEdits`, `plan`, `bypassPermissions`, `auto`), mapped to the legacy `executionMode` spellings in `src/shared/permission-modes.js`; `ChatService.setPermissionMode` switches mid-session and moves the app-side auto-approval with it. Fable is a hand-curated premium tier (`PREMIUM_FAMILIES` in `src/shared/model-options.js`, hand-curated because the CLI catalog says nothing about it): violet chip and composer border, "Premium" badge in the menu, a tag on the tab, and a dismissible notice above the composer when a new tab inherits it. What the UI says about it is that the family draws on its own usage limit — the model-scoped `limits` entry the usage API returns beside `session` and `weekly_all` — and that this also counts toward overall usage; on a subscription it is not billed on top, so no string may say it is. `max` effort turns the effort segment warning-coloured. Every (re)start and every mid-session switch leaves a line in the transcript
 - **Subagent effort is one environment variable:** `chatSubagentEffort` in the chat settings (empty by default) becomes `CLAUDE_CODE_SUBAGENT_EFFORT` (CLI 2.1.316+) when a chat session or a workflow Claude step starts: the effort subagents run at when neither their definition nor the Agent tool call names one. `ChatService` reads it from settings.json at each start, like the other main-process consumers of user settings, so a change applies from the next session, and a step's own `subagentEffort` (the claude-config field, "inherit" by default) wins over it. Unset, nothing is set and subagents inherit the session's effort; a value the user exported themselves is left alone. It is on the remote env allowlist (`sshClaudeSpawn.js`), so an SSH chat gets it too
+- **Writes outside the project are refused on request, not by default:** `chatBlockWritesOutsideCwd` (off) adds `permissions.blockWritesOutsideWorkingDirectories` to a chat session's flag settings (`options.settings`, beside the handoff's `autoCompactWindow`), which the SDK passes to the CLI as inline `--settings` JSON, so a remote CLI gets it the same way. From CLI 2.1.314, Write, Edit and NotebookEdit then refuse any path outside the working directories in every permission mode, bypass included, and EnterWorktree / ExitWorktree leave the toolset, which is why it is opt-in: a session that works in worktrees loses them. Shell commands and MCP tools are not covered, and the setting is read-only over MCP, since an agent must not lift the boundary it runs under
 - **A mid-turn model or effort pick is held, not refused.** The composer queues the next message during a turn and the permission-mode picker stays live, so the two beside them may not be dead controls. `selectModel`/`selectEffort` wrap their SDK call in a closure; while `isStreaming` it is parked on `pendingModelPush`/`pendingEffortPush` and `flushPendingSelection()` runs it when the turn ends. The footer label moves at once, because that is the conversation's setting from then on, and `.selection-pending` says the running turn is still on the old one. Three things the parking has to get right, each of which was wrong once: the queued message goes out **after** the push, not beside it (`api.chat.send` reaches the CLI queue immediately, so a message handed over first is a message the next turn runs under the model the user just left — it is parked on `pendingQueuedSends` and drained by the same flush); a second pick inherits the first one's `baseline` rather than recomputing it, since the footer has already moved and the session has not, so the transcript line and the failed-switch revert both name what is actually running; and only a *definitive* turn end releases the park, which is why `setStreaming` takes `turnEnded` — a compact boundary and a tool-less `message_stop` both lower the spinner while the SDK may still be answering
 - **Cloud sync:** self-hosted Docker relay, per-entity toggles, file watcher, conflict diff modal
 - **Claude in Chrome:** opt-in (`chromeBridgeEnabled`). Adds the `claude-in-chrome` MCP server — 22 browser tools — to chat sessions by spawning the bundled SDK binary with `--claude-in-chrome-mcp`; Chrome reaches it through a native messaging host manifest whose name (`com.anthropic.claude_code_browser_extension`) is fixed by the extension and therefore shared with Claude Code, so an existing working manifest is adopted, never overwritten
@@ -788,7 +789,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 323 unit test files (jsdom environment)
+npm test                    # Run all 324 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -797,7 +798,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 323 test files
+- **Framework:** Jest with jsdom, 324 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

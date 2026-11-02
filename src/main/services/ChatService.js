@@ -21,17 +21,24 @@ const { normalizeSubagentEffort, withSubagentEffort } = require('../../shared/mo
 const { settingsFile } = require('../utils/paths');
 
 /**
- * The subagent effort the chat settings name, or null. The renderer owns
- * settings.json, so it is read here at each session start rather than copied,
- * as the other main-process consumers of user settings do.
- * @returns {string|null}
+ * This app's settings.json, or {} when it is absent or unreadable. The
+ * renderer owns that file, so the chat settings a session needs are read here
+ * at each session start rather than copied, as the other main-process
+ * consumers of user settings do. Read only, so a bad file costs a default.
+ * @returns {Object}
  */
-function subagentEffortSetting() {
+function readAppSettings() {
   try {
-    return normalizeSubagentEffort(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).chatSubagentEffort);
+    const settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
+    return settings && typeof settings === 'object' ? settings : {};
   } catch {
-    return null;
+    return {};
   }
+}
+
+/** The subagent effort the chat settings name, or null. */
+function subagentEffortSetting() {
+  return normalizeSubagentEffort(readAppSettings().chatSubagentEffort);
 }
 
 // Remote (SSH) sessions only, so required on first use: a local session never
@@ -858,6 +865,17 @@ class ChatService {
       const compactWindow = Math.round(Number(autoCompactWindow));
       if (compactWindow >= AUTO_COMPACT_WINDOW_MIN && compactWindow <= AUTO_COMPACT_WINDOW_MAX) {
         options.settings = { autoCompactWindow: compactWindow };
+      }
+
+      // The chat settings' "refuse writes outside the project folder" (CLI
+      // 2.1.314+): Write, Edit and NotebookEdit refuse any path outside the
+      // session's working directories in every permission mode, bypass
+      // included, and EnterWorktree / ExitWorktree leave the toolset. Also in
+      // the flag layer, where `true` in any source wins and no allow rule lifts
+      // it; the user's own permission rules in their files are untouched. A
+      // remote CLI gets it the same way, through `--settings`.
+      if (readAppSettings().chatBlockWritesOutsideCwd === true) {
+        options.settings = { ...options.settings, permissions: { blockWritesOutsideWorkingDirectories: true } };
       }
 
       // Enable 1M token context window (beta)

@@ -127,6 +127,7 @@ const defaultSettings = {
   contextHandoffThreshold: 500000, // Context window occupancy (tokens) that triggers the handoff
   chatHibernateMinutes: 15, // A chat tab idle this long (and not the open tab) closes its CLI process; the next message resumes it. 0 = never
   chatSubagentEffort: '', // Effort subagents run at when nothing else names one ('' = the conversation's), also the default of workflow Claude steps; read by ChatService at session start
+  chatBlockWritesOutsideCwd: false, // Chat sessions get permissions.blockWritesOutsideWorkingDirectories (CLI 2.1.314+); also removes EnterWorktree/ExitWorktree. Read by ChatService at session start
   autoClaudeMdUpdate: true, // Suggest CLAUDE.md updates after chat sessions
   dailyGoal: 0, // Daily time goal in minutes (0 = disabled)
   githubApiUrl: 'https://api.github.com', // GitHub API base URL (for GitHub Enterprise)

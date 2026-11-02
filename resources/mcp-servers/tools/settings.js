@@ -121,6 +121,7 @@ const READONLY_SETTINGS = new Set([
   'skipPermissions',        // Security: bypasses Claude permissions
   'mcpPermissionGrantsEnabled', // Security: lets an agent grant another tab's permissions
   'alwaysAllowBypassesSession', // Security: Always Allow turns off every later prompt of the session
+  'chatBlockWritesOutsideCwd', // Security: an agent must not lift the write boundary it runs under
   'cloudApiKey',            // Credentials
   'remotePersistentPinValue', // Auth PIN
   'telemetryEnabled',       // Privacy: user must opt-in via UI
