@@ -65,7 +65,7 @@ const {
   parseClaudeTitle,
   extractTitleFromInput,
   detectPermissionDialog,
-  BRAILLE_SPINNER_RE,
+  TITLE_SPINNER_RE,
 } = require('./terminal/claudeSignals');
 const { normalizeStoredKey, eventToNormalizedKey, isSplitShortcut } = require('./terminal/keyBindings');
 const { createSplitLayout } = require('./terminal/splitLayout');
@@ -586,7 +586,7 @@ class TerminalManager extends BaseComponent {
   _handleClaudeTitleChange(id, title, options = {}) {
     const { onPendingPrompt } = options;
 
-    if (BRAILLE_SPINNER_RE.test(title)) {
+    if (TITLE_SPINNER_RE.test(title)) {
       this._postEnterExtended.delete(id);
       this._postSpinnerExtended.add(id);
       this._cancelScheduledReady(id);
