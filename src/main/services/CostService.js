@@ -35,7 +35,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { costOf, priceFor, normalizeModelId } = require('../../shared/model-pricing');
+const { costOf, priceFor, isLongPrompt, normalizeModelId } = require('../../shared/model-pricing');
 const { encodeProjectPath } = require('../../shared/session-dirs');
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
@@ -761,11 +761,16 @@ async function recordAutomationRun({ files = [], since = 0, workflowId, workflow
   }
   if (!messages.size) return null;
 
-  // One bucket per model and speed: the price is a property of both.
+  // One bucket per model, speed and prompt-length tier: the price is a
+  // property of all three. The tier is decided here, per message, because a
+  // bucket's summed prompt says nothing about any one request's (Haiku 5.5
+  // charges more for a request whose prompt is over 100K tokens). `l` is only
+  // written when set, so a record without it reads as the standard tier.
   const buckets = new Map();
   for (const rec of messages.values()) {
-    const key = `${rec.m}\u0000${rec.f ? 1 : 0}`;
-    if (!buckets.has(key)) buckets.set(key, { m: rec.m, f: rec.f, i: 0, o: 0, w5: 0, w1: 0, r: 0, n: 0 });
+    const long = isLongPrompt(rec.m, { input: rec.i, cacheWrite5m: rec.w5, cacheWrite1h: rec.w1, cacheRead: rec.r });
+    const key = `${rec.m}\u0000${rec.f ? 1 : 0}\u0000${long ? 1 : 0}`;
+    if (!buckets.has(key)) buckets.set(key, { m: rec.m, f: rec.f, ...(long ? { l: true } : {}), i: 0, o: 0, w5: 0, w1: 0, r: 0, n: 0 });
     const b = buckets.get(key);
     b.i += rec.i; b.o += rec.o; b.w5 += rec.w5; b.w1 += rec.w1; b.r += rec.r; b.n += 1;
   }
@@ -815,7 +820,7 @@ function automationRunCost(run) {
   let tokens = 0;
   const unpriced = [];
   for (const b of run.buckets) {
-    const value = costOf(b.m, { input: b.i, output: b.o, cacheWrite5m: b.w5, cacheWrite1h: b.w1, cacheRead: b.r }, { fast: !!b.f });
+    const value = costOf(b.m, { input: b.i, output: b.o, cacheWrite5m: b.w5, cacheWrite1h: b.w1, cacheRead: b.r }, { fast: !!b.f, longPrompt: !!b.l });
     if (value === null) unpriced.push(b.m);
     cost += value || 0;
     tokens += (b.i || 0) + (b.o || 0) + (b.w5 || 0) + (b.w1 || 0) + (b.r || 0);
@@ -873,7 +878,7 @@ function getAutomationReport({ from = 0, to = Infinity, accountId: onlyAccount =
     for (const b of run.buckets) {
       const model = normalizeModelId(b.m);
       agg.byModel[model] = (agg.byModel[model] || 0)
-        + (costOf(b.m, { input: b.i, output: b.o, cacheWrite5m: b.w5, cacheWrite1h: b.w1, cacheRead: b.r }, { fast: !!b.f }) || 0);
+        + (costOf(b.m, { input: b.i, output: b.o, cacheWrite5m: b.w5, cacheWrite1h: b.w1, cacheRead: b.r }, { fast: !!b.f, longPrompt: !!b.l }) || 0);
     }
 
     const day = localDay(run.at);

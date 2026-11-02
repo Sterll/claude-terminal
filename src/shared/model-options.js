@@ -33,6 +33,7 @@ const CLAUDE_MODEL_VALUES = [
   'claude-sonnet-5-5',
   'claude-sonnet-5',
   'claude-sonnet-4-6',
+  'claude-haiku-5-5',
   'claude-haiku-4-5',
   'sonnet',
   'opus',
@@ -51,6 +52,7 @@ const MODEL_OPTIONS = [
   { value: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
   { value: 'claude-sonnet-5',   label: 'Sonnet 5' },
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { value: 'claude-haiku-5-5',  label: 'Haiku 5.5' },
   { value: 'claude-haiku-4-5',  label: 'Haiku 4.5' },
   { value: 'sonnet',            label: 'Sonnet (alias)' },
   { value: 'opus',              label: 'Opus (alias)' },
@@ -152,6 +154,15 @@ const LEGACY_MODELS = [
     supportedEffortLevels: PRE_4_7_EFFORTS,
     supportsAdaptiveThinking: true,
   },
+  {
+    // The `haiku` alias moved to Haiku 5.5 with CLI 2.1.293.
+    value: 'claude-haiku-4-5-20251001',
+    displayName: 'Haiku 4.5',
+    description: 'Previous generation Haiku',
+    supportsEffort: false,
+    supportedEffortLevels: [],
+    supportsAdaptiveThinking: false,
+  },
 ];
 
 /**
@@ -190,12 +201,12 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: true,
   },
   {
-    value: 'claude-haiku-4-5-20251001',
-    displayName: 'Haiku 4.5',
+    value: 'claude-haiku-5-5',
+    displayName: 'Haiku 5.5',
     description: 'Fastest for quick answers',
-    supportsEffort: false,
-    supportedEffortLevels: [],
-    supportsAdaptiveThinking: false,
+    supportsEffort: true,
+    supportedEffortLevels: ALL_EFFORTS,
+    supportsAdaptiveThinking: true,
   },
 ];
 

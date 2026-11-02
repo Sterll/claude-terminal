@@ -96,6 +96,31 @@ describe('recording a step', () => {
     expect(rec.buckets[0]).toMatchObject({ i: 10, o: 40, n: 1 });
   });
 
+  test('Haiku 5.5 requests are bucketed by their own prompt length, not by the step total', async () => {
+    const start = Date.parse('2026-10-05T09:00:00Z');
+    const haiku = { model: 'claude-haiku-5-5' };
+    const file = transcript('haiku', [
+      // Two short prompts: together over 100K, each well under it.
+      line({ id: 'h1', t: start + 1000, input: 60_000, output: 100, ...haiku }),
+      line({ id: 'h2', t: start + 2000, input: 60_000, output: 100, ...haiku }),
+      // One long prompt.
+      line({ id: 'h3', t: start + 3000, input: 150_000, output: 100, ...haiku }),
+    ]);
+    const rec = await CostService.recordAutomationRun({ files: [file], since: start, workflowId: 'wf-h', at: start + 4000 });
+
+    expect(rec.buckets).toHaveLength(2);
+    const short = rec.buckets.find(b => !b.l);
+    const long = rec.buckets.find(b => b.l);
+    expect(short).toMatchObject({ i: 120_000, o: 200, n: 2 });
+    expect(long).toMatchObject({ l: true, i: 150_000, o: 100, n: 1 });
+
+    const expected = costOf('claude-haiku-5-5', { input: 60_000, output: 100 }) * 2
+      + costOf('claude-haiku-5-5', { input: 150_000, output: 100 });
+    const report = CostService.getAutomationReport();
+    expect(report.automations[0].cost).toBeCloseTo(expected, 10);
+    expect(report.automations[0].byModel['claude-haiku-5-5']).toBeCloseTo(expected, 10);
+  });
+
   test('a step that used no tokens records nothing', async () => {
     expect(await CostService.recordAutomationRun({ files: [path.join(mockHome, 'missing.jsonl')], workflowId: 'wf-1' })).toBeNull();
     expect(fs.existsSync(RUNS_FILE)).toBe(false);
