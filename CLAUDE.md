@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 317 test files)
+npm test                 # Run Jest tests (jsdom, 319 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -107,7 +107,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
 ├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4432 keys each)
-└── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked)
+└── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked), focusGuard (keeps the user's focus and caret across a tab update an agent made)
 
 Project Types (Plugin System)
 └── src/project-types/               # general, api, fivem, minecraft, python, webapp, discord
@@ -786,7 +786,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 317 unit test files (jsdom environment)
+npm test                    # Run all 319 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -795,13 +795,13 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 317 test files
+- **Framework:** Jest with jsdom, 319 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
   - `core/` - BaseComponent, BasePanel, ApiProvider, ServiceContainer
   - `events/` - hook session routing, permission-notification suppression by permission mode, a terminal tab's waiting flag read off the hooks (remote tabs and the scraping provider alongside the hooks are in `ui/terminalRemoteTab`)
-  - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, and the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window
+  - `features/` - shortcuts, control tower grid, files dock, setup wizard, tab focus, ui_navigate, the account binding + project attribution every `terminal.create` call has to send, the trigger wire that makes an MCP `project_create`/`update`/`delete` reach a running window, and the MCP tab tools (`terminal_create`, `tab_send`, `tab_close`, `chat_respond_permission`) running in the background: the active tab, the shown project, the focus and the caret stay the user's
   - `i18n/` - i18n, coherence across the 6 locales, unused/missing key usage
   - `integration/` - state persistence
   - `issue-trackers/` - adapter discovery and the contract suite every ticket provider adapter must pass, run against a fake tracker deliberately unlike Linear; the Linear adapter's filter translation (end to end, against a fixture that evaluates the filter), error mapping and MCP tool-call detection

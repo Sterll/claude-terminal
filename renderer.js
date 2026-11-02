@@ -1422,6 +1422,7 @@ if (api.mcpTerminal) {
         mode,
         runClaude: mode === 'chat',
         initialPrompt,
+        background: true,
       });
 
       // Track the last created terminal for this project
@@ -1493,7 +1494,7 @@ if (api.mcpTerminal) {
 
       if (termData?.mode === 'chat' && termData?.chatView) {
         // Chat tab: use ChatView.sendMessage() instead of PTY input
-        termData.chatView.sendMessage(data.command);
+        termData.chatView.sendMessage(data.command, [], [], { background: true });
       } else {
         // PTY terminal: write to node-pty
         api.terminal.input({ id: targetId, data: data.command + '\r' });
@@ -1521,7 +1522,7 @@ if (api.mcpTerminal) {
         return;
       }
       console.log(`[MCP Terminal] Closing terminal ${targetId}`);
-      TerminalManager.closeTerminal(targetId);
+      TerminalManager.closeTerminal(targetId, { background: true });
     } catch (e) {
       console.error('[MCP Terminal] Close error:', e);
     }
@@ -1566,10 +1567,13 @@ if (api.mcpTab) {
         ? data.skipPermissions
         : !!settingsState.get().skipPermissions;
 
+      // In the background: an agent's tab never takes the user off theirs,
+      // nor off the project on screen, nor out of the field they type in.
       await TerminalManager.createTerminal(project, {
         mode,
         runClaude: mode === 'chat',
         skipPermissions,
+        background: true,
       });
 
       // Find the tabId that was just created (the new one for this project).
@@ -1595,7 +1599,7 @@ if (api.mcpTab) {
   api.mcpTab.onSend((data) => {
     const requestId = data.requestId;
     try {
-      const result = TerminalManager.sendToTab(data.tabId, data.content);
+      const result = TerminalManager.sendToTab(data.tabId, data.content, { background: true });
       _writeTabResponse(requestId, result);
     } catch (e) {
       console.error('[MCP Tab] send error:', e);
@@ -1606,7 +1610,7 @@ if (api.mcpTab) {
   api.mcpTab.onClose((data) => {
     const requestId = data.requestId;
     try {
-      const result = TerminalManager.closeTabByTabId(data.tabId);
+      const result = TerminalManager.closeTabByTabId(data.tabId, { background: true });
       _writeTabResponse(requestId, result);
     } catch (e) {
       console.error('[MCP Tab] close error:', e);

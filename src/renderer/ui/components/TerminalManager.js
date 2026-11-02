@@ -46,6 +46,7 @@ const {
 } = require('../../state');
 const { escapeHtml, getFileIcon, highlight } = require('../../utils');
 const { copyText, readText: readClipboardText } = require('../../utils/clipboard');
+const { preserveFocus } = require('../../utils/focusGuard');
 const { t } = require('../../i18n');
 const {
   CLAUDE_TERMINAL_THEME,
@@ -1556,8 +1557,14 @@ class TerminalManager extends BaseComponent {
     close();
   }
 
-  closeTerminal(id) {
+  /**
+   * @param {{ background?: boolean }} [opts] - `background`: closed by an agent
+   *   (tab_close). Closing a tab the user is not on then leaves the active tab
+   *   and the shown project alone.
+   */
+  closeTerminal(id, { background = false } = {}) {
     const termData = getTerminal(id);
+    const wasActive = String(getActiveTerminal()) === String(id);
     const closedProjectIndex = termData?.projectIndex;
     const closedProjectPath = termData?.project?.path;
     const closedProjectId = termData?.project?.id;
@@ -1635,7 +1642,10 @@ class TerminalManager extends BaseComponent {
       stopProject(closedProjectId);
     }
 
-    if (sameProjectTerminalId) {
+    if (background && !wasActive) {
+      // Only the bar changes: the closed tab was never on screen.
+      this.filterByProject(projectsState.get().selectedProjectFilter);
+    } else if (sameProjectTerminalId) {
       this.setActiveTerminal(sameProjectTerminalId);
       const selectedFilter = projectsState.get().selectedProjectFilter;
       this.filterByProject(selectedFilter);
@@ -1706,7 +1716,7 @@ class TerminalManager extends BaseComponent {
   }
 
   async createTerminal(project, options = {}) {
-    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null, claudeCommand = null, accountId: accountOverride, draftPrompt = null, initialTickets = null } = options;
+    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null, claudeCommand = null, accountId: accountOverride, draftPrompt = null, initialTickets = null, background = false } = options;
 
     // A command handed over from the chat needs the CLI's own terminal UI,
     // which is the whole reason it could not run in the chat.
@@ -1718,7 +1728,7 @@ class TerminalManager extends BaseComponent {
 
     if (mode === 'chat' && runClaude) {
       const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
-      return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag, draftPrompt, initialTickets });
+      return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag, draftPrompt, initialTickets, background });
     }
 
     // Started before the PTY spawn rather than after it: on the first terminal
@@ -1801,7 +1811,7 @@ class TerminalManager extends BaseComponent {
       ...(remoteSessionKey ? { remoteSessionKey } : {})
     };
 
-    addTerminal(id, termData);
+    addTerminal(id, termData, { activate: !background });
 
     heartbeat(project.id, 'terminal');
 
@@ -1865,7 +1875,9 @@ class TerminalManager extends BaseComponent {
         requestAnimationFrame(() => fitAddon.fit());
       }
     }, 100);
-    this.setActiveTerminal(id);
+    // An agent opening a tab over MCP leaves the user on theirs: the new tab
+    // shows up in the bar, its status dot and attention flag do the talking.
+    if (!background) this.setActiveTerminal(id);
 
     this._setupPasteHandler(wrapper, id, 'terminal-input');
     this._setupClipboardShortcuts(wrapper, terminal, id, 'terminal-input');
@@ -2013,7 +2025,10 @@ class TerminalManager extends BaseComponent {
     }
 
     const selectedFilter = projectsState.get().selectedProjectFilter;
-    this.filterByProject(selectedFilter);
+    // In the background the filter may still activate this tab, when the shown
+    // project had none, but it does not get to move the user's caret.
+    if (background) preserveFocus(() => this.filterByProject(selectedFilter));
+    else this.filterByProject(selectedFilter);
     if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) self.setActiveTerminal(id); };
@@ -4194,7 +4209,7 @@ class TerminalManager extends BaseComponent {
   // ── Chat terminal ──
 
   async _createChatTerminal(project, options = {}) {
-    const { skipPermissions = false, name: customName = null, nameCustom = false, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null, draftPrompt = null, initialTickets = null } = options;
+    const { skipPermissions = false, name: customName = null, nameCustom = false, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null, draftPrompt = null, initialTickets = null, background = false } = options;
 
     const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let _chatSessionId = null;
@@ -4222,7 +4237,7 @@ class TerminalManager extends BaseComponent {
       ...(resumeSessionId ? { claudeSessionId: resumeSessionId } : {})
     };
 
-    addTerminal(id, termData);
+    addTerminal(id, termData, { activate: !background });
     if (!isCloud) heartbeat(parentProjectId || project.id, 'terminal');
 
     const tabsContainer = document.getElementById('terminals-tabs');
@@ -4279,6 +4294,7 @@ class TerminalManager extends BaseComponent {
       // and the ticket is linked from the first moment.
       draftPrompt,
       initialTickets,
+      background,
       initialModel: effectiveModel,
       initialEffort: effectiveEffort,
       builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
@@ -4317,10 +4333,11 @@ class TerminalManager extends BaseComponent {
       storedData.chatView = chatView;
     }
 
-    this.setActiveTerminal(id);
+    if (!background) this.setActiveTerminal(id);
 
     const selectedFilter = projectsState.get().selectedProjectFilter;
-    this.filterByProject(selectedFilter);
+    if (background) preserveFocus(() => this.filterByProject(selectedFilter));
+    else this.filterByProject(selectedFilter);
     if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) self.setActiveTerminal(id); };
@@ -4664,7 +4681,7 @@ class TerminalManager extends BaseComponent {
     return getTerminalByTabId(tabId);
   }
 
-  sendToTab(tabId, content) {
+  sendToTab(tabId, content, { background = false } = {}) {
     const { markTabSend } = require('../../state/terminals.state');
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
@@ -4675,7 +4692,7 @@ class TerminalManager extends BaseComponent {
       if (!data.chatView) return { ok: false, error: 'Chat view not ready yet' };
       try {
         if (typeof data.chatView.sendMessage === 'function') {
-          data.chatView.sendMessage(text);
+          data.chatView.sendMessage(text, [], [], { background });
         } else if (typeof data.chatView.submit === 'function') {
           data.chatView.submit(text);
         } else if (typeof data.chatView.send === 'function') {
@@ -4757,11 +4774,11 @@ class TerminalManager extends BaseComponent {
     return base;
   }
 
-  closeTabByTabId(tabId) {
+  closeTabByTabId(tabId, { background = false } = {}) {
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
     try {
-      this.closeTerminal(found.id);
+      this.closeTerminal(found.id, { background });
       return { ok: true, tabId };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -4878,15 +4895,21 @@ class TerminalManager extends BaseComponent {
     const btn = card.querySelector(btnSelector);
     if (!btn) return { ok: false, error: `Button for action "${action}" not found` };
 
-    // For deny: prefill the feedback input then click twice (first shows input, second sends).
-    if (action === 'deny' && message) {
-      try { btn.click(); } catch (_) {}
-      const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
-      if (feedbackInput) feedbackInput.value = String(message);
-      try { btn.click(); } catch (_) {}
-    } else {
-      try { btn.click(); } catch (e) { return { ok: false, error: e.message }; }
-    }
+    // These clicks are an agent's, not the user's: the first deny click focuses
+    // the feedback field, which must not take the caret from wherever they type.
+    const clickError = preserveFocus(() => {
+      // For deny: prefill the feedback input then click twice (first shows input, second sends).
+      if (action === 'deny' && message) {
+        try { btn.click(); } catch (_) {}
+        const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
+        if (feedbackInput) feedbackInput.value = String(message);
+        try { btn.click(); } catch (_) {}
+        return null;
+      }
+      try { btn.click(); } catch (e) { return e; }
+      return null;
+    });
+    if (clickError) return { ok: false, error: clickError.message };
 
     return { ok: true, tabId, requestId: targetRequestId, action };
   }
@@ -4926,7 +4949,7 @@ module.exports = {
   noteChatSessionStart,
   TerminalManager,
   createTerminal: (project, options) => _getInstance().createTerminal(project, options),
-  closeTerminal: (id) => _getInstance().closeTerminal(id),
+  closeTerminal: (id, opts) => _getInstance().closeTerminal(id, opts),
   captureTabSlot: (id) => _getInstance().captureTabSlot(id),
   restoreTabSlot: (id, slot) => _getInstance().restoreTabSlot(id, slot),
   setActiveTerminal: (id) => _getInstance().setActiveTerminal(id),
@@ -4975,10 +4998,10 @@ module.exports = {
   scheduleScrollAfterRestore: (id) => _getInstance().scheduleScrollAfterRestore(id),
   // MCP orchestration
   getTabByTabId: (tabId) => _getInstance().getTabByTabId(tabId),
-  sendToTab: (tabId, content) => _getInstance().sendToTab(tabId, content),
+  sendToTab: (tabId, content, opts) => _getInstance().sendToTab(tabId, content, opts),
   refusesAgentInput,
   getStatusForTab: (tabId) => _getInstance().getStatusForTab(tabId),
-  closeTabByTabId: (tabId) => _getInstance().closeTabByTabId(tabId),
+  closeTabByTabId: (tabId, opts) => _getInstance().closeTabByTabId(tabId, opts),
   listTabsSummary: () => _getInstance().listTabsSummary(),
   waitForTab: (tabId, opts) => _getInstance().waitForTab(tabId, opts),
   waitForAny: (tabIds, opts) => _getInstance().waitForAny(tabIds, opts),

@@ -73,11 +73,13 @@ function getActiveTerminal() {
  * Add a terminal
  * @param {number} id
  * @param {Object} terminalData
+ * @param {{ activate?: boolean }} [opts] - `activate: false` for a tab opened
+ *   in the background (by an agent over MCP): the active tab stays the user's.
  */
-function addTerminal(id, terminalData) {
+function addTerminal(id, terminalData, { activate = true } = {}) {
   const terminals = terminalsState.get().terminals;
   terminals.set(id, terminalData);
-  terminalsState.set({ terminals, activeTerminal: id });
+  terminalsState.set(activate ? { terminals, activeTerminal: id } : { terminals });
 }
 
 /**
