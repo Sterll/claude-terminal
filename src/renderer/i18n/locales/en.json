@@ -149,7 +149,12 @@
     "loadingHint": "This may take a few seconds",
     "resumeSession": "Resume Claude session",
     "addSession": "New session or terminal",
-    "newClaudeSession": "New Claude session"
+    "newClaudeSession": "New Claude session",
+    "splitUnsupported": "Project consoles (FiveM, WebApp, API...) cannot go in a split view yet",
+    "splitMaxPanes": "A split view holds up to {count} panes",
+    "splitTooSmall": "Not enough room for another pane: enlarge the window or close a pane",
+    "splitClosePane": "Remove this pane (the tab stays open)",
+    "splitResize": "Resize panes"
   },
   "git": {
     "noRemote": "No remote",
@@ -676,7 +681,9 @@
     "terminalWordJump": "Word jump instead of Tab jump (Ctrl+Arrow)",
     "terminalTabSwitch": "Switch tabs (Ctrl+Tab)",
     "terminalRightClickPaste": "Right-click paste",
-    "terminalRightClickCopyPaste": "Right-click copy/paste (Windows Terminal style)"
+    "terminalRightClickCopyPaste": "Right-click copy/paste (Windows Terminal style)",
+    "splitRight": "Split right",
+    "splitDown": "Split down"
   },
   "contextMenu": {
     "newSubfolder": "New subfolder",
@@ -3171,7 +3178,11 @@
     "closeTabTitle": "Close {name}?",
     "closeTabMessage": "This tab will be closed. Any session running in it ends.",
     "closeTabRemember": "Remember my choice",
-    "closeAll": "Close All"
+    "closeAll": "Close All",
+    "openRight": "Open to the right",
+    "openBelow": "Open below",
+    "removeFromSplit": "Remove from split view",
+    "exitSplit": "Exit split view"
   },
   "telemetry": {
     "consentTitle": "Help Improve Claude Terminal",

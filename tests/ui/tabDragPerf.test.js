@@ -127,3 +127,85 @@ test('every measurement happens before the first mutation', () => {
 
   expect(order).toEqual(['read', 'write']);
 });
+
+describe('dropping a terminal tab on a split pane', () => {
+  const { createSplitLayout } = require('../../src/renderer/ui/components/terminal/splitLayout');
+  let container;
+  let layout;
+  let reads;
+
+  beforeEach(() => {
+    document.body.innerHTML = '<div id="terminals-container"></div>';
+    container = document.getElementById('terminals-container');
+    reads = 0;
+    container.getBoundingClientRect = () => { reads++; return { left: 0, top: 0, width: 1200, height: 800 }; };
+    for (const id of [1, 2]) {
+      const w = document.createElement('div');
+      w.className = 'terminal-wrapper';
+      w.dataset.id = id;
+      container.appendChild(w);
+    }
+    layout = createSplitLayout({
+      getContainer: () => container,
+      getActiveTerminal: () => 1,
+      ownerOf: () => 'p1',
+      canSplit: () => ({ ok: true }),
+      resolveId: (text) => Number(text),
+      activate: () => {},
+      t: (k) => k,
+      measure: () => ({ width: 1200, height: 800 }),
+    });
+    layout.apply();
+    layout.beginTabDrag(2);
+  });
+
+  afterEach(() => layout.destroy());
+
+  function paneDragOver(clientX, clientY) {
+    const e = new Event('dragover', { bubbles: true, cancelable: true });
+    e.clientX = clientX;
+    e.clientY = clientY;
+    e.dataTransfer = { dropEffect: '' };
+    container.dispatchEvent(e);
+  }
+
+  /** Every style and class write on the drop indicator. */
+  function countOverlayWrites() {
+    const overlay = container.querySelector('.split-drop-overlay');
+    const counter = { n: 0 };
+    const style = overlay.style;
+    for (const prop of ['left', 'top', 'width', 'height']) {
+      let value = style[prop];
+      Object.defineProperty(style, prop, { configurable: true, get: () => value, set: (v) => { counter.n++; value = v; } });
+    }
+    for (const method of ['add', 'remove', 'toggle']) {
+      const original = overlay.classList[method].bind(overlay.classList);
+      overlay.classList[method] = (...args) => { counter.n++; return original(...args); };
+    }
+    const hidden = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
+    Object.defineProperty(overlay, 'hidden', { configurable: true, get() { return hidden.get.call(this); }, set(v) { counter.n++; hidden.set.call(this, v); } });
+    return counter;
+  }
+
+  test('measures the panes once per drag, not once per pointer move', () => {
+    for (let i = 0; i < 30; i++) paneDragOver(1100 + i, 300 + i);
+    expect(reads).toBe(1);
+  });
+
+  test('repeated dragover in the same zone writes nothing', () => {
+    paneDragOver(1150, 400); // right edge: one placement
+    const writes = countOverlayWrites();
+    for (let i = 0; i < 20; i++) paneDragOver(1150 + (i % 5), 400 + i);
+    expect(writes.n).toBe(0);
+  });
+
+  test('changing zone writes, and only then', () => {
+    paneDragOver(1150, 400);
+    const writes = countOverlayWrites();
+    paneDragOver(40, 400); // left edge now
+    const afterCross = writes.n;
+    for (let i = 0; i < 10; i++) paneDragOver(40 + i, 400);
+    expect(afterCross).toBeGreaterThan(0);
+    expect(writes.n).toBe(afterCross);
+  });
+});

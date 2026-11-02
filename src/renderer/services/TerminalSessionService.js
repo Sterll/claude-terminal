@@ -23,13 +23,23 @@ function setSkipExplorerCapture(value) {
 // Saved tabs of remote (SSH) projects, held from startup until the user opens
 // the project: nothing may connect before then, so they are not restored at
 // boot. Kept in the saved file meanwhile, or the first save of the session
-// would drop them. projectId -> { tabs, activeCwd }
+// would drop them. projectId -> { tabs, activeCwd, split }
 const _pendingRemoteTabs = new Map();
+
+// (projectId, indexOf) => saved split layout or null, set by TerminalManager.
+// A provider rather than a require: the layout lives in a UI component, which
+// itself requires this service.
+let _splitLayoutProvider = null;
+
+/** Where the split layouts come from when a session is saved. */
+function setSplitLayoutProvider(provider) {
+  _splitLayoutProvider = typeof provider === 'function' ? provider : null;
+}
 
 /** Hold a remote project's saved tabs until it is opened. */
 function stashRemoteTabs(projectId, saved) {
   if (!projectId || !saved || !Array.isArray(saved.tabs) || saved.tabs.length === 0) return;
-  _pendingRemoteTabs.set(projectId, { tabs: saved.tabs, activeCwd: saved.activeCwd || null });
+  _pendingRemoteTabs.set(projectId, { tabs: saved.tabs, activeCwd: saved.activeCwd || null, split: saved.split || null });
 }
 
 /** Hand a remote project's saved tabs over for restoring, once. */
@@ -111,6 +121,10 @@ async function saveTerminalSessionsImmediate() {
 
     // Group terminals by project
     const projectSessions = {};
+    // The ids behind each project's saved tabs, in saved order: a split layout
+    // is saved as indices into `tabs`, computed from these at save time so a
+    // tab reordered or closed earlier in the session cannot shift them.
+    const savedTabIds = {};
 
     for (const [id, td] of terminals) {
       if (!td.project?.id) continue;
@@ -135,6 +149,7 @@ async function saveTerminalSessionsImmediate() {
       };
 
       projectSessions[projectId].tabs.push(tab);
+      (savedTabIds[projectId] || (savedTabIds[projectId] = [])).push(id);
 
       // Track active terminal's cwd and tab index
       if (id === activeTerminalId) {
@@ -143,9 +158,19 @@ async function saveTerminalSessionsImmediate() {
       }
     }
 
+    if (_splitLayoutProvider) {
+      for (const [pid, ids] of Object.entries(savedTabIds)) {
+        const indexOf = (tabId) => ids.findIndex((id) => tabId != null && String(id) === String(tabId));
+        const split = _splitLayoutProvider(pid, indexOf);
+        if (split) projectSessions[pid].split = split;
+      }
+    }
+
     // Remote projects not opened yet this session keep the tabs they had.
     for (const [pid, pending] of _pendingRemoteTabs) {
-      if (!projectSessions[pid]) projectSessions[pid] = { tabs: pending.tabs, activeCwd: pending.activeCwd };
+      if (!projectSessions[pid]) {
+        projectSessions[pid] = { tabs: pending.tabs, activeCwd: pending.activeCwd, ...(pending.split ? { split: pending.split } : {}) };
+      }
     }
 
     // Merge existing explorer state from disk (preserve state for projects not currently active)
@@ -235,6 +260,7 @@ module.exports = {
   clearProjectSessions,
   clearAllSessions,
   setSkipExplorerCapture,
+  setSplitLayoutProvider,
   stashRemoteTabs,
   takeRemoteTabs,
 };

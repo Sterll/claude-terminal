@@ -149,7 +149,12 @@
     "loadingHint": "这可能需要几秒钟",
     "resumeSession": "继续 Claude 会话",
     "addSession": "新建会话或终端",
-    "newClaudeSession": "新建 Claude 会话"
+    "newClaudeSession": "新建 Claude 会话",
+    "splitUnsupported": "项目控制台（FiveM、WebApp、API...）暂时无法放入拆分视图",
+    "splitMaxPanes": "拆分视图最多容纳 {count} 个窗格",
+    "splitTooSmall": "空间不足，无法再添加窗格：请放大窗口或关闭一个窗格",
+    "splitClosePane": "移除此窗格（标签页保持打开）",
+    "splitResize": "调整窗格大小"
   },
   "git": {
     "noRemote": "无远程仓库",
@@ -676,7 +681,9 @@
     "terminalWordJump": "单词跳转而不是 Tab 跳转（Ctrl+箭头）",
     "terminalTabSwitch": "切换选项卡（Ctrl+Tab）",
     "terminalRightClickPaste": "右键粘贴",
-    "terminalRightClickCopyPaste": "右键单击复制/粘贴（Windows 终端样式）"
+    "terminalRightClickCopyPaste": "右键单击复制/粘贴（Windows 终端样式）",
+    "splitRight": "向右拆分",
+    "splitDown": "向下拆分"
   },
   "contextMenu": {
     "newSubfolder": "新子文件夹",
@@ -3171,7 +3178,11 @@
     "closeTabTitle": "关闭 {name}？",
     "closeTabMessage": "此标签页将被关闭，其中正在运行的会话也会结束。",
     "closeTabRemember": "记住我的选择",
-    "closeAll": "关闭全部"
+    "closeAll": "关闭全部",
+    "openRight": "在右侧打开",
+    "openBelow": "在下方打开",
+    "removeFromSplit": "从拆分视图中移除",
+    "exitSplit": "退出拆分视图"
   },
   "telemetry": {
     "consentTitle": "帮助改进Claude Terminal",

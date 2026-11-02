@@ -2005,6 +2005,9 @@ class ChatView extends BaseComponent {
   const _onShiftBlur = () => { shiftHeld = false; };
   wrapperEl.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftHeld = false; }, true);
   window.addEventListener('blur', _onShiftBlur);
+  // The Shift of a chord that moved focus out (a split shortcut, Ctrl+Shift+T)
+  // is released elsewhere: without this, Enter would stay a newline here.
+  wrapperEl.addEventListener('focusout', (e) => { if (!wrapperEl.contains(e.relatedTarget)) shiftHeld = false; });
 
   // Ctrl+Arrow to switch terminals/projects (capture phase to intercept before textarea)
   wrapperEl.addEventListener('keydown', (e) => {
@@ -7264,6 +7267,8 @@ class ChatView extends BaseComponent {
     // A view not owned by a terminal tab cannot say whether it is shown, so it
     // counts as open and never sleeps.
     if (terminalId == null) return true;
+    // A pane of the split view on screen is open too, focused or not.
+    if (wrapperEl.classList.contains('split-pane') && wrapperEl.parentElement?.classList.contains('is-split')) return true;
     try {
       const { getActiveTerminal } = require('../../state');
       return getActiveTerminal() === terminalId;

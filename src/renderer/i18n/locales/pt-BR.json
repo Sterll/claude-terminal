@@ -149,7 +149,12 @@
     "loadingHint": "Isso pode levar alguns segundos",
     "resumeSession": "Retomar sessão do Claude",
     "addSession": "Nova sessão ou terminal",
-    "newClaudeSession": "Nova sessão do Claude"
+    "newClaudeSession": "Nova sessão do Claude",
+    "splitUnsupported": "Consoles de projeto (FiveM, WebApp, API...) ainda não podem ir para uma visão dividida",
+    "splitMaxPanes": "Uma visão dividida comporta no máximo {count} painéis",
+    "splitTooSmall": "Não há espaço para outro painel: aumente a janela ou feche um painel",
+    "splitClosePane": "Remover este painel (a aba continua aberta)",
+    "splitResize": "Redimensionar os painéis"
   },
   "git": {
     "noRemote": "Sem remoto",
@@ -676,7 +681,9 @@
     "terminalWordJump": "Pular por palavra em vez de pular por Tab (Ctrl+Arrow)",
     "terminalTabSwitch": "Alternar abas (Ctrl+Tab)",
     "terminalRightClickPaste": "Colar com clique direito",
-    "terminalRightClickCopyPaste": "Copiar/colar com clique direito (estilo Windows Terminal)"
+    "terminalRightClickCopyPaste": "Copiar/colar com clique direito (estilo Windows Terminal)",
+    "splitRight": "Dividir à direita",
+    "splitDown": "Dividir para baixo"
   },
   "contextMenu": {
     "newSubfolder": "Nova subpasta",
@@ -3171,7 +3178,11 @@
     "closeTabTitle": "Fechar {name}?",
     "closeTabMessage": "Esta aba será fechada. Qualquer sessão em execução nela será encerrada.",
     "closeTabRemember": "Lembrar minha escolha",
-    "closeAll": "Fechar todas"
+    "closeAll": "Fechar todas",
+    "openRight": "Abrir à direita",
+    "openBelow": "Abrir abaixo",
+    "removeFromSplit": "Remover da visão dividida",
+    "exitSplit": "Sair da visão dividida"
   },
   "telemetry": {
     "consentTitle": "Ajude a melhorar o Claude Terminal",

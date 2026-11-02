@@ -1085,6 +1085,154 @@
   overflow-y: auto !important;
 }
 
+/* ── Split view (terminal/splitLayout.js) ──
+   Wrappers never move: the ones on screen get .split-pane and their place as
+   --pane-* custom properties, read only under .is-split. A wrapper the Control
+   Tower borrows leaves this container and these rules with it. */
+.terminals-container.is-split > .terminal-wrapper.split-pane {
+  display: flex;
+  flex-direction: column;
+  left: var(--pane-left);
+  top: var(--pane-top);
+  width: var(--pane-width);
+  height: var(--pane-height);
+  right: auto;
+  bottom: auto;
+  z-index: 1;
+  pointer-events: auto;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s;
+}
+
+/* The pane the keyboard goes to */
+.terminals-container.is-split > .terminal-wrapper.split-pane.active {
+  border-color: var(--accent);
+}
+
+.terminals-container.split-resizing > .terminal-wrapper {
+  user-select: none;
+}
+
+.split-handle {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+
+.split-handle.row {
+  cursor: col-resize;
+}
+
+.split-handle.column {
+  cursor: row-resize;
+}
+
+.split-handle::after {
+  content: '';
+  position: absolute;
+  background: transparent;
+  transition: background-color 0.15s;
+}
+
+.split-handle.row::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.split-handle.column::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.split-handle:hover::after,
+.split-handle.dragging::after,
+.split-handle:focus-visible::after {
+  background: var(--accent);
+}
+
+.split-handle:focus-visible {
+  outline: none;
+}
+
+.split-pane-close {
+  display: none;
+}
+
+.terminals-container.is-split > .terminal-wrapper.split-pane > .split-pane-close {
+  position: absolute;
+  top: 6px;
+  right: 14px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.terminals-container.is-split > .terminal-wrapper.split-pane:hover > .split-pane-close,
+.terminals-container.is-split > .terminal-wrapper.split-pane > .split-pane-close:focus-visible {
+  opacity: 1;
+}
+
+.terminals-container.is-split > .terminal-wrapper.split-pane > .split-pane-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.split-pane-close svg {
+  width: 10px;
+  height: 10px;
+}
+
+/* Where a dragged tab would land */
+.split-drop-overlay {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+  transition: left 0.08s, top 0.08s, width 0.08s, height 0.08s;
+}
+
+.split-drop-overlay.refused {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  text-align: center;
+}
+
+.split-drop-overlay[hidden] {
+  display: none;
+}
+
+/* A tab on screen in a pane other than the focused one */
+.terminal-tab.in-split:not(.active) {
+  border-bottom-color: rgba(var(--accent-rgb), 0.45);
+}
+
 /* Empty States */
 .empty-state {
   display: flex;

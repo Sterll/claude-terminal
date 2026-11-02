@@ -149,7 +149,12 @@
     "loadingHint": "Ini mungkin memakan waktu beberapa detik",
     "resumeSession": "Lanjutkan sesi Claude",
     "addSession": "Sesi atau terminal baru",
-    "newClaudeSession": "Sesi Claude baru"
+    "newClaudeSession": "Sesi Claude baru",
+    "splitUnsupported": "Konsol proyek (FiveM, WebApp, API...) belum bisa masuk ke tampilan terbagi",
+    "splitMaxPanes": "Tampilan terbagi menampung paling banyak {count} panel",
+    "splitTooSmall": "Tidak cukup ruang untuk panel lain: perbesar jendela atau tutup sebuah panel",
+    "splitClosePane": "Keluarkan panel ini (tab tetap terbuka)",
+    "splitResize": "Ubah ukuran panel"
   },
   "git": {
     "noRemote": "Tidak ada remote",
@@ -676,7 +681,9 @@
     "terminalWordJump": "Lompat per kata alih-alih per Tab (Ctrl+Panah)",
     "terminalTabSwitch": "Berpindah tab (Ctrl+Tab)",
     "terminalRightClickPaste": "Tempel dengan klik kanan",
-    "terminalRightClickCopyPaste": "Salin/tempel dengan klik kanan (gaya Windows Terminal)"
+    "terminalRightClickCopyPaste": "Salin/tempel dengan klik kanan (gaya Windows Terminal)",
+    "splitRight": "Bagi ke kanan",
+    "splitDown": "Bagi ke bawah"
   },
   "contextMenu": {
     "newSubfolder": "Subfolder baru",
@@ -3171,7 +3178,11 @@
     "closeTabTitle": "Tutup {name}?",
     "closeTabMessage": "Tab ini akan ditutup. Sesi apa pun yang berjalan di dalamnya akan berakhir.",
     "closeTabRemember": "Ingat pilihan saya",
-    "closeAll": "Tutup Semua"
+    "closeAll": "Tutup Semua",
+    "openRight": "Buka di kanan",
+    "openBelow": "Buka di bawah",
+    "removeFromSplit": "Keluarkan dari tampilan terbagi",
+    "exitSplit": "Keluar dari tampilan terbagi"
   },
   "telemetry": {
     "consentTitle": "Bantu Tingkatkan Claude Terminal",

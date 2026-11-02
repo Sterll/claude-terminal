@@ -13,6 +13,7 @@ const {
   normalizeKey
 } = require('../../features/KeyboardShortcuts');
 const { isUnsafeAccelerator } = require('../../../shared/global-shortcuts');
+const { SPLIT_SHORTCUTS } = require('../components/terminal/keyBindings');
 
 const DEFAULT_SHORTCUTS = {
   openSettings: { key: 'Ctrl+,', labelKey: 'shortcuts.openSettings' },
@@ -20,7 +21,11 @@ const DEFAULT_SHORTCUTS = {
   showSessionsPanel: { key: 'Ctrl+Shift+E', labelKey: 'shortcuts.sessionsPanel' },
   newProject: { key: 'Ctrl+N', labelKey: 'shortcuts.newProject' },
   newTerminal: { key: 'Ctrl+T', labelKey: 'shortcuts.newTerminal' },
-  toggleFileExplorer: { key: 'Ctrl+E', labelKey: 'shortcuts.toggleFileExplorer' }
+  toggleFileExplorer: { key: 'Ctrl+E', labelKey: 'shortcuts.toggleFileExplorer' },
+  // Not Ctrl+Shift+\ as first planned: e.key is '|' under Shift on QWERTY, so
+  // that binding could never match, and AZERTY needs AltGr to type a backslash.
+  splitRight: { key: SPLIT_SHORTCUTS.splitRight, labelKey: 'shortcuts.splitRight' },
+  splitDown: { key: SPLIT_SHORTCUTS.splitDown, labelKey: 'shortcuts.splitDown' }
 };
 
 const GLOBAL_SHORTCUTS = {
@@ -487,6 +492,15 @@ class ShortcutsManager extends BasePanel {
       if (!onFiles) this._lastTabBeforeFiles = document.body.dataset.activeTab || 'claude';
       document.querySelector(`.nav-tab[data-tab="${target}"]`)?.click();
     }, { global: true });
+
+    // Global so they work from a chat's composer too. Only on the sessions
+    // screen: elsewhere the panes are not on screen to split.
+    const split = (side) => () => {
+      if ((document.body.dataset.activeTab || 'claude') !== 'claude') return;
+      this._ctx.TerminalManager.splitActive(side);
+    };
+    registerShortcut(this.getShortcutKey('splitRight'), split('right'), { global: true });
+    registerShortcut(this.getShortcutKey('splitDown'), split('bottom'), { global: true });
   }
 
   destroy() {
