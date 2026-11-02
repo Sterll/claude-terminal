@@ -69,6 +69,8 @@ function loadChatService(query, { accountOverlay = null } = {}) {
     './RemoteControlService': { onSessionClosed() {} },
     '../utils/sdkCli': { getSdkCliPath: () => '/fake/claude', getSdkCliVersion: () => null },
     './CostService': { noteSessionAccount: jest.fn() },
+    // Never the machine's own settings.json: the chat settings it holds reach the options.
+    '../utils/paths': { settingsFile: path.join(__dirname, '__no_app_settings__.json') },
   };
   const env = { CLAUDECODE: 'parent', PATH: '/local/bin', HOME: '/home/local', ANTHROPIC_API_KEY: 'sk-local' };
   const ctxRequire = (name) => {

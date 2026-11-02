@@ -9,10 +9,11 @@
  * - Additional instructions textarea (agent / skill mode)
  * - Model select
  * - Effort select
+ * - Subagent effort select (the chat settings' one unless the step names a level)
  */
 const { escapeHtml, escapeAttr } = require('./_registry');
 const { t } = require('../i18n');
-const { MODEL_OPTIONS, EFFORT_OPTIONS } = require('../../shared/model-options');
+const { MODEL_OPTIONS, EFFORT_OPTIONS, SUBAGENT_EFFORT_LEVELS } = require('../../shared/model-options');
 
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -139,7 +140,22 @@ function renderModelEffort(props) {
     ${renderOptions(EFFORT_OPTIONS, props.effort)}
   </select>
 </div>
+</div>
+<div class="wf-step-edit-field">
+  <label class="wf-step-edit-label">${t('workflow.claude.subagentEffortLabel')}</label>
+  <span class="wf-field-hint">${t('workflow.claude.subagentEffortHint')}</span>
+  <select class="wf-step-edit-input wf-node-prop" data-key="subagentEffort">
+    ${renderOptions(subagentEffortOptions(), props.subagentEffort || '')}
+  </select>
 </div>`;
+}
+
+/** The step's subagent effort: the chat settings' one by default, else a level. */
+function subagentEffortOptions() {
+  return [
+    { value: '', label: t('workflow.claude.subagentEffortInherit') },
+    ...EFFORT_OPTIONS.filter(o => SUBAGENT_EFFORT_LEVELS.includes(o.value)),
+  ];
 }
 
 module.exports = {

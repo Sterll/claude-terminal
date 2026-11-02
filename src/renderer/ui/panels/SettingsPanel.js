@@ -17,6 +17,7 @@ const { buildAccountUsageHtml } = require('../components/accountUsage');
 const { mountTicketsSettings } = require('../components/ticketsSettings');
 const { normalizeHandoffThreshold, MIN_HANDOFF_THRESHOLD } = require('../components/chat/contextHandoff');
 const { hibernateDelayMs } = require('../components/chat/idleHibernation');
+const { EFFORT_OPTIONS, SUBAGENT_EFFORT_LEVELS, normalizeSubagentEffort } = require('../../../shared/model-options');
 
 // ── Settings search ──
 //
@@ -1720,6 +1721,20 @@ class SettingsPanel extends BasePanel {
                     min="0" step="5"
                     value="${hibernateDelayMs(settings.chatHibernateMinutes) / 60000}">
                 </div>
+                <div class="settings-row">
+                  <div class="settings-label">
+                    <div>${t('settings.chatSubagentEffort')}</div>
+                    <div class="settings-desc">${t('settings.chatSubagentEffortDesc')}</div>
+                  </div>
+                </div>
+                <div style="padding: 0 16px 12px;">
+                  <select id="chat-subagent-effort-select" class="settings-select" style="width: 100%;">
+                    ${[{ value: '', label: t('settings.chatSubagentEffortInherit') },
+                      ...EFFORT_OPTIONS.filter(o => SUBAGENT_EFFORT_LEVELS.includes(o.value))]
+                      .map(o => `<option value="${o.value}"${(normalizeSubagentEffort(settings.chatSubagentEffort) || '') === o.value ? ' selected' : ''}>${escapeHtml(o.label)}</option>`)
+                      .join('')}
+                  </select>
+                </div>
               </div>
             </div>
             <div class="settings-group">
@@ -2545,6 +2560,10 @@ class SettingsPanel extends BasePanel {
       const newChatHibernateMinutes = Number.isFinite(parsedHibernate) && parsedHibernate >= 0
         ? parsedHibernate
         : (settings.chatHibernateMinutes ?? null);
+      const subagentEffortSelect = document.getElementById('chat-subagent-effort-select');
+      const newChatSubagentEffort = subagentEffortSelect
+        ? (normalizeSubagentEffort(subagentEffortSelect.value) || '')
+        : (settings.chatSubagentEffort || '');
       const autoClaudeMdToggle = document.getElementById('auto-claude-md-toggle');
       const newAutoClaudeMd = autoClaudeMdToggle ? autoClaudeMdToggle.checked : true;
       const chromeBridgeToggle = document.getElementById('chrome-bridge-toggle');
@@ -2649,6 +2668,7 @@ class SettingsPanel extends BasePanel {
         contextHandoffEnabled: newContextHandoffEnabled,
         contextHandoffThreshold: newContextHandoffThreshold,
         chatHibernateMinutes: newChatHibernateMinutes,
+        chatSubagentEffort: newChatSubagentEffort,
         telemetryEnabled: newTelemetryEnabled,
         orphanReaperEnabled: newOrphanReaperEnabled,
         telemetryCategories: newTelemetryCategories,

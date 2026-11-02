@@ -71,6 +71,39 @@ const EFFORT_OPTIONS = [
   { value: 'max',    label: 'Max' },
 ];
 
+// ── Subagent effort ─────────────────────────────────────────────────────────
+
+/**
+ * The effort a session's subagents run at when nothing else names one: not
+ * their agent definition, not the Agent tool call, not the user. Without it
+ * they inherit the session's effort. Handed to the CLI as an environment
+ * variable (CLI 2.1.316+; an older CLI ignores it), so it is fixed for the
+ * life of the CLI process and a change applies from the next session.
+ */
+const SUBAGENT_EFFORT_ENV = 'CLAUDE_CODE_SUBAGENT_EFFORT';
+const SUBAGENT_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/**
+ * A subagent effort level, or null for "not set" (anything else, '' included).
+ * @param {*} value
+ * @returns {string|null}
+ */
+function normalizeSubagentEffort(value) {
+  return SUBAGENT_EFFORT_LEVELS.includes(value) ? value : null;
+}
+
+/**
+ * The environment a CLI should get for this subagent effort. Returns `env`
+ * itself when there is no level, so whatever the user exported is left alone.
+ * @param {Object} env
+ * @param {*} level
+ * @returns {Object}
+ */
+function withSubagentEffort(env, level) {
+  const effort = normalizeSubagentEffort(level);
+  return effort ? { ...env, [SUBAGENT_EFFORT_ENV]: effort } : env;
+}
+
 // ── Chat catalog ────────────────────────────────────────────────────────────
 
 const ALL_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -636,6 +669,10 @@ module.exports = {
   MODEL_OPTIONS,
   EFFORT_VALUES,
   EFFORT_OPTIONS,
+  SUBAGENT_EFFORT_ENV,
+  SUBAGENT_EFFORT_LEVELS,
+  normalizeSubagentEffort,
+  withSubagentEffort,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
   DEFAULT_ALIAS,

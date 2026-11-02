@@ -17,6 +17,22 @@ const { getSdkCliPath, getSdkCliVersion } = require('../utils/sdkCli');
 const { isCliFailureText } = require('../../shared/cli-failure-text');
 const { isApiErrorMessage } = require('../../shared/api-error');
 const { isPermissionMode } = require('../../shared/permission-modes');
+const { normalizeSubagentEffort, withSubagentEffort } = require('../../shared/model-options');
+const { settingsFile } = require('../utils/paths');
+
+/**
+ * The subagent effort the chat settings name, or null. The renderer owns
+ * settings.json, so it is read here at each session start rather than copied,
+ * as the other main-process consumers of user settings do.
+ * @returns {string|null}
+ */
+function subagentEffortSetting() {
+  try {
+    return normalizeSubagentEffort(JSON.parse(fs.readFileSync(settingsFile, 'utf8')).chatSubagentEffort);
+  } catch {
+    return null;
+  }
+}
 
 // Remote (SSH) sessions only, so required on first use: a local session never
 // loads the ssh modules.
@@ -743,6 +759,9 @@ class ChatService {
       const accountOverlay = remote ? null : await AccountManager.accountEnv(accountId);
       abortController.signal.throwIfAborted();
       if (accountOverlay) runtime.env = { ...runtime.env, ...accountOverlay };
+      // The chat settings' subagent effort. An environment variable, so a
+      // remote session gets it too: it is in the remote env allowlist.
+      runtime.env = withSubagentEffort(runtime.env, subagentEffortSetting());
       // Only the child environment changes; other startups may be awaiting SDK/account data.
       delete runtime.env.CLAUDECODE;
       // A remote session's directory exists only on its host. The SDK gets
@@ -2530,7 +2549,7 @@ class ChatService {
    *   before the transcript is deleted.
    * @returns {Promise<{ output: string, success: boolean, ... }>}
    */
-  async runSinglePrompt({ cwd, prompt, model, effort, maxTurns, accountId = null, automation = null, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
+  async runSinglePrompt({ cwd, prompt, model, effort, subagentEffort = null, maxTurns, accountId = null, automation = null, permissionMode, outputFormat, skills, systemPrompt, disallowedTools, resume, onMessage, onOutput, signal }) {
     // A workflow step runs the local CLI. A remote project's path does not
     // exist here, and falling back to the home directory would run the step
     // somewhere the user never asked for.
@@ -2554,6 +2573,9 @@ class ChatService {
       }
       if (overlay) runtime.env = { ...runtime.env, ...overlay };
     }
+
+    // The step's own subagent effort, else the chat settings' one.
+    runtime.env = withSubagentEffort(runtime.env, normalizeSubagentEffort(subagentEffort) || subagentEffortSetting());
 
     // The account this step is really spending: the named one, or whichever
     // account holds the machine-wide login right now. Resolved once, here,
