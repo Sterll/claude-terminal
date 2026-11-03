@@ -171,8 +171,11 @@ function scanTitleLines(lines) {
 // A cached listing is only reused while none of the sessions directories has
 // been touched: an mtime moves when a transcript is created, renamed or deleted,
 // so a session appearing from anywhere is picked up on the next call rather than
-// up to a timeout later. The time bound is what covers appends to an existing
-// transcript, which change the file but not the directory.
+// up to a timeout later. The mtime alone is not enough on Windows, where file
+// times follow a clock that ticks about every 15 ms: a transcript created in the
+// same tick as the listing leaves it unchanged, so the entry count goes with it.
+// The time bound is what covers appends to an existing transcript, which change
+// the file but not the directory, and a rename within one tick.
 const SESSIONS_CACHE_MS = 5000;
 const _sessionsCache = new Map(); // projectPath -> { at, signature, sessions }
 
@@ -192,7 +195,8 @@ function invalidateSessionsCache(projectPath) {
 async function _sessionsSignature(sources) {
   const stamps = await Promise.all(sources.map(async ({ dir }) => {
     try {
-      return `${dir}:${(await fs.promises.stat(dir)).mtimeMs}`;
+      const [stat, names] = await Promise.all([fs.promises.stat(dir), fs.promises.readdir(dir)]);
+      return `${dir}:${stat.mtimeMs}:${names.length}`;
     } catch {
       return `${dir}:-`;
     }
