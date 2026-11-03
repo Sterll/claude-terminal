@@ -24,6 +24,9 @@ All notable changes to Claude Terminal are documented in this file.
 - **MCP**: tabs an agent opens, types into or closes stay in the background, and your active tab, focus and caret are left alone
 - **Remote Control**: claude.ai learns the session's Claude Code version as soon as it connects
 - **Chat**: fork subagents are labelled "Fork of this conversation"
+- **Chat**: a new chat tab keeps its name in the sessions list, and a tab saved before it learned its conversation's id reopens as a new conversation instead of failing to resume on every restart (#249)
+- **Tickets**: a Linear ticket Claude creates in a session is suggested for it, instead of being keyed to a ticket its description links to (#251)
+- **Windows**: a session created right after the sessions list was read no longer stays hidden from it (#253)
 
 ## [1.3.8] - 2026-10-27
 
