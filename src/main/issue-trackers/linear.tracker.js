@@ -594,12 +594,31 @@ function resultText(result) {
   }
 }
 
-/** The key of an issue a tool just created: its `identifier` field, or its Linear URL. */
+const ISSUE_URL = /linear\.app\/[^/\s]+\/issue\/([A-Za-z][A-Za-z0-9]{0,9}-\d{1,7})\b/;
+
+/**
+ * The key of an issue a tool just created. A JSON result is that issue, so its
+ * own fields come first: `identifier`, or `id` when it holds the key (the
+ * claude.ai connector keeps the UUID in `uuid`), or `url`. Searching the whole
+ * text found the first ticket the description linked to instead, which the
+ * session already knew, so the new ticket was never suggested.
+ */
 function createdKey(result) {
   const text = resultText(result).slice(0, 200_000);
+  let own = null;
+  try {
+    own = JSON.parse(text);
+  } catch {
+    // Plain text: the patterns below.
+  }
+  if (own && typeof own === 'object') {
+    const key = identifier(own.identifier) || identifier(own.id)
+      || identifier(ISSUE_URL.exec(typeof own.url === 'string' ? own.url : '')?.[1]);
+    if (key) return key;
+  }
   const field = /"identifier"\s*:\s*"([A-Za-z][A-Za-z0-9]{0,9}-\d{1,7})"/.exec(text);
   if (field) return field[1].toUpperCase();
-  const url = /linear\.app\/[^/\s]+\/issue\/([A-Za-z][A-Za-z0-9]{0,9}-\d{1,7})\b/.exec(text);
+  const url = ISSUE_URL.exec(text);
   return url ? url[1].toUpperCase() : null;
 }
 

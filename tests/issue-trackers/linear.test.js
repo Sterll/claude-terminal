@@ -467,6 +467,23 @@ describe('refs', () => {
     expect(fromToolCall({ name, input, result: 'Created.' })).toEqual([]);
   });
 
+  test('a creation is keyed from the new issue, not from the tickets its description links to', () => {
+    const name = 'mcp__claude_ai_Linear__save_issue';
+    const input = { team: 'ENG', parentId: 'ENG-100', title: 'New' };
+    // The claude.ai connector's shape: the key in `id`, the UUID in `uuid`, the description before the url.
+    const created = (fields) => [{ type: 'text', text: JSON.stringify({
+      uuid: '28cb10a2-9850-4b95-9a14-5694c2d1d0a0',
+      title: 'New',
+      description: 'Found by [ENG-21](https://linear.app/acme/issue/ENG-21/old), "identifier": "ENG-22".',
+      parentId: 'ENG-100',
+      ...fields,
+    }) }];
+    expect(fromToolCall({ name, input, result: created({ id: 'ENG-158', url: 'https://linear.app/acme/issue/ENG-158/new' }) }))
+      .toEqual([{ key: 'ENG-158', action: 'create' }]);
+    expect(fromToolCall({ name, input, result: created({ url: 'https://linear.app/acme/issue/ENG-159/new' }) }))
+      .toEqual([{ key: 'ENG-159', action: 'create' }]);
+  });
+
   test('a UUID cannot be turned into a key without a request, so it is skipped', () => {
     expect(fromToolCall({ name: 'mcp__linear__get_issue', input: { id: '2f1c1b9e-7c1a-4c55-9a51-1c2b3d4e5f60' } })).toEqual([]);
   });
