@@ -29,6 +29,9 @@ function load(sdkPromise, accountEnv = async () => null, listAccounts = async ()
     '../../shared/cli-failure-text': { isCliFailureText: () => false },
     '../../shared/api-error': { isApiErrorMessage: () => false },
     '../../shared/permission-modes': { isPermissionMode: () => true },
+    '../../shared/model-options': require('../../src/shared/model-options'),
+    // Never the machine's own settings.json.
+    '../utils/paths': { settingsFile: path.join(__dirname, '__no_app_settings__.json') },
   };
   const ctx = { module, exports: module.exports, require: name => name in mocks ? mocks[name] : require(name), process: { env: { CLAUDECODE: 'parent', PATH: process.env.PATH, SystemRoot: process.env.SystemRoot }, platform: process.platform, on() {}, removeListener() {} }, AbortController, console, setTimeout, clearTimeout };
   // Seed the existing SDK/runtime caches without replacing any lifecycle method.

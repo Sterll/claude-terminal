@@ -460,7 +460,10 @@ describe('dedupeLegacy', () => {
     const result = dedupeLegacy(MENU_MODELS, LEGACY_MODELS);
     expect(result.find(m => m.value === 'claude-opus-5')).toBeUndefined();
     expect(result.find(m => m.value === 'claude-sonnet-5')).toBeUndefined();
-    expect(result).toHaveLength(LEGACY_MODELS.length - 2);
+    // Same for Haiku 4.5: in this catalog `haiku` still resolves to it, as it
+    // did before CLI 2.1.293 moved the alias to Haiku 5.5.
+    expect(result.find(m => m.value === 'claude-haiku-4-5-20251001')).toBeUndefined();
+    expect(result).toHaveLength(LEGACY_MODELS.length - 3);
   });
 
   test('tolerates missing arguments', () => {

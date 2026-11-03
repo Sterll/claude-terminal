@@ -11,6 +11,7 @@ const {
   parseClaudeTitle,
   extractTitleFromInput,
   extractTerminalContext,
+  TITLE_SPINNER_RE,
 } = require('../../src/renderer/ui/components/terminal/claudeSignals');
 const {
   normalizeStoredKey,
@@ -55,6 +56,15 @@ describe('parseClaudeTitle', () => {
 
   test('the CLI\'s own name is not a task', () => {
     expect(parseClaudeTitle(`${SPINNER} Claude Code`)).toEqual({ state: 'working' });
+  });
+
+  test("the half circles Claude Code animates today mean still working too", () => {
+    // ◐ ◑ since at least CLI 2.1.299: a braille-only reader saw every busy
+    // title as neither busy nor idle, so the tab never left "ready".
+    expect(parseClaudeTitle('◐ Fixing the tests')).toEqual({ state: 'working', taskName: 'Fixing the tests' });
+    expect(parseClaudeTitle('◑ Bash npm test')).toEqual({ state: 'working', tool: 'Bash', toolArgs: 'npm test' });
+    for (const title of ['◐ Fixing the tests', '◑ x', `${SPINNER} x`]) expect(TITLE_SPINNER_RE.test(title)).toBe(true);
+    expect(TITLE_SPINNER_RE.test(`${READY} Done`)).toBe(false);
   });
 
   test('a title with neither marker reports unknown rather than guessing', () => {

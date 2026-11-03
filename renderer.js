@@ -535,6 +535,8 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
         if (!(await fileExists(project.path))) continue;
         if (!saved.tabs || saved.tabs.length === 0) continue;
 
+        // restoredIds[i] is the tab saved at tabs[i]: the split layout's indices.
+        const restoredIds = [];
         for (const tab of saved.tabs) {
           const cwd = (await fileExists(tab.cwd)) ? tab.cwd : project.path;
           const restoredId = await TerminalManager.createTerminal(project, {
@@ -546,6 +548,7 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
             name: tab.name || null,
             nameCustom: tab.nameCustom || false,
           });
+          restoredIds.push(restoredId ?? null);
           if (tab.pinned && restoredId != null) {
             try { TerminalManager.setTabPinned(restoredId, true); } catch (e) { /* ignore */ }
           }
@@ -563,6 +566,9 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
             TerminalManager.setActiveTerminal(activeId);
           }
         }
+
+        // After the active tab: a restored split focuses its own pane.
+        TerminalManager.restoreSplitLayout(projectId, saved.split, restoredIds);
       }
 
       if (sessionData.lastOpenedProjectId) {
@@ -778,11 +784,12 @@ async function _tryCloudAutoConnect() {
 
 // ========== NOTIFICATIONS ==========
 // Returns true if a notification was actually shown, false if it was suppressed
-// (notifications disabled, or the window is focused on the very terminal that fired).
+// (notifications disabled, or the window is focused with the terminal that fired
+// on screen, as the active tab or a pane of a split view).
 // Callers that block on a response (e.g. permission requests) use this to avoid deadlock.
 function showNotification(type, title, body, terminalId, extraOptions) {
   if (!isNotificationsEnabled()) return false;
-  if (document.hasFocus() && terminalsState.get().activeTerminal === terminalId) return false;
+  if (document.hasFocus() && TerminalManager.isTerminalShown(terminalId)) return false;
   const { buttons, autoDismiss, meta } = extraOptions || {};
   const defaultButtons = [{ label: t('terminals.notifBtnShow'), action: 'show', style: 'primary' }];
   api.notification.show({
@@ -1422,6 +1429,7 @@ if (api.mcpTerminal) {
         mode,
         runClaude: mode === 'chat',
         initialPrompt,
+        background: true,
       });
 
       // Track the last created terminal for this project
@@ -1493,7 +1501,7 @@ if (api.mcpTerminal) {
 
       if (termData?.mode === 'chat' && termData?.chatView) {
         // Chat tab: use ChatView.sendMessage() instead of PTY input
-        termData.chatView.sendMessage(data.command);
+        termData.chatView.sendMessage(data.command, [], [], { background: true });
       } else {
         // PTY terminal: write to node-pty
         api.terminal.input({ id: targetId, data: data.command + '\r' });
@@ -1521,7 +1529,7 @@ if (api.mcpTerminal) {
         return;
       }
       console.log(`[MCP Terminal] Closing terminal ${targetId}`);
-      TerminalManager.closeTerminal(targetId);
+      TerminalManager.closeTerminal(targetId, { background: true });
     } catch (e) {
       console.error('[MCP Terminal] Close error:', e);
     }
@@ -1566,10 +1574,13 @@ if (api.mcpTab) {
         ? data.skipPermissions
         : !!settingsState.get().skipPermissions;
 
+      // In the background: an agent's tab never takes the user off theirs,
+      // nor off the project on screen, nor out of the field they type in.
       await TerminalManager.createTerminal(project, {
         mode,
         runClaude: mode === 'chat',
         skipPermissions,
+        background: true,
       });
 
       // Find the tabId that was just created (the new one for this project).
@@ -1595,7 +1606,7 @@ if (api.mcpTab) {
   api.mcpTab.onSend((data) => {
     const requestId = data.requestId;
     try {
-      const result = TerminalManager.sendToTab(data.tabId, data.content);
+      const result = TerminalManager.sendToTab(data.tabId, data.content, { background: true });
       _writeTabResponse(requestId, result);
     } catch (e) {
       console.error('[MCP Tab] send error:', e);
@@ -1606,7 +1617,7 @@ if (api.mcpTab) {
   api.mcpTab.onClose((data) => {
     const requestId = data.requestId;
     try {
-      const result = TerminalManager.closeTabByTabId(data.tabId);
+      const result = TerminalManager.closeTabByTabId(data.tabId, { background: true });
       _writeTabResponse(requestId, result);
     } catch (e) {
       console.error('[MCP Tab] close error:', e);

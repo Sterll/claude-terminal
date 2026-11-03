@@ -149,7 +149,12 @@
     "loadingHint": "Cela peut prendre quelques secondes",
     "resumeSession": "Reprendre une session Claude",
     "addSession": "Nouvelle session ou terminal",
-    "newClaudeSession": "Nouvelle session Claude"
+    "newClaudeSession": "Nouvelle session Claude",
+    "splitUnsupported": "Les consoles de projet (FiveM, WebApp, API...) ne peuvent pas encore aller dans une vue divisée",
+    "splitMaxPanes": "Une vue divisée contient au plus {count} panneaux",
+    "splitTooSmall": "Pas assez de place pour un panneau de plus : agrandissez la fenêtre ou fermez un panneau",
+    "splitClosePane": "Retirer ce panneau (l'onglet reste ouvert)",
+    "splitResize": "Redimensionner les panneaux"
   },
   "mcp": {
     "notFound": "MCP introuvable",
@@ -771,7 +776,9 @@
     "terminalWordJump": "Saut de mot au lieu de changement d'onglet (Ctrl+Flèche)",
     "terminalTabSwitch": "Changer d'onglet (Ctrl+Tab)",
     "terminalRightClickPaste": "Coller au clic droit",
-    "terminalRightClickCopyPaste": "Copier/coller au clic droit (style Windows Terminal)"
+    "terminalRightClickCopyPaste": "Copier/coller au clic droit (style Windows Terminal)",
+    "splitRight": "Diviser à droite",
+    "splitDown": "Diviser en bas"
   },
   "contextMenu": {
     "newSubfolder": "Nouveau sous-dossier",
@@ -1304,6 +1311,11 @@
     "contextHandoffThresholdDesc": "Ici 500 veut dire 500k tokens, minimum 50. Gardez-le sous la fenêtre de contexte du modèle : trop près, la compaction du CLI passe avant.",
     "chatHibernate": "Mettre en veille les conversations inactives (minutes)",
     "chatHibernateDesc": "Un onglet de chat resté inactif aussi longtemps arrête son process Claude Code pour libérer la mémoire. La conversation reste affichée, et le message suivant la reprend là où elle en était. Jamais pour l'onglet ouvert, ni tant qu'un tour, une question ou une tâche de fond est en cours. 0 pour jamais.",
+    "chatSubagentEffort": "Effort des sous-agents",
+    "chatSubagentEffortDesc": "L'effort des sous-agents quand rien d'autre ne le fixe (leur propre définition, ou Claude qui demande un niveau). Par défaut, ils prennent celui de la conversation. S'applique à partir de la session suivante, avec Claude Code 2.1.316 ou plus récent.",
+    "chatSubagentEffortInherit": "Comme la conversation",
+    "chatBlockWritesOutsideCwd": "Refuser les écritures hors du projet",
+    "chatBlockWritesOutsideCwdDesc": "Write, Edit et NotebookEdit refusent tout chemin hors des dossiers de travail de la session, dans tous les modes de permission, bypass compris. Claude perd aussi EnterWorktree et ExitWorktree : il ne peut plus passer dans un worktree git à lui, ni modifier les fichiers de réglages de Claude Code. Les commandes shell et les outils MCP ne sont pas limités. S'applique à partir de la session suivante, avec Claude Code 2.1.314 ou plus récent.",
     "saveError": "Erreur lors de la sauvegarde des paramètres",
     "nameRequired": "Le nom est requis",
     "itemDeleted": "Élément supprimé",
@@ -2189,6 +2201,7 @@
     "todoTitle": "Tâches",
     "todoAllDone": "Terminé",
     "subagentLaunching": "Lancement de l'agent...",
+    "subagentFork": "Fork de la conversation",
     "subagentRunning": "Agent en cours...",
     "subagentThinking": "Réflexion...",
     "compacting": "Compaction de la conversation...",
@@ -3171,7 +3184,11 @@
     "closeTabTitle": "Fermer {name} ?",
     "closeTabMessage": "Cet onglet va être fermé. Toute session en cours y sera terminée.",
     "closeTabRemember": "Mémoriser mon choix",
-    "closeAll": "Tout fermer"
+    "closeAll": "Tout fermer",
+    "openRight": "Ouvrir à droite",
+    "openBelow": "Ouvrir en bas",
+    "removeFromSplit": "Retirer de la vue divisée",
+    "exitSplit": "Quitter la vue divisée"
   },
   "telemetry": {
     "consentTitle": "Aidez à améliorer Claude Terminal",
@@ -3450,6 +3467,9 @@
       "argsPlaceholder": "Arguments optionnels...",
       "modelLabel": "Modèle",
       "effortLabel": "Effort",
+      "subagentEffortLabel": "Effort des sous-agents",
+      "subagentEffortHint": "Pour les sous-agents que lance cette étape, quand rien d'autre ne fixe leur effort.",
+      "subagentEffortInherit": "Hériter (paramètres du chat)",
       "noAgents": "Aucun agent dans ~/.claude/agents/",
       "noSkills": "Aucun skill dans ~/.claude/skills/"
     },

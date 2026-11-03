@@ -59,6 +59,7 @@ const ATTACHMENT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentCol
 
 const { getSetting, setSetting, isNotificationsEnabled, settingsState } = require('../../state/settings.state');
 const { updateTerminal, getTerminal } = require('../../state/terminals.state');
+const { isTextEntry } = require('../../utils/focusGuard');
 const { saveTerminalSessions } = require('../../services/TerminalSessionService');
 
 const { matchModel, resolveModelSelection, uncataloguedModelLabel, hasOneMContext, DEFAULT_ALIAS, modelFamily, modelTier, PREMIUM_EFFORT_LEVELS } = require('../../../shared/model-options');
@@ -108,7 +109,7 @@ class ChatView extends BaseComponent {
 
   createChatView(wrapperEl, project, options = {}) {
     const api = this._api;
-  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, onRunInTerminal = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, onCliSessionId = null, systemPrompt = null, builtinSystemPrompt = null, draftPrompt = null, initialTickets = null } = options;
+  const { terminalId = null, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, skipPermissions = false, onTabRename = null, onStatusChange = null, onModelChange = null, onSwitchTerminal = null, onSwitchProject = null, onForkSession = null, onRunInTerminal = null, initialPrompt = null, initialModel = null, initialEffort = null, initialImages = null, onSessionStart = null, onCliSessionId = null, systemPrompt = null, builtinSystemPrompt = null, draftPrompt = null, initialTickets = null, background: openedInBackground = false } = options;
   let sessionId = null;
   let destroyed = false;
   // Puts this tab's session to sleep once it has been idle long enough; see
@@ -930,7 +931,13 @@ class ChatView extends BaseComponent {
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + 'px';
   }
 
+  // Set while an agent sends through this tab's composer (tab_send): the
+  // document has one selection, and moving it into this composer takes the
+  // caret, and in Chromium the focus, out of the field the user is typing in.
+  let keepUserSelection = false;
+
   function placeCaretAtEnd() {
+    if (keepUserSelection) return;
     const sel = window.getSelection();
     const range = document.createRange();
     range.selectNodeContents(inputEl);
@@ -1998,6 +2005,9 @@ class ChatView extends BaseComponent {
   const _onShiftBlur = () => { shiftHeld = false; };
   wrapperEl.addEventListener('keyup', (e) => { if (e.key === 'Shift') shiftHeld = false; }, true);
   window.addEventListener('blur', _onShiftBlur);
+  // The Shift of a chord that moved focus out (a split shortcut, Ctrl+Shift+T)
+  // is released elsewhere: without this, Enter would stay a newline here.
+  wrapperEl.addEventListener('focusout', (e) => { if (!wrapperEl.contains(e.relatedTarget)) shiftHeld = false; });
 
   // Ctrl+Arrow to switch terminals/projects (capture phase to intercept before textarea)
   wrapperEl.addEventListener('keydown', (e) => {
@@ -5692,10 +5702,22 @@ class ChatView extends BaseComponent {
     return el;
   }
 
+  /**
+   * What a subagent card is called. A fork (`subagent_type: "fork"`, on by
+   * default in SDK sessions since CLI 2.1.302) is no specialised agent but a
+   * copy of this conversation, on its model and effort, so it is said as such
+   * rather than shown as the bare word.
+   */
+  function subagentLabel(input) {
+    if (input?.name) return input.name;
+    if (input?.subagent_type === 'fork') return t('chat.subagentFork') || 'Fork of this conversation';
+    return input?.subagent_type || 'agent';
+  }
+
   function updateSubagentCard(el, input) {
     if (!el || !input) return;
     const typeEl = el.querySelector('.chat-subagent-type');
-    const name = input.name || input.subagent_type || 'agent';
+    const name = subagentLabel(input);
     const desc = input.description || '';
     if (typeEl) typeEl.textContent = name;
     const descEl = el.querySelector('.chat-subagent-desc');
@@ -6924,7 +6946,10 @@ class ChatView extends BaseComponent {
       }
       if (turnFailed) setStatus('error', t('chat.statusError'));
       else setStatus('idle', t('chat.ready') || 'Ready');
-      inputEl.focus();
+      // Back to the composer, unless the user is typing somewhere else: a
+      // turn an agent started over tab_send ends whenever it ends.
+      const typingIn = document.activeElement;
+      if (!isTextEntry(typingIn) || wrapperEl.contains(typingIn)) inputEl.focus();
     }
   }
 
@@ -7254,6 +7279,8 @@ class ChatView extends BaseComponent {
     // A view not owned by a terminal tab cannot say whether it is shown, so it
     // counts as open and never sleeps.
     if (terminalId == null) return true;
+    // A pane of the split view on screen is open too, focused or not.
+    if (wrapperEl.classList.contains('split-pane') && wrapperEl.parentElement?.classList.contains('is-split')) return true;
     try {
       const { getActiveTerminal } = require('../../state');
       return getActiveTerminal() === terminalId;
@@ -7787,7 +7814,7 @@ class ChatView extends BaseComponent {
             const taskInfo = taskToolIndices.get(stopIdx);
             if (taskInfo) {
               updateSubagentCard(taskInfo.card, toolInput);
-              setStatus('working', `${toolInput.name || toolInput.subagent_type || 'Agent'}...`);
+              setStatus('working', `${toolInput.name || toolInput.subagent_type ? subagentLabel(toolInput) : 'Agent'}...`);
               break;
             }
 
@@ -9488,7 +9515,7 @@ class ChatView extends BaseComponent {
 
           if (msg.toolName === 'Task' || msg.toolName === 'Agent') {
             const input = msg.toolInput || {};
-            const name = input.name || input.subagent_type || 'agent';
+            const name = subagentLabel(input);
             const desc = input.description || '';
             const el = document.createElement('div');
             // `done`, not `completed`: the finished state is styled off `.done`
@@ -9617,7 +9644,9 @@ class ChatView extends BaseComponent {
     if (destroyed) return;
     // preventScroll: focusing the composer must not yank a restored tab's
     // transcript back down while the reader is still up in its history.
-    inputEl.focus({ preventScroll: true });
+    // A tab an agent opened in the background takes nothing: the user is
+    // still typing wherever they were.
+    if (!openedInBackground) inputEl.focus({ preventScroll: true });
     // Auto-submit si un prompt initial est fourni (ex: depuis Remote Control)
     if (initialPrompt) {
       // Inject initial images if provided (from Remote Control camera)
@@ -9626,8 +9655,13 @@ class ChatView extends BaseComponent {
           attachments.push({ base64: img.base64, mediaType: img.mediaType, name: 'remote-image', dataUrl: '' });
         }
       }
-      setInputText(initialPrompt);
-      handleSend();
+      keepUserSelection = openedInBackground;
+      try {
+        setInputText(initialPrompt);
+        handleSend();
+      } finally {
+        keepUserSelection = false;
+      }
     } else if (draftPrompt) {
       // Prefilled, not sent: the user reads it and adds their own instructions.
       setInputText(draftPrompt);
@@ -9805,15 +9839,25 @@ class ChatView extends BaseComponent {
       inputEl?.focus({ preventScroll: true });
       if (!userHasScrolled) scrollToBottom();
     },
-    sendMessage(text, images = [], mentions = []) {
+    /**
+     * @param {{ background?: boolean }} [opts] - `background`: sent by an agent
+     *   (tab_send), so the user's focus and caret stay where they are. Only the
+     *   synchronous part of handleSend can move the caret, hence the flag's span.
+     */
+    sendMessage(text, images = [], mentions = [], { background: inBackground = false } = {}) {
       for (const img of images) {
         attachments.push({ base64: img.base64, mediaType: img.mediaType, name: img.name || 'visual', dataUrl: '' });
       }
       for (const m of mentions) {
         pendingMentions.push(m);
       }
-      setInputText(text);
-      handleSend();
+      keepUserSelection = inBackground;
+      try {
+        setInputText(text);
+        handleSend();
+      } finally {
+        keepUserSelection = false;
+      }
     },
     addMentionChip(type, data) {
       addMentionChip(type, data);

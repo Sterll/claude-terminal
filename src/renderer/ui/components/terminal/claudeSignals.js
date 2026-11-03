@@ -3,7 +3,7 @@
  *
  * The CLI in a PTY announces nothing structured, so a tab that hosts it is
  * watched rather than queried: the screen is scraped for the shapes that mean
- * "still working" (a braille spinner, a tool line) as against "waiting for
+ * "still working" (a title spinner, a tool line) as against "waiting for
  * you" (a prompt box). This is a heuristic by construction and is only ever
  * used to decide when to *stop* showing a busy state, never to decide what to
  * send. The one exception goes the safe way: detectPermissionDialog() decides
@@ -12,8 +12,12 @@
 
 const { BUILTIN_TOOLS } = require('../../../utils/toolRegistry');
 
-// Braille cells are what every CLI spinner in this ecosystem animates with.
+// Braille cells are what CLI spinners in this ecosystem animate with on screen.
 const BRAILLE_SPINNER_RE = /[⠁-⣿]/;
+// What a busy session puts in front of its tab title. Claude Code animates two
+// half circles there (◐ ◑, at least since 2.1.299) where it used braille
+// before. Idle is ✳.
+const TITLE_SPINNER_RE = /[⠁-⣿◐◑]/;
 const CLAUDE_TOOLS = new Set([...BUILTIN_TOOLS, 'TodoRead', 'Notebook']);
 
 const TITLE_STOP_WORDS = new Set([
@@ -82,10 +86,10 @@ function detectPermissionDialog(terminal) {
 }
 
 function parseClaudeTitle(title) {
-  const brailleMatch = title.match(/[\u2801-\u28FF]\s+(.*)/);
+  const busyMatch = title.match(/[\u2801-\u28FF\u25D0\u25D1]\s+(.*)/);
   const readyMatch = title.match(/\u2733\s+(.*)/);
-  const content = (brailleMatch || readyMatch)?.[1]?.trim();
-  const state = brailleMatch ? 'working' : readyMatch ? 'ready' : 'unknown';
+  const content = (busyMatch || readyMatch)?.[1]?.trim();
+  const state = busyMatch ? 'working' : readyMatch ? 'ready' : 'unknown';
   if (!content || content === 'Claude Code') return { state };
   const firstWord = content.split(/\s/)[0];
   if (CLAUDE_TOOLS.has(firstWord)) {
@@ -149,5 +153,5 @@ module.exports = {
   detectPermissionDialog,
   CLAUDE_TOOLS,
   TITLE_STOP_WORDS,
-  BRAILLE_SPINNER_RE,
+  TITLE_SPINNER_RE,
 };

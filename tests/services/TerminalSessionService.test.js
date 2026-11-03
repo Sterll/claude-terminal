@@ -108,3 +108,55 @@ describe('isChatServiceHandle', () => {
     expect(isChatServiceHandle(undefined)).toBe(false);
   });
 });
+
+describe('saving a split layout', () => {
+  const service = require('../../src/renderer/services/TerminalSessionService');
+  const { terminalsState } = require('../../src/renderer/state/terminals.state');
+  const writeFile = window.electron_nodeModules.fs.promises.writeFile;
+
+  const project = { id: 'p1', name: 'P', path: '/repo' };
+  const savedFile = () => JSON.parse(writeFile.mock.calls[writeFile.mock.calls.length - 1][1]);
+
+  beforeEach(() => {
+    writeFile.mockReset();
+    readFile.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }));
+  });
+
+  afterEach(() => service.setSplitLayoutProvider(null));
+
+  test('indices are computed from the tab ids at save time, so an earlier close cannot shift them', async () => {
+    const terminals = new Map([
+      [10, { project, mode: 'terminal' }],
+      ['chat-a', { project, mode: 'chat' }],
+      ['file-1', { project, type: 'file' }], // never saved
+      [40, { project, mode: 'terminal' }],
+    ]);
+    terminalsState.set({ terminals, activeTerminal: 40 });
+    service.setSplitLayoutProvider((pid, indexOf) => ({ chat: indexOf('chat-a'), last: indexOf(40), file: indexOf('file-1') }));
+
+    await service.saveTerminalSessionsImmediate();
+    expect(savedFile().projects.p1.split).toEqual({ chat: 1, last: 2, file: -1 });
+
+    terminals.delete(10);
+    terminalsState.set({ terminals, activeTerminal: 40 });
+    await service.saveTerminalSessionsImmediate();
+    expect(savedFile().projects.p1.split).toEqual({ chat: 0, last: 1, file: -1 });
+    expect(savedFile().projects.p1.tabs).toHaveLength(2);
+  });
+
+  test('no layout, no split entry', async () => {
+    terminalsState.set({ terminals: new Map([[1, { project, mode: 'terminal' }]]), activeTerminal: 1 });
+    service.setSplitLayoutProvider(() => null);
+    await service.saveTerminalSessionsImmediate();
+    expect(savedFile().projects.p1).not.toHaveProperty('split');
+  });
+
+  test('a remote project not opened yet keeps the layout it was saved with', async () => {
+    terminalsState.set({ terminals: new Map(), activeTerminal: null });
+    const split = { root: { dir: 'row', ratio: 0.5, a: { tab: 0 }, b: { tab: 1 } }, focused: 1 };
+    service.stashRemoteTabs('remote-1', { tabs: [{ cwd: 'ssh-remote://h/a' }, { cwd: 'ssh-remote://h/a' }], activeCwd: null, split });
+    await service.saveTerminalSessionsImmediate();
+    expect(savedFile().projects['remote-1'].split).toEqual(split);
+    expect(service.takeRemoteTabs('remote-1').split).toEqual(split);
+  });
+});

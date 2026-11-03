@@ -47,6 +47,7 @@ const {
 } = require('../../state');
 const { escapeHtml, getFileIcon, highlight } = require('../../utils');
 const { copyText, readText: readClipboardText } = require('../../utils/clipboard');
+const { preserveFocus } = require('../../utils/focusGuard');
 const { t } = require('../../i18n');
 const {
   CLAUDE_TERMINAL_THEME,
@@ -60,14 +61,16 @@ const { showContextMenu } = require('./ContextMenu');
 const { showConfirm } = require('./Modal');
 const ContextPromptService = require('../../services/ContextPromptService');
 const { registerOsc52Handler } = require('./terminal/osc52');
+const { attachProgramStatus, attentionOf, attentionSource } = require('./terminal/programStatus');
 const {
   detectCompletionSignal,
   parseClaudeTitle,
   extractTitleFromInput,
   detectPermissionDialog,
-  BRAILLE_SPINNER_RE,
+  TITLE_SPINNER_RE,
 } = require('./terminal/claudeSignals');
-const { normalizeStoredKey, eventToNormalizedKey } = require('./terminal/keyBindings');
+const { normalizeStoredKey, eventToNormalizedKey, isSplitShortcut } = require('./terminal/keyBindings');
+const { createSplitLayout } = require('./terminal/splitLayout');
 const {
   truncateText,
   cleanSessionText,
@@ -199,6 +202,8 @@ class TerminalManager extends BaseComponent {
     this._postEnterExtended = new Set();
     this._postSpinnerExtended = new Set();
     this._terminalSubstatus = new Map();
+    // Tab id -> the last OSC 7501 status of its main session, while it speaks it.
+    this._programStatus = new Map();
     this._lastTerminalData = new Map();
     this._terminalContext = new Map();
     this._tabActivationHistory = new Map();
@@ -209,6 +214,8 @@ class TerminalManager extends BaseComponent {
     this._closeConfirmOpen = false;
     // Tabs of remote (SSH) projects: host badge, disconnect overlay, respawn.
     this._remoteTabs = this._createRemoteTabs();
+    // Several tabs of one project side by side (terminal/splitLayout.js).
+    this._split = this._createSplitLayout();
     this._callbacks = {
       onNotification: null,
       onRenderProjects: null,
@@ -263,6 +270,131 @@ class TerminalManager extends BaseComponent {
       },
       onCloseTab: (tabId) => self.closeTerminal(tabId),
     });
+  }
+
+  /** Wire the split view to the tabs, their projects and the session file. */
+  _createSplitLayout() {
+    const self = this;
+    const split = createSplitLayout({
+      getContainer: () => document.getElementById('terminals-container'),
+      getActiveTerminal,
+      // Worktree tabs are shown under the project they were opened from.
+      ownerOf: (id) => {
+        const td = getTerminal(id);
+        return td ? (td.parentProjectId || td.project?.id || null) : null;
+      },
+      canSplit: (id) => self._canSplitTab(id),
+      resolveId: (idText) => self._resolveTabId(idText),
+      activate: (id) => self.setActiveTerminal(id),
+      onChange: () => require('../../services/TerminalSessionService').saveTerminalSessions(),
+      notify: (message) => {
+        try { require('./Toast').showToast({ message, type: 'warning' }); } catch (_) { /* no toast container yet */ }
+      },
+      t,
+    });
+    // Optional call: a test that stubs the session service has no layout to save.
+    require('../../services/TerminalSessionService').setSplitLayoutProvider?.(
+      (projectId, indexOf) => split.serializeFor(projectId, indexOf)
+    );
+    return split;
+  }
+
+  /**
+   * Terminals, chats and file tabs can share the screen. Project-type consoles
+   * (FiveM, WebApp, API...) cannot yet: they drive their own views off the
+   * `.active` class, and a WebApp preview would stay hidden in a pane.
+   */
+  _canSplitTab(id) {
+    const td = getTerminal(id);
+    if (!td) return { ok: false, reasonKey: 'terminals.splitUnsupported' };
+    if (td.type && td.type !== 'terminal' && td.type !== 'file') return { ok: false, reasonKey: 'terminals.splitUnsupported' };
+    return { ok: true };
+  }
+
+  /** The terminals Map key behind a `data-id`: a number for PTY tabs, a string for chats. */
+  _resolveTabId(idText) {
+    let found = null;
+    terminalsState.get().terminals.forEach((td, key) => {
+      if (found === null && String(key) === String(idText)) found = key;
+    });
+    return found;
+  }
+
+  /** Whether the user can see this tab: the active one, or a pane beside it. */
+  isTerminalShown(id) {
+    if (id == null) return false;
+    return getActiveTerminal() === id || this._split.isShown(id);
+  }
+
+  /**
+   * Split the active tab's pane. Without a tab to put beside it, the new pane
+   * is a fresh plain terminal: a Claude session spends usage, so it is never
+   * started without being asked for.
+   * @param {'right'|'bottom'} side
+   */
+  async splitActive(side) {
+    const activeId = getActiveTerminal();
+    if (activeId == null) return;
+    const check = this._split.canSplitBeside(activeId, side);
+    if (!check.ok) return;
+    const candidate = this._splitCandidate(activeId);
+    if (candidate != null) {
+      this._split.split(activeId, candidate, side);
+      return;
+    }
+    const td = getTerminal(activeId);
+    const projects = projectsState.get().projects;
+    const ownerId = td?.parentProjectId || td?.project?.id;
+    const project = projects.find((p) => p.id === ownerId) || td?.project;
+    if (!project) return;
+    this._split.expectNewTab(activeId, side);
+    try {
+      await this.createTerminal(project, { runClaude: false, cwd: td.cwd || null });
+    } finally {
+      this._split.clearPending();
+    }
+    this._split.apply();
+  }
+
+  /** The tab most recently used in this project that is not on screen. */
+  _splitCandidate(activeId) {
+    const td = getTerminal(activeId);
+    const ownerId = td?.parentProjectId || td?.project?.id;
+    const history = this._tabActivationHistory.get(ownerId) || [];
+    const owned = (id) => {
+      const other = getTerminal(id);
+      return !!other && (other.parentProjectId || other.project?.id) === ownerId;
+    };
+    const usable = (id) => id !== activeId && owned(id) && !this._split.isShown(id) && this._canSplitTab(id).ok;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (usable(history[i])) return history[i];
+    }
+    for (const id of terminalsState.get().terminals.keys()) {
+      if (usable(id)) return id;
+    }
+    return null;
+  }
+
+  /**
+   * "Open to the right / below" from a tab's menu. On the active tab it splits
+   * like the shortcut; on another tab it puts that tab beside the active one.
+   */
+  splitTab(id, side) {
+    const activeId = getActiveTerminal();
+    if (activeId == null || id === activeId) return this.splitActive(side);
+    return this._split.split(activeId, id, side);
+  }
+
+  /**
+   * Bring back a saved layout once its tabs exist again.
+   * @param {string} projectId
+   * @param {Object} saved - the `split` entry of the project's saved session
+   * @param {Array} restoredIds - restoredIds[i] is the tab restored from saved tabs[i]
+   */
+  restoreSplitLayout(projectId, saved, restoredIds) {
+    if (!saved || !Array.isArray(restoredIds)) return;
+    const focus = this._split.restore(projectId, saved, (i) => restoredIds[i] ?? null);
+    if (focus != null && getTerminal(focus)) this.setActiveTerminal(focus);
   }
 
   /** The tab a PTY id belongs to (they differ once a tab has switched modes). */
@@ -458,7 +590,7 @@ class TerminalManager extends BaseComponent {
   _handleClaudeTitleChange(id, title, options = {}) {
     const { onPendingPrompt } = options;
 
-    if (BRAILLE_SPINNER_RE.test(title)) {
+    if (TITLE_SPINNER_RE.test(title)) {
       this._postEnterExtended.delete(id);
       this._postSpinnerExtended.add(id);
       this._cancelScheduledReady(id);
@@ -685,6 +817,7 @@ class TerminalManager extends BaseComponent {
   _createTerminalKeyHandler(terminal, terminalId, inputChannel = 'terminal-input') {
     const self = this;
     let shiftHeld = false;
+    let shiftBlurBound = false;
     const _onBlur = () => { shiftHeld = false; };
     window.addEventListener('blur', _onBlur);
     terminal._blurListener = _onBlur;
@@ -712,6 +845,10 @@ class TerminalManager extends BaseComponent {
     };
 
     return (e) => {
+      // The split shortcuts, as the user bound them, belong to the app: on any
+      // event type, so xterm never turns one into ^D, ^S or ESC ^D for the shell.
+      if (isSplitShortcut(e, getSetting('shortcuts'))) return false;
+
       if (e.ctrlKey && e.type === 'keydown') {
         const ts = getSetting('terminalShortcuts') || {};
         const eventKey = eventToNormalizedKey(e);
@@ -738,6 +875,13 @@ class TerminalManager extends BaseComponent {
         }
       }
 
+      // A Shift released after focus left this terminal (a split shortcut, or
+      // Ctrl+Shift+T, moves it mid-chord) never reaches this handler, and a
+      // stuck flag turns every later Enter into a newline. Losing focus ends it.
+      if (!shiftBlurBound && terminal.textarea) {
+        terminal.textarea.addEventListener('blur', _onBlur);
+        shiftBlurBound = true;
+      }
       if (e.key === 'Shift' && e.type === 'keydown') shiftHeld = true;
       if (e.key === 'Shift' && e.type === 'keyup') shiftHeld = false;
 
@@ -932,9 +1076,12 @@ class TerminalManager extends BaseComponent {
 
       self._dragPlaceholder = document.createElement('div');
       self._dragPlaceholder.className = 'terminal-tab-placeholder';
+      // The panes below become drop targets: an edge splits, the middle replaces.
+      self._split.beginTabDrag(self._resolveTabId(tab.dataset.id));
     });
 
     tab.addEventListener('dragend', () => {
+      self._split.endTabDrag();
       tab.classList.remove('dragging');
       self._draggedTab = null;
       if (self._dragPlaceholder && self._dragPlaceholder.parentNode) {
@@ -1179,17 +1326,51 @@ class TerminalManager extends BaseComponent {
   }
 
   /**
-   * Whether this PTY tab's attention flag is read off its screen. Only when
-   * the hooks cannot say it: they are off, or the tab runs on a remote host,
-   * whose CLI never reaches the local hook server. With hooks on they are the
-   * one source, so the two never overwrite each other.
+   * Which one source sets this PTY tab's attention flag, so two never
+   * overwrite each other: the hooks when they are on, except on a remote
+   * host, whose CLI never reaches the local hook server; otherwise the
+   * session's own OSC 7501 status once it speaks it; otherwise its screen.
+   * @returns {'hooks'|'osc'|'screen'|null} null for a tab with no PTY
    */
-  _scrapesAttention(id) {
+  _attentionSourceOf(id) {
     const termData = getTerminal(id);
-    if (!termData?.terminal) return false;
+    if (!termData?.terminal) return null;
     let hooksActive = false;
     try { hooksActive = require('../../events').getActiveProvider() === 'hooks'; } catch (e) { /* not ready */ }
-    return !hooksActive || isRemoteProject(termData.project);
+    return attentionSource({
+      hooksActive,
+      remote: isRemoteProject(termData.project),
+      programStatus: this._programStatus.has(id),
+    });
+  }
+
+  /** Whether this PTY tab's attention flag is read off its screen. */
+  _scrapesAttention(id) {
+    return this._attentionSourceOf(id) === 'screen';
+  }
+
+  /**
+   * Title changes and OSC 7501 of one PTY tab, for its whole life. `onTitle`
+   * gets the title the working / ready machine reads (see programStatus.js for
+   * why it may be rebuilt), and an OSC 7501 status moves the attention flag
+   * when that is the tab's source.
+   */
+  _attachProgramStatus(id, terminal, onTitle) {
+    this._programStatus.delete(id);
+    attachProgramStatus(terminal, {
+      onTitle,
+      onStatus: (status) => {
+        if (status) this._programStatus.set(id, status);
+        else this._programStatus.delete(id);
+        // A clear means the CLI is gone: what it flagged goes with it, and the
+        // screen takes over from here.
+        if (!status) {
+          if (this._attentionSourceOf(id) === 'screen') this.setTerminalAttention(id, null);
+          return;
+        }
+        if (this._attentionSourceOf(id) === 'osc') this.setTerminalAttention(id, attentionOf(status));
+      },
+    });
   }
 
   // ── Tab rename ──
@@ -1317,6 +1498,53 @@ class TerminalManager extends BaseComponent {
     tabsContainer.insertBefore(tab, anchor ? anchor.nextSibling : tabsContainer.firstChild);
   }
 
+  /**
+   * The split entries of a tab's menu. On a tab that cannot share the screen
+   * they stay listed but disabled, with the reason as their tooltip, so the
+   * action does not just do nothing.
+   */
+  _splitMenuItems(id) {
+    const self = this;
+    const check = this._canSplitTab(id);
+    const reason = check.ok ? undefined : t(check.reasonKey);
+    const { SPLIT_SHORTCUTS } = require('./terminal/keyBindings');
+    const bound = getSetting('shortcuts') || {};
+    const shortcutOf = (key) => bound[key] || SPLIT_SHORTCUTS[key];
+    const items = [
+      {
+        label: t('tabs.openRight'),
+        shortcut: shortcutOf('splitRight'),
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/></svg>',
+        disabled: !check.ok,
+        title: reason,
+        onClick: () => self.splitTab(id, 'right')
+      },
+      {
+        label: t('tabs.openBelow'),
+        shortcut: shortcutOf('splitDown'),
+        icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/></svg>',
+        disabled: !check.ok,
+        title: reason,
+        onClick: () => self.splitTab(id, 'bottom')
+      }
+    ];
+    if (this._split.isInLayout(id)) {
+      items.push(
+        {
+          label: t('tabs.removeFromSplit'),
+          icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="12" y1="4" x2="12" y2="20"/><path d="m15 10 4 4m0-4-4 4"/></svg>',
+          onClick: () => self._split.detach(id)
+        },
+        {
+          label: t('tabs.exitSplit'),
+          icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>',
+          onClick: () => self._split.exitSplit(id)
+        }
+      );
+    }
+    return items;
+  }
+
   _showTabContextMenu(e, id) {
     const self = this;
     e.preventDefault();
@@ -1358,6 +1586,8 @@ class TerminalManager extends BaseComponent {
           icon: '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>',
           onClick: () => self._startRenameTab(id)
         },
+        { separator: true },
+        ...self._splitMenuItems(id),
         { separator: true },
         {
           label: t('tabs.close'),
@@ -1412,6 +1642,8 @@ class TerminalManager extends BaseComponent {
       try { prevTermData.terminal.blur(); } catch (e) {}
     }
 
+    // In a split view, a tab that is not on screen takes the focused pane.
+    this._split.willActivate(id, prevActiveId);
     setActiveTerminalState(id);
     document.querySelectorAll('.terminal-tab').forEach(t => t.classList.toggle('active', t.dataset.id == id));
     document.querySelectorAll('.terminal-wrapper').forEach(w => {
@@ -1419,6 +1651,7 @@ class TerminalManager extends BaseComponent {
       w.classList.toggle('active', isActive);
       w.style.removeProperty('display');
     });
+    this._split.apply();
     const termData = getTerminal(id);
     if (termData) {
       if (termData.mode === 'chat') {
@@ -1557,8 +1790,14 @@ class TerminalManager extends BaseComponent {
     close();
   }
 
-  closeTerminal(id) {
+  /**
+   * @param {{ background?: boolean }} [opts] - `background`: closed by an agent
+   *   (tab_close). Closing a tab the user is not on then leaves the active tab
+   *   and the shown project alone.
+   */
+  closeTerminal(id, { background = false } = {}) {
     const termData = getTerminal(id);
+    const wasActive = String(getActiveTerminal()) === String(id);
     const closedProjectIndex = termData?.projectIndex;
     const closedProjectPath = termData?.project?.path;
     const closedProjectId = termData?.project?.id;
@@ -1578,10 +1817,14 @@ class TerminalManager extends BaseComponent {
       this._loadingTimeouts.delete(id);
     }
     this._terminalSubstatus.delete(id);
+    this._programStatus.delete(id);
     this._lastTerminalData.delete(id);
     this._terminalContext.delete(id);
     this._errorOverlays.delete(closedProjectIndex);
     this._remoteTabs.detach(id);
+    // Asked before the tab leaves the state: the pane beside it takes the focus
+    // only if it was the focused one.
+    const splitSuccessor = this._split.removeTab(id);
 
     if (termData && termData.mode === 'chat') {
       if (termData.chatView) {
@@ -1632,11 +1875,18 @@ class TerminalManager extends BaseComponent {
       });
     }
 
+    // In a split view the next tab is the one on screen, not the last one used:
+    // that one may be hidden, and would take the closed pane's place.
+    if (splitSuccessor != null && getTerminal(splitSuccessor)) sameProjectTerminalId = splitSuccessor;
+
     if (!sameProjectTerminalId && closedProjectId) {
       stopProject(closedProjectId);
     }
 
-    if (sameProjectTerminalId) {
+    if (background && !wasActive) {
+      // Only the bar changes: the closed tab was never on screen.
+      this.filterByProject(projectsState.get().selectedProjectFilter);
+    } else if (sameProjectTerminalId) {
       this.setActiveTerminal(sameProjectTerminalId);
       const selectedFilter = projectsState.get().selectedProjectFilter;
       this.filterByProject(selectedFilter);
@@ -1707,7 +1957,7 @@ class TerminalManager extends BaseComponent {
   }
 
   async createTerminal(project, options = {}) {
-    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null, claudeCommand = null, accountId: accountOverride, draftPrompt = null, initialTickets = null } = options;
+    const { skipPermissions = false, runClaude = true, name: customName = null, nameCustom = false, mode: explicitMode = null, cwd: overrideCwd = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, resumeSessionId = null, systemPrompt = null, tabTag = null, claudeCommand = null, accountId: accountOverride, draftPrompt = null, initialTickets = null, background = false } = options;
 
     // A command handed over from the chat needs the CLI's own terminal UI,
     // which is the whole reason it could not run in the chat.
@@ -1719,7 +1969,7 @@ class TerminalManager extends BaseComponent {
 
     if (mode === 'chat' && runClaude) {
       const chatProject = overrideCwd ? { ...project, path: overrideCwd } : project;
-      return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag, draftPrompt, initialTickets });
+      return this._createChatTerminal(chatProject, { skipPermissions, name: customName, nameCustom, parentProjectId: overrideCwd ? project.id : null, resumeSessionId, initialPrompt, initialImages, initialModel, initialEffort, onSessionStart, systemPrompt, tabTag, draftPrompt, initialTickets, background });
     }
 
     // Started before the PTY spawn rather than after it: on the first terminal
@@ -1802,7 +2052,7 @@ class TerminalManager extends BaseComponent {
       ...(remoteSessionKey ? { remoteSessionKey } : {})
     };
 
-    addTerminal(id, termData);
+    addTerminal(id, termData, { activate: !background });
 
     heartbeat(project.id, 'terminal');
 
@@ -1866,7 +2116,9 @@ class TerminalManager extends BaseComponent {
         requestAnimationFrame(() => fitAddon.fit());
       }
     }, 100);
-    this.setActiveTerminal(id);
+    // An agent opening a tab over MCP leaves the user on theirs: the new tab
+    // shows up in the bar, its status dot and attention flag do the talking.
+    if (!background) this.setActiveTerminal(id);
 
     this._setupPasteHandler(wrapper, id, 'terminal-input');
     this._setupClipboardShortcuts(wrapper, terminal, id, 'terminal-input');
@@ -1874,12 +2126,9 @@ class TerminalManager extends BaseComponent {
 
     terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-    let lastTitle = '';
     let promptSent = false;
     const self = this;
-    terminal.onTitleChange(title => {
-      if (title === lastTitle) return;
-      lastTitle = title;
+    this._attachProgramStatus(id, terminal, title => {
       self._handleClaudeTitleChange(id, title, initialPrompt ? {
         onPendingPrompt: () => {
           const td = getTerminal(id);
@@ -2014,7 +2263,10 @@ class TerminalManager extends BaseComponent {
     }
 
     const selectedFilter = projectsState.get().selectedProjectFilter;
-    this.filterByProject(selectedFilter);
+    // In the background the filter may still activate this tab, when the shown
+    // project had none, but it does not get to move the user's caret.
+    if (background) preserveFocus(() => this.filterByProject(selectedFilter));
+    else this.filterByProject(selectedFilter);
     if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) self.setActiveTerminal(id); };
@@ -2657,6 +2909,8 @@ class TerminalManager extends BaseComponent {
         if (targetId != null) this.setActiveTerminal(targetId);
       }
     }
+    // Each project keeps its own layout: the one shown now follows the filter.
+    this._split.apply();
   }
 
   countTerminalsForProject(projectIndex) {
@@ -3245,6 +3499,9 @@ class TerminalManager extends BaseComponent {
     const saved = TerminalSessionService.takeRemoteTabs(project.id);
     if (!saved || !Array.isArray(saved.tabs) || saved.tabs.length === 0) return 0;
     let restored = 0;
+    // restoredIds[i] is the tab saved at tabs[i], null when it did not come back,
+    // which is what the saved split layout's indices point into.
+    const restoredIds = [];
     for (const tab of saved.tabs) {
       const mode = tab.mode || null;
       const cwd = isRemotePath(tab.cwd) ? tab.cwd : project.path;
@@ -3258,12 +3515,14 @@ class TerminalManager extends BaseComponent {
         nameCustom: tab.nameCustom || false,
         remoteSessionKey: tab.remoteSessionKey || null,
       });
+      restoredIds.push(id ?? null);
       if (id == null) continue;
       restored++;
       if (tab.pinned) {
         try { this.setTabPinned(id, true); } catch (e) { /* ignore */ }
       }
     }
+    this.restoreSplitLayout(project.id, saved.split, restoredIds);
     return restored;
   }
 
@@ -3400,13 +3659,8 @@ class TerminalManager extends BaseComponent {
 
     terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-    let lastTitle = '';
     const self = this;
-    terminal.onTitleChange(title => {
-      if (title === lastTitle) return;
-      lastTitle = title;
-      self._handleClaudeTitleChange(id, title);
-    });
+    this._attachProgramStatus(id, terminal, title => self._handleClaudeTitleChange(id, title));
 
     this._registerTerminalHandler(id,
       (data) => {
@@ -3572,12 +3826,9 @@ class TerminalManager extends BaseComponent {
 
     terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-    let lastTitle = '';
     let promptSent = false;
     const self = this;
-    terminal.onTitleChange(title => {
-      if (title === lastTitle) return;
-      lastTitle = title;
+    this._attachProgramStatus(id, terminal, title => {
       self._handleClaudeTitleChange(id, title, {
         onPendingPrompt: () => {
           const td = getTerminal(id);
@@ -4226,7 +4477,7 @@ class TerminalManager extends BaseComponent {
   // ── Chat terminal ──
 
   async _createChatTerminal(project, options = {}) {
-    const { skipPermissions = false, name: customName = null, nameCustom = false, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null, draftPrompt = null, initialTickets = null } = options;
+    const { skipPermissions = false, name: customName = null, nameCustom = false, resumeSessionId = null, forkSession = false, resumeSessionAt = null, resumeDropsTurn = null, parentProjectId = null, initialPrompt = null, initialImages = null, initialModel = null, initialEffort = null, onSessionStart = null, systemPrompt = null, tabTag = null, draftPrompt = null, initialTickets = null, background = false } = options;
 
     const id = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     let _chatSessionId = null;
@@ -4254,7 +4505,7 @@ class TerminalManager extends BaseComponent {
       ...(resumeSessionId ? { claudeSessionId: resumeSessionId } : {})
     };
 
-    addTerminal(id, termData);
+    addTerminal(id, termData, { activate: !background });
     if (!isCloud) heartbeat(parentProjectId || project.id, 'terminal');
 
     const tabsContainer = document.getElementById('terminals-tabs');
@@ -4311,6 +4562,7 @@ class TerminalManager extends BaseComponent {
       // and the ticket is linked from the first moment.
       draftPrompt,
       initialTickets,
+      background,
       initialModel: effectiveModel,
       initialEffort: effectiveEffort,
       builtinSystemPrompt: getBuiltinSystemPrompt(project.type),
@@ -4352,10 +4604,11 @@ class TerminalManager extends BaseComponent {
       storedData.chatView = chatView;
     }
 
-    this.setActiveTerminal(id);
+    if (!background) this.setActiveTerminal(id);
 
     const selectedFilter = projectsState.get().selectedProjectFilter;
-    this.filterByProject(selectedFilter);
+    if (background) preserveFocus(() => this.filterByProject(selectedFilter));
+    else this.filterByProject(selectedFilter);
     if (this._callbacks.onRenderProjects) this._callbacks.onRenderProjects();
 
     tab.onclick = (e) => { if (!e.target.closest('.tab-close') && !e.target.closest('.tab-name-input') && !e.target.closest('.tab-mode-toggle')) self.setActiveTerminal(id); };
@@ -4589,12 +4842,7 @@ class TerminalManager extends BaseComponent {
       this._setupRightClickHandler(wrapper, terminal, id, 'terminal-input');
       terminal.attachCustomKeyEventHandler(this._createTerminalKeyHandler(terminal, id, 'terminal-input'));
 
-      let lastTitle = '';
-      terminal.onTitleChange(title => {
-        if (title === lastTitle) return;
-        lastTitle = title;
-        self._handleClaudeTitleChange(id, title);
-      });
+      this._attachProgramStatus(id, terminal, title => self._handleClaudeTitleChange(id, title));
 
       this._registerTerminalHandler(ptyId,
         (data) => {
@@ -4651,6 +4899,8 @@ class TerminalManager extends BaseComponent {
     tab.classList.remove('status-working', 'status-ready', 'status-loading', 'status-error',
       'substatus-thinking', 'substatus-tool', 'substatus-waiting');
     tab.classList.add(`status-${getTerminal(id)?.status || 'ready'}`);
+    // The wrapper was emptied above, its pane's close button with it.
+    this._split.apply();
   }
 
   // ── Cleanup ──
@@ -4700,7 +4950,7 @@ class TerminalManager extends BaseComponent {
     return getTerminalByTabId(tabId);
   }
 
-  sendToTab(tabId, content) {
+  sendToTab(tabId, content, { background = false } = {}) {
     const { markTabSend } = require('../../state/terminals.state');
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
@@ -4711,7 +4961,7 @@ class TerminalManager extends BaseComponent {
       if (!data.chatView) return { ok: false, error: 'Chat view not ready yet' };
       try {
         if (typeof data.chatView.sendMessage === 'function') {
-          data.chatView.sendMessage(text);
+          data.chatView.sendMessage(text, [], [], { background });
         } else if (typeof data.chatView.submit === 'function') {
           data.chatView.submit(text);
         } else if (typeof data.chatView.send === 'function') {
@@ -4793,11 +5043,11 @@ class TerminalManager extends BaseComponent {
     return base;
   }
 
-  closeTabByTabId(tabId) {
+  closeTabByTabId(tabId, { background = false } = {}) {
     const found = getTerminalByTabId(tabId);
     if (!found) return { ok: false, error: `Tab not found: ${tabId}` };
     try {
-      this.closeTerminal(found.id);
+      this.closeTerminal(found.id, { background });
       return { ok: true, tabId };
     } catch (e) {
       return { ok: false, error: e.message };
@@ -4914,15 +5164,21 @@ class TerminalManager extends BaseComponent {
     const btn = card.querySelector(btnSelector);
     if (!btn) return { ok: false, error: `Button for action "${action}" not found` };
 
-    // For deny: prefill the feedback input then click twice (first shows input, second sends).
-    if (action === 'deny' && message) {
-      try { btn.click(); } catch (_) {}
-      const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
-      if (feedbackInput) feedbackInput.value = String(message);
-      try { btn.click(); } catch (_) {}
-    } else {
-      try { btn.click(); } catch (e) { return { ok: false, error: e.message }; }
-    }
+    // These clicks are an agent's, not the user's: the first deny click focuses
+    // the feedback field, which must not take the caret from wherever they type.
+    const clickError = preserveFocus(() => {
+      // For deny: prefill the feedback input then click twice (first shows input, second sends).
+      if (action === 'deny' && message) {
+        try { btn.click(); } catch (_) {}
+        const feedbackInput = card.querySelector('.chat-perm-feedback-input, .chat-plan-feedback-input');
+        if (feedbackInput) feedbackInput.value = String(message);
+        try { btn.click(); } catch (_) {}
+        return null;
+      }
+      try { btn.click(); } catch (e) { return e; }
+      return null;
+    });
+    if (clickError) return { ok: false, error: clickError.message };
 
     return { ok: true, tabId, requestId: targetRequestId, action };
   }
@@ -4949,6 +5205,7 @@ class TerminalManager extends BaseComponent {
     this._terminalContext.clear();
     this._tabActivationHistory.clear();
     this._remoteTabs.destroy();
+    this._split.destroy();
 
     super.destroy();
   }
@@ -4962,7 +5219,7 @@ module.exports = {
   noteChatSessionStart,
   TerminalManager,
   createTerminal: (project, options) => _getInstance().createTerminal(project, options),
-  closeTerminal: (id) => _getInstance().closeTerminal(id),
+  closeTerminal: (id, opts) => _getInstance().closeTerminal(id, opts),
   captureTabSlot: (id) => _getInstance().captureTabSlot(id),
   restoreTabSlot: (id, slot) => _getInstance().restoreTabSlot(id, slot),
   setActiveTerminal: (id) => _getInstance().setActiveTerminal(id),
@@ -5004,6 +5261,9 @@ module.exports = {
   writeApiConsole: (projectIndex, data) => _getInstance().writeApiConsole(projectIndex, data),
   switchTerminalMode: (id) => _getInstance().switchTerminalMode(id),
   restoreRemoteTabs: (project) => _getInstance().restoreRemoteTabs(project),
+  restoreSplitLayout: (projectId, saved, restoredIds) => _getInstance().restoreSplitLayout(projectId, saved, restoredIds),
+  splitActive: (side) => _getInstance().splitActive(side),
+  isTerminalShown: (id) => _getInstance().isTerminalShown(id),
   setScrapingCallback: (cb) => _getInstance().setScrapingCallback(cb),
   updateTerminalTabName: (id, name, opts) => _getInstance().updateTerminalTabName(id, name, opts),
   setTabPinned: (id, pinned) => _getInstance().setTabPinned(id, pinned),
@@ -5011,10 +5271,10 @@ module.exports = {
   scheduleScrollAfterRestore: (id) => _getInstance().scheduleScrollAfterRestore(id),
   // MCP orchestration
   getTabByTabId: (tabId) => _getInstance().getTabByTabId(tabId),
-  sendToTab: (tabId, content) => _getInstance().sendToTab(tabId, content),
+  sendToTab: (tabId, content, opts) => _getInstance().sendToTab(tabId, content, opts),
   refusesAgentInput,
   getStatusForTab: (tabId) => _getInstance().getStatusForTab(tabId),
-  closeTabByTabId: (tabId) => _getInstance().closeTabByTabId(tabId),
+  closeTabByTabId: (tabId, opts) => _getInstance().closeTabByTabId(tabId, opts),
   listTabsSummary: () => _getInstance().listTabsSummary(),
   waitForTab: (tabId, opts) => _getInstance().waitForTab(tabId, opts),
   waitForAny: (tabIds, opts) => _getInstance().waitForAny(tabIds, opts),

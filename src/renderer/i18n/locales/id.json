@@ -149,7 +149,12 @@
     "loadingHint": "Ini mungkin memakan waktu beberapa detik",
     "resumeSession": "Lanjutkan sesi Claude",
     "addSession": "Sesi atau terminal baru",
-    "newClaudeSession": "Sesi Claude baru"
+    "newClaudeSession": "Sesi Claude baru",
+    "splitUnsupported": "Konsol proyek (FiveM, WebApp, API...) belum bisa masuk ke tampilan terbagi",
+    "splitMaxPanes": "Tampilan terbagi menampung paling banyak {count} panel",
+    "splitTooSmall": "Tidak cukup ruang untuk panel lain: perbesar jendela atau tutup sebuah panel",
+    "splitClosePane": "Keluarkan panel ini (tab tetap terbuka)",
+    "splitResize": "Ubah ukuran panel"
   },
   "git": {
     "noRemote": "Tidak ada remote",
@@ -676,7 +681,9 @@
     "terminalWordJump": "Lompat per kata alih-alih per Tab (Ctrl+Panah)",
     "terminalTabSwitch": "Berpindah tab (Ctrl+Tab)",
     "terminalRightClickPaste": "Tempel dengan klik kanan",
-    "terminalRightClickCopyPaste": "Salin/tempel dengan klik kanan (gaya Windows Terminal)"
+    "terminalRightClickCopyPaste": "Salin/tempel dengan klik kanan (gaya Windows Terminal)",
+    "splitRight": "Bagi ke kanan",
+    "splitDown": "Bagi ke bawah"
   },
   "contextMenu": {
     "newSubfolder": "Subfolder baru",
@@ -1209,6 +1216,11 @@
     "contextHandoffThresholdDesc": "500 berarti 500k token, minimum 50. Jaga di bawah jendela konteks model: jika terlalu dekat, pemadatan bawaan CLI terjadi lebih dulu.",
     "chatHibernate": "Tidurkan percakapan yang tidak aktif (menit)",
     "chatHibernateDesc": "Tab chat yang tidak aktif selama ini menghentikan proses Claude Code-nya untuk membebaskan memori. Percakapan tetap tampil, dan pesan berikutnya melanjutkannya dari posisi terakhir. Tidak pernah berlaku untuk tab yang sedang dibuka, atau selama giliran, pertanyaan, atau tugas latar belakang masih berjalan. 0 berarti tidak pernah.",
+    "chatSubagentEffort": "Effort subagen",
+    "chatSubagentEffortDesc": "Effort yang dipakai subagen saat tidak ada yang lain menetapkannya (definisinya sendiri, atau Claude yang meminta suatu level). Secara bawaan mereka memakai effort percakapan. Berlaku mulai sesi berikutnya, dengan Claude Code 2.1.316 atau lebih baru.",
+    "chatSubagentEffortInherit": "Sama dengan percakapan",
+    "chatBlockWritesOutsideCwd": "Tolak penulisan file di luar proyek",
+    "chatBlockWritesOutsideCwdDesc": "Write, Edit, dan NotebookEdit menolak path apa pun di luar folder kerja sesi, di semua mode izin, termasuk bypass. Claude juga kehilangan EnterWorktree dan ExitWorktree, sehingga tidak bisa lagi pindah ke git worktree miliknya sendiri, dan tidak bisa mengubah file pengaturan Claude Code. Perintah shell dan tool MCP tidak dibatasi. Berlaku mulai sesi berikutnya, dengan Claude Code 2.1.314 atau lebih baru.",
     "saveError": "Gagal menyimpan pengaturan",
     "nameRequired": "Nama wajib diisi",
     "itemDeleted": "Item dihapus",
@@ -2189,6 +2201,7 @@
     "todoTitle": "Tugas",
     "todoAllDone": "Semua selesai",
     "subagentLaunching": "Menjalankan agent...",
+    "subagentFork": "Cabang dari percakapan ini",
     "subagentRunning": "Agent sedang berjalan...",
     "subagentThinking": "Berpikir...",
     "compacting": "Meringkas percakapan...",
@@ -3171,7 +3184,11 @@
     "closeTabTitle": "Tutup {name}?",
     "closeTabMessage": "Tab ini akan ditutup. Sesi apa pun yang berjalan di dalamnya akan berakhir.",
     "closeTabRemember": "Ingat pilihan saya",
-    "closeAll": "Tutup Semua"
+    "closeAll": "Tutup Semua",
+    "openRight": "Buka di kanan",
+    "openBelow": "Buka di bawah",
+    "removeFromSplit": "Keluarkan dari tampilan terbagi",
+    "exitSplit": "Keluar dari tampilan terbagi"
   },
   "telemetry": {
     "consentTitle": "Bantu Tingkatkan Claude Terminal",
@@ -3450,6 +3467,9 @@
       "argsPlaceholder": "Argumen opsional...",
       "modelLabel": "Model",
       "effortLabel": "Effort",
+      "subagentEffortLabel": "Effort subagen",
+      "subagentEffortHint": "Untuk subagen yang dijalankan langkah ini, saat tidak ada yang lain menetapkan effort-nya.",
+      "subagentEffortInherit": "Warisi (pengaturan chat)",
       "noAgents": "Tidak ada agent di ~/.claude/agents/",
       "noSkills": "Tidak ada skill di ~/.claude/skills/"
     },

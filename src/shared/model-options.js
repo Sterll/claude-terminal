@@ -33,6 +33,7 @@ const CLAUDE_MODEL_VALUES = [
   'claude-sonnet-5-5',
   'claude-sonnet-5',
   'claude-sonnet-4-6',
+  'claude-haiku-5-5',
   'claude-haiku-4-5',
   'sonnet',
   'opus',
@@ -51,6 +52,7 @@ const MODEL_OPTIONS = [
   { value: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
   { value: 'claude-sonnet-5',   label: 'Sonnet 5' },
   { value: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+  { value: 'claude-haiku-5-5',  label: 'Haiku 5.5' },
   { value: 'claude-haiku-4-5',  label: 'Haiku 4.5' },
   { value: 'sonnet',            label: 'Sonnet (alias)' },
   { value: 'opus',              label: 'Opus (alias)' },
@@ -68,6 +70,39 @@ const EFFORT_OPTIONS = [
   { value: 'xhigh',  label: 'XHigh' },
   { value: 'max',    label: 'Max' },
 ];
+
+// ── Subagent effort ─────────────────────────────────────────────────────────
+
+/**
+ * The effort a session's subagents run at when nothing else names one: not
+ * their agent definition, not the Agent tool call, not the user. Without it
+ * they inherit the session's effort. Handed to the CLI as an environment
+ * variable (CLI 2.1.316+; an older CLI ignores it), so it is fixed for the
+ * life of the CLI process and a change applies from the next session.
+ */
+const SUBAGENT_EFFORT_ENV = 'CLAUDE_CODE_SUBAGENT_EFFORT';
+const SUBAGENT_EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+/**
+ * A subagent effort level, or null for "not set" (anything else, '' included).
+ * @param {*} value
+ * @returns {string|null}
+ */
+function normalizeSubagentEffort(value) {
+  return SUBAGENT_EFFORT_LEVELS.includes(value) ? value : null;
+}
+
+/**
+ * The environment a CLI should get for this subagent effort. Returns `env`
+ * itself when there is no level, so whatever the user exported is left alone.
+ * @param {Object} env
+ * @param {*} level
+ * @returns {Object}
+ */
+function withSubagentEffort(env, level) {
+  const effort = normalizeSubagentEffort(level);
+  return effort ? { ...env, [SUBAGENT_EFFORT_ENV]: effort } : env;
+}
 
 // ── Chat catalog ────────────────────────────────────────────────────────────
 
@@ -152,6 +187,15 @@ const LEGACY_MODELS = [
     supportedEffortLevels: PRE_4_7_EFFORTS,
     supportsAdaptiveThinking: true,
   },
+  {
+    // The `haiku` alias moved to Haiku 5.5 with CLI 2.1.293.
+    value: 'claude-haiku-4-5-20251001',
+    displayName: 'Haiku 4.5',
+    description: 'Previous generation Haiku',
+    supportsEffort: false,
+    supportedEffortLevels: [],
+    supportsAdaptiveThinking: false,
+  },
 ];
 
 /**
@@ -190,12 +234,12 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: true,
   },
   {
-    value: 'claude-haiku-4-5-20251001',
-    displayName: 'Haiku 4.5',
+    value: 'claude-haiku-5-5',
+    displayName: 'Haiku 5.5',
     description: 'Fastest for quick answers',
-    supportsEffort: false,
-    supportedEffortLevels: [],
-    supportsAdaptiveThinking: false,
+    supportsEffort: true,
+    supportedEffortLevels: ALL_EFFORTS,
+    supportsAdaptiveThinking: true,
   },
 ];
 
@@ -625,6 +669,10 @@ module.exports = {
   MODEL_OPTIONS,
   EFFORT_VALUES,
   EFFORT_OPTIONS,
+  SUBAGENT_EFFORT_ENV,
+  SUBAGENT_EFFORT_LEVELS,
+  normalizeSubagentEffort,
+  withSubagentEffort,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
   DEFAULT_ALIAS,

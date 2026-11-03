@@ -120,6 +120,8 @@ describe('runSinglePrompt', () => {
       './ChromeBridgeService': { getSessionConfig: () => null },
       './RemoteControlService': { onSessionClosed() {} },
       '../utils/sdkCli': { getSdkCliPath: () => '/fake/claude', getSdkCliVersion: () => null },
+      // Never the machine's own settings.json: the chat settings it holds reach the options.
+      '../utils/paths': { settingsFile: path.join(home, 'no-app-settings.json') },
     };
     const ctx = {
       module, exports: module.exports,

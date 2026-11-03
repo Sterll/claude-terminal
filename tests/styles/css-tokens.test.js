@@ -45,6 +45,10 @@ const RUNTIME_INJECTED = new Map([
   ['--tc', 'SessionReplayPanel.js:1087 (per-step tone, used as rgba(var(--tc), …))'],
   ['--d', 'ChatView.js:5914 (per-row animation delay index)'],
   ['--depth', 'issues/issueView.js depthAttrs() (how deep a sub-issue sits, Tickets screen and session tab)'],
+  ['--pane-left', 'terminal/splitLayout.js positionPanes() (where a split pane sits in the terminals container)'],
+  ['--pane-top', 'terminal/splitLayout.js positionPanes()'],
+  ['--pane-width', 'terminal/splitLayout.js positionPanes()'],
+  ['--pane-height', 'terminal/splitLayout.js positionPanes()'],
 ]);
 
 /** @returns {string[]} every .css file under styles/ */

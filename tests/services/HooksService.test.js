@@ -69,8 +69,23 @@ function readSettings() {
 
 function isOurHookEntry(entry) {
   if (!entry || !entry.hooks) return false;
-  return entry.hooks.some(h => h.type === 'command' && h.command && h.command.includes(HOOK_IDENTIFIER));
+  return entry.hooks.some(h => h.type === 'command'
+    && [h.command, ...(h.args || [])].some(s => typeof s === 'string' && s.includes(HOOK_IDENTIFIER)));
 }
+
+// ─── Platform ────────────────────────────────────────────────────────────────
+// The hook shape differs between Windows and POSIX, and CI runs on both, so a
+// test that asserts a shape names the platform it is about.
+
+const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+
+function setPlatform(platform) {
+  Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+}
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', realPlatform);
+});
 
 // ─── Node availability ───────────────────────────────────────────────────────
 // findNodeOnPath() walks process.env.PATH with fs.existsSync, which the mock
@@ -82,10 +97,16 @@ const FAKE_NODE = path.join(FAKE_PATH_DIR, process.platform === 'win32' ? 'node.
 
 const realPath = process.env.PATH;
 
-/** Make an external `node` discoverable for the current test. */
+/**
+ * Make an external `node` discoverable for the current test, under the
+ * platform the test runs as (see setPlatform), which decides both the PATH
+ * delimiter and the executable's name.
+ */
 function giveNode() {
-  process.env.PATH = FAKE_PATH_DIR;
-  mockVirtualFs.set(FAKE_NODE, '');
+  const isWindows = process.platform === 'win32';
+  const dir = isWindows ? 'C:\\fake\\bin' : '/fake/bin';
+  process.env.PATH = dir;
+  mockVirtualFs.set(path.join(dir, isWindows ? 'node.exe' : 'node'), '');
 }
 
 beforeEach(() => {
@@ -239,6 +260,7 @@ describe('installHooks', () => {
   });
 
   test('hook command runs the handler through node when node is available', () => {
+    setPlatform('linux');
     giveNode();
     HooksService.installHooks();
     const settings = readSettings();
@@ -270,6 +292,7 @@ describe('hook runtime resolution', () => {
   });
 
   test('without node the hooks point at the generated launcher, not at node', () => {
+    setPlatform('linux');
     HooksService.installHooks();
     const command = readSettings().hooks.PreToolUse.find(e => isOurHookEntry(e)).hooks[0].command;
 
@@ -323,6 +346,7 @@ describe('hook runtime resolution', () => {
   });
 
   test('hooks written for one runtime are rewritten when the runtime changes', () => {
+    setPlatform('linux');
     // Installed while node was missing...
     HooksService.installHooks();
     const before = readSettings().hooks.PreToolUse.find(e => isOurHookEntry(e)).hooks[0].command;
@@ -610,6 +634,9 @@ describe('install/remove/verify lifecycle', () => {
 // ==================== pruneDeadHooks ====================
 
 describe('pruneDeadHooks', () => {
+  // These are about pruning; Windows also rewrites live entries, covered below.
+  beforeEach(() => setPlatform('linux'));
+
   const GONE_HANDLER = 'C:/Users/u/AppData/Local/Programs/claude-terminal/Claude Terminal/resources/hooks/claude-terminal-hook-handler.js';
   const deadEntry = key => ({ hooks: [{ type: 'command', command: `node "${GONE_HANDLER}" ${key}` }] });
   const liveEntry = key => ({ matcher: '', hooks: [{ type: 'command', command: `node "${HANDLER_PATH}" ${key}` }] });
@@ -627,7 +654,7 @@ describe('pruneDeadHooks', () => {
     });
 
     const result = HooksService.pruneDeadHooks();
-    expect(result).toEqual({ success: true, pruned: 2 });
+    expect(result).toEqual({ success: true, pruned: 2, migrated: 0 });
 
     const settings = readSettings();
     expect(settings.model).toBe('opus');
@@ -649,7 +676,7 @@ describe('pruneDeadHooks', () => {
     const fs = require('fs');
     fs.writeFileSync.mockClear();
 
-    expect(HooksService.pruneDeadHooks()).toEqual({ success: true, pruned: 0 });
+    expect(HooksService.pruneDeadHooks()).toEqual({ success: true, pruned: 0, migrated: 0 });
     expect(fs.writeFileSync).not.toHaveBeenCalled();
   });
 
@@ -659,5 +686,161 @@ describe('pruneDeadHooks', () => {
     const result = HooksService.pruneDeadHooks();
     expect(result.success).toBe(false);
     expect(mockVirtualFs.get(SETTINGS_PATH)).toBe('{ not json');
+  });
+});
+
+// ==================== Windows without a shell (CLI 2.1.298+) ====================
+// Without Git for Windows the CLI runs a hook's command through PowerShell,
+// where `"<launcher>" Key` is a parse error, and since 2.1.298 a PreToolUse or
+// PermissionRequest hook that fails blocks the tool call: a machine with
+// neither Git nor Node had every tool call refused. Windows hooks are written
+// so that no shell is involved, which works the same with and without Git.
+
+describe('Windows hook form', () => {
+  const NODE_EXE = path.join(FAKE_PATH_DIR, 'node.exe');
+  const HANDLER = HANDLER_PATH.replace(/\\/g, '/');
+  const GK = { matcher: '', hooks: [{ type: 'command', command: '"C:/Tools/gk.exe" ai hook run' }] };
+
+  beforeEach(() => setPlatform('win32'));
+
+  const ourHook = key => readSettings().hooks[key].find(e => isOurHookEntry(e)).hooks[0];
+
+  test('with node.exe on PATH the handler is spawned by node directly, without a shell', () => {
+    mockVirtualFs.set(NODE_EXE, '');
+    HooksService.installHooks();
+
+    expect(ourHook('PreToolUse')).toEqual({ type: 'command', command: 'node', args: [HANDLER, 'PreToolUse'] });
+    expect(ourHook('PermissionRequest').args).toEqual([HANDLER, 'PermissionRequest']);
+  });
+
+  test('without node the launcher runs through cmd.exe in the exec form', () => {
+    HooksService.installHooks();
+    const launcher = HooksService.getLauncherPath().replace(/\\/g, '/');
+
+    expect(ourHook('PreToolUse')).toEqual({ type: 'command', command: 'cmd.exe', args: ['/d', '/c', launcher, 'PreToolUse'] });
+    expect(mockVirtualFs.has(HooksService.getLauncherPath())).toBe(true);
+  });
+
+  test('a node.cmd shim counts as no node: a batch file cannot be spawned without a shell', () => {
+    mockVirtualFs.set(path.join(FAKE_PATH_DIR, 'node.cmd'), '');
+    HooksService.installHooks();
+
+    expect(ourHook('Stop').command).toBe('cmd.exe');
+    expect(mockVirtualFs.has(HooksService.getLauncherPath())).toBe(true);
+  });
+
+  test('no hook of ours is left in a form a shell has to parse', () => {
+    HooksService.installHooks();
+    for (const [key, entries] of Object.entries(readSettings().hooks)) {
+      const hook = entries.find(e => isOurHookEntry(e)).hooks[0];
+      expect(Array.isArray(hook.args)).toBe(true);
+      expect(hook.shell).toBeUndefined();
+      expect(hook.args[hook.args.length - 1]).toBe(key);
+    }
+  });
+
+  test('an installed exec form is recognised: status, verify and remove', () => {
+    HooksService.installHooks();
+    expect(HooksService.areHooksInstalled()).toEqual({ installed: true, count: TOTAL_HOOKS });
+
+    // Verifying what this version wrote must not rewrite it on every start.
+    expect(HooksService.verifyAndRepairHooks()).toEqual({ ok: true, repaired: false });
+
+    HooksService.removeHooks();
+    expect(HooksService.areHooksInstalled().count).toBe(0);
+  });
+
+  test('hooks installed by an earlier version in the shell form are repaired at startup', () => {
+    HooksService.installHooks();
+    const keys = Object.keys(readSettings().hooks);
+    const launcher = HooksService.getLauncherPath().replace(/\\/g, '/');
+    const legacy = {};
+    for (const key of keys) {
+      legacy[key] = [GK, { matcher: '', hooks: [{ type: 'command', command: `"${launcher}" ${key}` }] }];
+    }
+    writeSettings({ model: 'opus', hooks: legacy });
+
+    expect(HooksService.verifyAndRepairHooks()).toMatchObject({ ok: true, repaired: true });
+
+    const settings = readSettings();
+    expect(settings.model).toBe('opus');
+    for (const key of keys) {
+      const ours = settings.hooks[key].filter(e => isOurHookEntry(e));
+      expect(ours).toHaveLength(1);
+      expect(ours[0].hooks[0]).toEqual({ type: 'command', command: 'cmd.exe', args: ['/d', '/c', launcher, key] });
+      // Another tool's hook in the same key is left exactly as it was.
+      expect(settings.hooks[key]).toContainEqual(GK);
+    }
+  });
+
+  test('a node shell-form hook from an earlier version is stale too', () => {
+    mockVirtualFs.set(NODE_EXE, '');
+    HooksService.installHooks();
+    const settings = readSettings();
+    settings.hooks.PreToolUse = [{ matcher: '', hooks: [{ type: 'command', command: `node "${HANDLER}" PreToolUse` }] }];
+    writeSettings(settings);
+
+    expect(HooksService.verifyAndRepairHooks().repaired).toBe(true);
+    expect(ourHook('PreToolUse')).toEqual({ type: 'command', command: 'node', args: [HANDLER, 'PreToolUse'] });
+  });
+
+  test('with hooks off, a live shell-form entry is rewritten in place, keeping its own script', () => {
+    // An entry from another install sharing this settings.json: its path is not ours to change.
+    const otherLauncher = 'C:/Users/dev/.claude-terminal/hooks/claude-terminal-hook-handler.cmd';
+    const otherHandler = 'E:/checkout/resources/hooks/claude-terminal-hook-handler.js';
+    mockVirtualFs.set(otherLauncher, '');
+    mockVirtualFs.set(otherHandler, '');
+    writeSettings({ hooks: {
+      Stop: [{ matcher: '', hooks: [{ type: 'command', command: `"${otherLauncher}" Stop`, timeout: 5 }] }, GK],
+      PreToolUse: [{ matcher: '', hooks: [{ type: 'command', command: `node "${otherHandler}" PreToolUse` }] }],
+    } });
+
+    expect(HooksService.pruneDeadHooks()).toEqual({ success: true, pruned: 0, migrated: 2 });
+    const settings = readSettings();
+    expect(settings.hooks.Stop).toEqual([
+      { matcher: '', hooks: [{ type: 'command', command: 'cmd.exe', args: ['/d', '/c', otherLauncher, 'Stop'], timeout: 5 }] },
+      GK,
+    ]);
+    expect(settings.hooks.PreToolUse[0].hooks[0]).toEqual({ type: 'command', command: 'node', args: [otherHandler, 'PreToolUse'] });
+
+    // Already migrated: a second pass changes nothing and writes nothing.
+    const fs = require('fs');
+    fs.writeFileSync.mockClear();
+    expect(HooksService.pruneDeadHooks()).toEqual({ success: true, pruned: 0, migrated: 0 });
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  test('a launcher path cmd.exe would split goes through PowerShell, quoted for it', () => {
+    const odd = "C:/Users/Jean & Marie (O'Neil)/.claude-terminal/hooks/claude-terminal-hook-handler.cmd";
+    mockVirtualFs.set(odd, '');
+    writeSettings({ hooks: { Stop: [{ hooks: [{ type: 'command', command: `"${odd}" Stop` }] }] } });
+
+    HooksService.pruneDeadHooks();
+    expect(readSettings().hooks.Stop[0].hooks[0]).toEqual({
+      type: 'command',
+      shell: 'powershell',
+      command: "& 'C:/Users/Jean & Marie (O''Neil)/.claude-terminal/hooks/claude-terminal-hook-handler.cmd' Stop",
+    });
+
+    // Still recognised as ours, and its target is read back for pruning.
+    mockVirtualFs.delete(odd);
+    expect(HooksService.pruneDeadHooks()).toMatchObject({ success: true, pruned: 1 });
+  });
+
+  test('an exec-form entry whose script is gone is pruned', () => {
+    const gone = 'C:/old/resources/hooks/claude-terminal-hook-handler.js';
+    writeSettings({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'node', args: [gone, 'Stop'] }] }] } });
+
+    expect(HooksService.pruneDeadHooks()).toEqual({ success: true, pruned: 1, migrated: 0 });
+    expect(readSettings().hooks).toBeUndefined();
+  });
+
+  test('POSIX keeps the shell form byte for byte', () => {
+    setPlatform('linux');
+    giveNode();
+    HooksService.installHooks();
+
+    expect(ourHook('PreToolUse')).toEqual({ type: 'command', command: `node "${HANDLER}" PreToolUse` });
+    expect(HooksService.pruneDeadHooks().migrated).toBe(0);
   });
 });

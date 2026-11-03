@@ -2,6 +2,29 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.3.9] - 2026-11-03
+
+### Added
+- **Terminal**: split view. Up to four tabs of one project side by side, split right or down (`Ctrl+Shift+D` / `Ctrl+Shift+S`, rebindable) with resizable panes, and the layout comes back with the session
+- **Tabs**: a session that waits on you (a permission, a question, a plan) or whose last turn ended on an error says so on its tab, in the project bar and in the project list
+- **Chat**: a side column beside the conversation, collapsed by default: an on-demand brief of the session (what it is for, where it stands, what was decided), the branches it worked on with their pull requests, and its linked tickets
+- **Chat**: choose the effort subagents run at, in the chat settings or per Claude step of an automation ("Inherit" by default), SSH chats included (Claude Code 2.1.316+ on the host)
+- **Chat**: an opt-in setting refuses file writes outside the project folder, in every permission mode. A session with it on loses EnterWorktree / ExitWorktree, and shell commands and MCP tools are not covered (Claude Code 2.1.314+)
+- **Terminal**: on macOS and Linux, terminal tabs read Claude Code's own status (OSC 7501) to know when a session waits on you, SSH tabs included
+
+### Changed
+- Bundled Claude Code updated to 2.1.316 (Agent SDK 0.3.316). The `haiku` alias now points at Haiku 5.5
+
+### Fixed
+- **Windows**: without Git for Windows, Claude Terminal's hooks no longer block every tool call (Claude Code 2.1.298+ refused them all, in terminals and in chat). Hooks already installed are repaired at startup
+- **Terminal**: tabs show again that Claude is working when hooks are off, and in SSH tabs. Claude Code now animates its title with half circles instead of braille
+- **Cost**: Haiku 5.5 and Sonnet 5.5 are priced at their published rates (Haiku 5.5 was counted at ten times its price), Haiku 5.5's long-prompt tier included. The offline model picker offers Haiku 5.5
+- **Chat**: `/mcp` reconnects the MCP servers a live session lost (#244)
+- **Chat**: a tab woken from idle sleep no longer reopens on an empty "Conversation resumed" after a restart
+- **MCP**: tabs an agent opens, types into or closes stay in the background, and your active tab, focus and caret are left alone
+- **Remote Control**: claude.ai learns the session's Claude Code version as soon as it connects
+- **Chat**: fork subagents are labelled "Fork of this conversation"
+
 ## [1.3.8] - 2026-10-27
 
 ### Added

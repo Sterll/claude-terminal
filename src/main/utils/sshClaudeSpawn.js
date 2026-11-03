@@ -41,13 +41,18 @@ const { spawn } = require('child_process');
 const { q, qArgs, cdAnd, shC, withPath, classifySshFailure, sshExitStatus, SSH_FAILURE_STATUS } = require('../../shared/remote-shell');
 const sshCommand = require('./sshCommand');
 
-/** Variables the SDK sets for the CLI it spawns, and the only ones a remote CLI receives. */
+/**
+ * The only variables a remote CLI receives: those the SDK sets for the CLI it
+ * spawns, plus the session settings ChatService hands over as variables (the
+ * chat settings' subagent effort, one of five level names).
+ */
 const ENV_ALLOWLIST = Object.freeze([
   'CLAUDE_CODE_ENTRYPOINT',
   'CLAUDE_AGENT_SDK_VERSION',
   'CLAUDE_AGENT_SDK_CLIENT_APP',
   'CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS',
   'CLAUDE_AGENT_SDK_MCP_NO_PREFIX',
+  'CLAUDE_CODE_SUBAGENT_EFFORT',
 ]);
 
 /**

@@ -149,7 +149,12 @@
     "loadingHint": "This may take a few seconds",
     "resumeSession": "Resume Claude session",
     "addSession": "New session or terminal",
-    "newClaudeSession": "New Claude session"
+    "newClaudeSession": "New Claude session",
+    "splitUnsupported": "Project consoles (FiveM, WebApp, API...) cannot go in a split view yet",
+    "splitMaxPanes": "A split view holds up to {count} panes",
+    "splitTooSmall": "Not enough room for another pane: enlarge the window or close a pane",
+    "splitClosePane": "Remove this pane (the tab stays open)",
+    "splitResize": "Resize panes"
   },
   "git": {
     "noRemote": "No remote",
@@ -676,7 +681,9 @@
     "terminalWordJump": "Word jump instead of Tab jump (Ctrl+Arrow)",
     "terminalTabSwitch": "Switch tabs (Ctrl+Tab)",
     "terminalRightClickPaste": "Right-click paste",
-    "terminalRightClickCopyPaste": "Right-click copy/paste (Windows Terminal style)"
+    "terminalRightClickCopyPaste": "Right-click copy/paste (Windows Terminal style)",
+    "splitRight": "Split right",
+    "splitDown": "Split down"
   },
   "contextMenu": {
     "newSubfolder": "New subfolder",
@@ -1209,6 +1216,11 @@
     "contextHandoffThresholdDesc": "500 means 500k tokens, minimum 50. Keep it below the model's context window: close to it, the CLI's own compaction happens first.",
     "chatHibernate": "Put idle conversations to sleep (minutes)",
     "chatHibernateDesc": "A chat tab left idle this long stops its Claude Code process to free memory. The conversation stays on screen, and the next message picks it up where it was. Never applies to the tab that is open, nor while a turn, a question or a background task is still running. 0 means never.",
+    "chatSubagentEffort": "Subagent effort",
+    "chatSubagentEffortDesc": "The effort subagents run at when nothing else sets one (their own definition, or Claude asking for a level). By default they use the conversation's effort. Applies from the next session, with Claude Code 2.1.316 or later.",
+    "chatSubagentEffortInherit": "Same as the conversation",
+    "chatBlockWritesOutsideCwd": "Refuse file writes outside the project",
+    "chatBlockWritesOutsideCwdDesc": "Write, Edit and NotebookEdit refuse any path outside the session's working directories, in every permission mode, bypass included. Claude also loses EnterWorktree and ExitWorktree, so it can no longer move into a git worktree of its own, and cannot edit Claude Code's settings files. Shell commands and MCP tools are not limited. Applies from the next session, with Claude Code 2.1.314 or later.",
     "saveError": "Failed to save settings",
     "nameRequired": "Name is required",
     "itemDeleted": "Item removed",
@@ -2189,6 +2201,7 @@
     "todoTitle": "Tasks",
     "todoAllDone": "All done",
     "subagentLaunching": "Launching agent...",
+    "subagentFork": "Fork of this conversation",
     "subagentRunning": "Agent running...",
     "subagentThinking": "Thinking...",
     "compacting": "Compacting conversation...",
@@ -3171,7 +3184,11 @@
     "closeTabTitle": "Close {name}?",
     "closeTabMessage": "This tab will be closed. Any session running in it ends.",
     "closeTabRemember": "Remember my choice",
-    "closeAll": "Close All"
+    "closeAll": "Close All",
+    "openRight": "Open to the right",
+    "openBelow": "Open below",
+    "removeFromSplit": "Remove from split view",
+    "exitSplit": "Exit split view"
   },
   "telemetry": {
     "consentTitle": "Help Improve Claude Terminal",
@@ -3450,6 +3467,9 @@
       "argsPlaceholder": "Optional arguments...",
       "modelLabel": "Model",
       "effortLabel": "Effort",
+      "subagentEffortLabel": "Subagent effort",
+      "subagentEffortHint": "For the subagents this step starts, when nothing else sets their effort.",
+      "subagentEffortInherit": "Inherit (chat settings)",
       "noAgents": "No agents in ~/.claude/agents/",
       "noSkills": "No skills in ~/.claude/skills/"
     },

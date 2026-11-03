@@ -46,7 +46,7 @@ let EFFORT_VALUES;
 try {
   ({ CLAUDE_MODEL_VALUES, EFFORT_VALUES } = require('../../shared/model-options'));
 } catch {
-  CLAUDE_MODEL_VALUES = ['', 'claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'sonnet', 'opus', 'haiku'];
+  CLAUDE_MODEL_VALUES = ['', 'claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-sonnet-4-6', 'claude-haiku-5-5', 'claude-haiku-4-5', 'sonnet', 'opus', 'haiku'];
   EFFORT_VALUES = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
 }
 
@@ -72,7 +72,8 @@ module.exports = {
   // `maxUsage`: skip automatic runs while that account's session or weekly
   // usage is at or above this percentage, 0 = always run. Enforced by
   // WorkflowService before the run starts, not here.
-  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', account: '', maxUsage: 0, outputSchema: null, cwd: '', maxTurns: 30, resumeFrom: '' },
+  // `subagentEffort`: '' = the chat settings' subagent effort, else a level.
+  props: { mode: 'prompt', prompt: '', agentId: '', skillId: '', model: 'sonnet', effort: 'medium', subagentEffort: '', account: '', maxUsage: 0, outputSchema: null, cwd: '', maxTurns: 30, resumeFrom: '' },
 
   fields: [
     { type: 'claude-config', key: 'mode', label: 'wfn.claude.label' },
@@ -156,6 +157,8 @@ module.exports = {
     const effort        = rawEffort && VALID_EFFORTS.includes(rawEffort) ? rawEffort : null;
     const rawModel      = config.model  || null;
     const model         = rawModel && VALID_MODELS.includes(rawModel) ? rawModel : null;
+    // Null leaves the choice to runSinglePrompt, which falls back to the chat settings.
+    const subagentEffort = VALID_EFFORTS.includes(config.subagentEffort) ? config.subagentEffort : null;
     const parsedTurns   = parseInt(config.maxTurns, 10);
     const maxTurns      = Number.isFinite(parsedTurns) && parsedTurns > 0 ? parsedTurns : 30;
 
@@ -164,7 +167,7 @@ module.exports = {
     // `automation` lets runSinglePrompt record the account it ran on in the
     // run, and price the step under this automation before its transcript is
     // deleted. Null when the node is tested from the editor.
-    const opts = { cwd, prompt, model, effort, maxTurns, accountId, automation: ctx.automation || null, signal };
+    const opts = { cwd, prompt, model, effort, subagentEffort, maxTurns, accountId, automation: ctx.automation || null, signal };
 
     // Continue an existing Claude conversation instead of starting cold — how
     // an automation inherits the context of the session that triggered it.
