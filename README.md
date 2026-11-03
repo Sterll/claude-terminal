@@ -13,7 +13,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.3.8-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.3.9-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
@@ -181,6 +181,7 @@ npm install
 - **Terminal handoff**: commands that act on the machine or the account rather than the conversation (/design-login, /login, /logout, /permissions, /plugin...) open a Claude terminal tab to run them, since the chat drives the CLI headless
 - **Long-conversation handoff**: past a context threshold you set (off by default), the session writes a handoff summary and the tab carries on in a fresh session that opens on it; the previous session stays whole in the history
 - **Idle tab sleep**: a chat tab left idle for 15 minutes (configurable) closes its Claude process to free memory, and the next message resumes the conversation where it was
+- **Session side column**: beside the conversation, an on-demand brief of the session (what it is for, where it stands, what was decided), the branches it worked on with their pull requests, and its linked tickets
 - **Inline @mentions**: rich contenteditable input field lets you type @mentions inline without leaving the message composition area
 - **File rewind**: revert chat context to an earlier file state via SDK checkpointing — useful for undoing unwanted edits mid-session
 - **Cost tracking**: model name, token count, and USD cost in the status bar
@@ -210,6 +211,8 @@ npm install
 - GPU-accelerated rendering via xterm.js + WebGL (DOM fallback)
 - Switch between terminal and chat mode per tab
 - Tab drag-and-drop reordering, renaming, desktop notifications
+- Split view: up to four tabs of one project side by side, split right or down, with resizable panes
+- A tab waiting on you (permission, question, plan) or whose last turn failed says so on the tab and in the project list
 - Filter terminals by project
 - Adaptive ready detection with spinner status
 - Captured terminal output, so the terminal read tools and MCP tools can actually return what ran
