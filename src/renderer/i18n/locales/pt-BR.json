@@ -4626,6 +4626,9 @@
     "reconnectSuccess": "Conta \"{name}\" reconectada.",
     "reconnectMismatch": "Este login pertence a outra conta, não a \"{name}\". Entre com a conta certa.",
     "loginError": "Falha ao entrar.",
+    "onboardingTitle": "Conecte sua conta Claude",
+    "onboardingIntro": "Nenhuma conta Claude foi encontrada nesta máquina. Entre para usar o Claude nos terminais e no chat. Você também pode fazer isso depois em Configurações, Contas.",
+    "onboardingLater": "Mais tarde",
     "duplicate": "Esta conta já está salva como \"{name}\"."
   },
   "usage": {

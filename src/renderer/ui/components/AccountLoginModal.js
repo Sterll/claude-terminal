@@ -14,6 +14,11 @@
  * lost (a refused refresh, a sign-out elsewhere) instead of adding one: no
  * name to ask for, and main refuses a sign-in that lands on another account.
  *
+ * With `onboarding`, it is the first-launch prompt shown when the machine has
+ * no Claude login at all: worded as a welcome, "Later" instead of "Cancel",
+ * and the account it signs in becomes the default, since nothing else would
+ * put it in the machine-wide store the CLI in a terminal tab reads.
+ *
  * Resolves with the account's summary, or null if the user gave up.
  */
 
@@ -35,9 +40,9 @@ function accountErrorMessage(res, fallback) {
 }
 
 /**
- * @param {{ reconnect?: { id: string, name: string } }} [opts]
+ * @param {{ reconnect?: { id: string, name: string }, onboarding?: boolean }} [opts]
  */
-function showAccountLoginModal({ reconnect = null } = {}) {
+function showAccountLoginModal({ reconnect = null, onboarding = false } = {}) {
   const api = window.electron_api;
 
   return new Promise((resolve) => {
@@ -57,10 +62,14 @@ function showAccountLoginModal({ reconnect = null } = {}) {
 
     const modal = createModal({
       id: 'account-login-modal',
-      title: reconnect ? t('accounts.reconnectTitle', { name: reconnect.name }) : t('accounts.loginTitle'),
+      title: reconnect
+        ? t('accounts.reconnectTitle', { name: reconnect.name })
+        : t(onboarding ? 'accounts.onboardingTitle' : 'accounts.loginTitle'),
       size: 'small',
       content: `
-        <div class="account-switch-scope">${escapeHtml(reconnect ? t('accounts.reconnectIntro', { name: reconnect.name }) : t('accounts.loginIntro'))}</div>
+        <div class="account-switch-scope">${escapeHtml(reconnect
+          ? t('accounts.reconnectIntro', { name: reconnect.name })
+          : t(onboarding ? 'accounts.onboardingIntro' : 'accounts.loginIntro'))}</div>
         <div class="form-group"${reconnect ? ' hidden' : ''}>
           <label for="account-login-name">${escapeHtml(t('accounts.loginNameLabel'))}</label>
           <input type="text" id="account-login-name" autocomplete="off" placeholder="${escapeHtml(t('accounts.loginNamePlaceholder'))}">
@@ -85,7 +94,7 @@ function showAccountLoginModal({ reconnect = null } = {}) {
       `,
       buttons: [
         {
-          label: t('common.cancel'),
+          label: onboarding ? t('accounts.onboardingLater') : t('common.cancel'),
           action: 'cancel',
           onClick: (m) => { closeModal(m); finish(null); }
         },
@@ -146,6 +155,14 @@ function showAccountLoginModal({ reconnect = null } = {}) {
       running = false;
       if (done) return;
 
+      if (res?.success && onboarding && res.data?.id) {
+        // The first account on a machine with no login is the one everything
+        // runs as: putting it in the machine-wide store is what makes a plain
+        // `claude` in a terminal tab signed in too.
+        const def = await api.accounts.setDefault(res.data.id);
+        if (!def?.success) console.warn('[AccountLoginModal] could not make the new account the default:', def?.error);
+      }
+
       if (res?.success) {
         const { showSuccess } = require('./Toast');
         showSuccess(t(reconnect ? 'accounts.reconnectSuccess' : 'accounts.loginSuccess', { name: res.data?.name || '' }));
@@ -194,4 +211,28 @@ function showAccountLoginModal({ reconnect = null } = {}) {
   });
 }
 
-module.exports = { showAccountLoginModal, accountErrorMessage };
+/**
+ * First-launch prompt: offer to connect a Claude account when the machine has
+ * none, neither saved here nor signed in through `claude /login`.
+ *
+ * Asked once, on a fresh profile only. `accountOnboardingDone` is set
+ * whatever the answer, and also when an account is already there or the
+ * profile already has projects, so a user who signs out later, or who has
+ * been running Claude Code on an API key (no OAuth login either), is not met
+ * with it after an update; Settings, Accounts is where that is fixed.
+ *
+ * @param {{ accountsState: Object, getSetting: Function, setSetting: Function, isFreshProfile: boolean }} deps
+ * @returns {Promise<Object|null>} the connected account, or null
+ */
+async function maybeShowAccountOnboarding({ accountsState, getSetting, setSetting, isFreshProfile }) {
+  if (getSetting('accountOnboardingDone')) return null;
+  const { loaded, accounts = [], hasCredentials } = accountsState.get();
+  // Not loaded means the list could not be read, which says nothing about
+  // whether there is an account: ask again next launch.
+  if (!loaded) return null;
+  setSetting('accountOnboardingDone', true);
+  if (!isFreshProfile || accounts.length > 0 || hasCredentials !== false) return null;
+  return showAccountLoginModal({ onboarding: true });
+}
+
+module.exports = { showAccountLoginModal, maybeShowAccountOnboarding, accountErrorMessage };

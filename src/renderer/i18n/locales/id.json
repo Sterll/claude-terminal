@@ -4626,6 +4626,9 @@
     "reconnectSuccess": "Akun \"{name}\" terhubung kembali.",
     "reconnectMismatch": "Login ini milik akun lain, bukan \"{name}\". Masuk dengan akun yang benar.",
     "loginError": "Gagal masuk.",
+    "onboardingTitle": "Hubungkan akun Claude Anda",
+    "onboardingIntro": "Tidak ada akun Claude yang ditemukan di mesin ini. Masuk untuk menggunakan Claude di terminal dan di chat. Anda juga bisa melakukannya nanti dari Pengaturan, Akun.",
+    "onboardingLater": "Nanti",
     "duplicate": "Akun ini sudah disimpan sebagai \"{name}\"."
   },
   "usage": {

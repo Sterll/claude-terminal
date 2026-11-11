@@ -4626,6 +4626,9 @@
     "reconnectSuccess": "Account \"{name}\" reconnected.",
     "reconnectMismatch": "This sign-in belongs to another account, not to \"{name}\". Sign in with the right account.",
     "loginError": "Sign-in failed.",
+    "onboardingTitle": "Connect your Claude account",
+    "onboardingIntro": "No Claude account was found on this machine. Sign in to use Claude in terminals and in the chat. You can also do it later from Settings, Accounts.",
+    "onboardingLater": "Later",
     "duplicate": "This account is already saved as \"{name}\"."
   },
   "usage": {

@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 337 test files)
+npm test                 # Run Jest tests (jsdom, 338 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -108,7 +108,7 @@ Electron Renderer Process (Browser)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4900 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4903 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked), focusGuard (keeps the user's focus and caret across a tab update an agent made)
 
 Project Types (Plugin System)
@@ -462,7 +462,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4900 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4903 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -792,7 +792,7 @@ Worker); neither is bundled into the desktop app.
 - **Workflows:** custom canvas editor (no LiteGraph), 31 nodes / 12 trigger types, AI assistant for graph editing, webhook/cron/hook/file/git/session triggers. A workflow with `mode: 'simple'` is a "task": `src/shared/simple-task.js` compiles it into the same graph the advanced editor produces, so both paths write one object through one `workflow.save` IPC
 - **Workspace:** cross-project KB with advisor chat, concept links, `@workspace` mention
 - **Usage reads the credential store on a bounded ladder, and eventually stops.** A store read that yields no usable token parks the account for 5, 10, 20, 40 then 60 minutes; a usable token clears the ladder and an explicit refresh restarts it. That interval used to be `Infinity`, so one transient failure — an expired token between two CLI rotations, a 401, a refused Keychain — froze the chip for the life of the process. But capping the interval bounds only how *often*: after `TOKEN_BACKOFF_GIVE_UP` consecutive failures the automatic retry stops altogether, because on darwin each reopen of a refused store is a password dialog raised behind the window, and one an hour forever is the timer-driven prompt the `Infinity` was there to prevent. Only the explicit refresh lifts it. `retryAt` and `gaveUp` ride on **both** `getUsageData` (the 30 s poll) and `getFetchState` (the refresh), since the chip reads one on each path and the tooltip has to distinguish waiting from broken from stopped
-- **Multiple accounts:** `AccountManager` snapshots the CLI's live credential store per named account and swaps it on demand; a project can be bound to one. Login itself is never reimplemented: "Connect an account" runs the CLI's own `claude auth login` with `CLAUDE_SECURESTORAGE_CONFIG_DIR` pointed at the new account's store, shows the URL it prints and writes back the `code#state` the page gives when the browser redirect cannot reach the CLI, so the account starts on a grant of its own and the machine-wide login is never touched. A duplicate is caught on `accountUuid` + `organizationUuid` from the scratch config, since a fresh token never matches a fingerprint. "Save current account" still captures whoever `claude /login` last put in the machine-wide store. Switching mid-conversation resumes with the CLI session id, and MCP tokens are deliberately left alone. **One account authenticates from exactly one store at a time**: the account holding the machine-wide login gets no `CLAUDE_SECURESTORAGE_CONFIG_DIR` overlay, because two stores refreshing the same OAuth grant sign each other out - a refresh rotates the refresh token and invalidates whichever copy the other store still holds, and the CLI blanks the loser to `accessToken: ''`. For the same reason a snapshot is a decaying asset, not an archive: `startCredentialWatch()` re-reads the machine-wide store every 5 min so the snapshot tracks the CLI's rotations, and `ensureAccountStore()` copies a bound account's own store back the same way. `isRotationOf()` is what attributes a refreshed store to the account that owns it - note `refreshTokenExpiresAt` is recomputed on every rotation and drifts by a round-trip, so it is matched within a tolerance, never for equality
+- **Multiple accounts:** `AccountManager` snapshots the CLI's live credential store per named account and swaps it on demand; a project can be bound to one. Login itself is never reimplemented: "Connect an account" runs the CLI's own `claude auth login` with `CLAUDE_SECURESTORAGE_CONFIG_DIR` pointed at the new account's store, shows the URL it prints and writes back the `code#state` the page gives when the browser redirect cannot reach the CLI, so the account starts on a grant of its own and the machine-wide login is never touched. A duplicate is caught on `accountUuid` + `organizationUuid` from the scratch config, since a fresh token never matches a fingerprint. "Save current account" still captures whoever `claude /login` last put in the machine-wide store. On a fresh profile (no projects) with no saved account and nothing in the machine-wide store, the main window opens that same sign-in once as a welcome (`maybeShowAccountOnboarding` in `AccountLoginModal.js`, latched by `accountOnboardingDone` whatever the answer), and the account it connects is made the default, so a terminal tab's plain `claude` is signed in too. Switching mid-conversation resumes with the CLI session id, and MCP tokens are deliberately left alone. **One account authenticates from exactly one store at a time**: the account holding the machine-wide login gets no `CLAUDE_SECURESTORAGE_CONFIG_DIR` overlay, because two stores refreshing the same OAuth grant sign each other out - a refresh rotates the refresh token and invalidates whichever copy the other store still holds, and the CLI blanks the loser to `accessToken: ''`. For the same reason a snapshot is a decaying asset, not an archive: `startCredentialWatch()` re-reads the machine-wide store every 5 min so the snapshot tracks the CLI's rotations, and `ensureAccountStore()` copies a bound account's own store back the same way. `isRotationOf()` is what attributes a refreshed store to the account that owns it - note `refreshTokenExpiresAt` is recomputed on every rotation and drifts by a round-trip, so it is matched within a tolerance, never for equality
 - **What travels with an account is what the CLI's `/logout` deletes:** `claudeAiOauth`, `organizationUuid`, `trustedDeviceToken`, `enterpriseGateway` and `designOauth` (`ACCOUNT_KEYS` in `AccountManager`). A snapshot keeps exactly those, and a swap drops the outgoing account's before laying the incoming one's on, so a key the incoming snapshot lacks is absent rather than inherited. Everything else in the store, `mcpOAuth` above all, belongs to the machine and stays. Snapshotting `claudeAiOauth` alone used to hand one account's Claude Design grant (`/design-login`) to whichever account was switched in next
 - **Terminal-only CLI commands open in a terminal:** the chat drives the CLI headless, where every `local-jsx` command answers "isn't available in this environment". Those that act on the machine or the account rather than on the conversation (`/design-login`, `/login`, `/logout`, `/permissions`, `/plugin`... listed in `src/shared/terminal-commands.js`) are caught in `handleSend` and run as `claude /<command>` in a new Claude terminal tab, on the account the conversation runs on (`conversationAccountId()`). Anything the CLI also runs headless (`/config`, `/design consent`...) is left to it, and `/mcp` is the chat's own: it reconnects the servers the conversation lost through `Query.reconnectMcpServer`. The command line is built from user input and goes through `cmd.exe /c` or a shell, so `TerminalService.create` re-validates it against the same allowlist and refuses any argument that is not a plain word. In a remote (SSH) project the tab is a remote Claude terminal: the command runs on the host, against the host's own login and with no account overlay, quoted once more by `terminalClaudeScript()`; a reconnect runs it again unless the tab has a conversation to resume
 - **Voice:** the renderer captures the mic and sends raw PCM to main; the Groq key stays in the OS credential store and never crosses to the renderer. Transcription output goes to the screen only, routed to the focused tab
@@ -814,7 +814,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 337 unit test files (jsdom environment)
+npm test                    # Run all 338 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -823,7 +823,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 337 test files
+- **Framework:** Jest with jsdom, 338 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**

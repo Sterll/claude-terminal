@@ -512,6 +512,17 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     hasHistory: (projectsState.get().projects || []).length > 0,
   }).catch(() => {});
 
+  // First launch with no Claude login anywhere on the machine: offer to
+  // connect an account right away rather than letting the first terminal or
+  // chat fail with "Not logged in". Never stacks on What's new, which a fresh
+  // profile (no projects) does not get.
+  require('./src/renderer/ui/components/AccountLoginModal').maybeShowAccountOnboarding({
+    accountsState: require('./src/renderer/state').accountsState,
+    getSetting,
+    setSetting,
+    isFreshProfile: (projectsState.get().projects || []).length === 0,
+  }).catch((err) => console.warn('[renderer] account onboarding failed:', err?.message));
+
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
 

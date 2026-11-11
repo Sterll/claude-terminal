@@ -4626,6 +4626,9 @@
     "reconnectSuccess": "账户\"{name}\"已重新连接。",
     "reconnectMismatch": "此次登录属于另一个账户，而不是\"{name}\"。请使用正确的账户登录。",
     "loginError": "登录失败。",
+    "onboardingTitle": "连接您的 Claude 账户",
+    "onboardingIntro": "在这台电脑上没有找到 Claude 账户。登录后即可在终端和聊天中使用 Claude。您也可以稍后在“设置 > 账户”中完成。",
+    "onboardingLater": "稍后",
     "duplicate": "该账户已保存为“{name}”。"
   },
   "usage": {
