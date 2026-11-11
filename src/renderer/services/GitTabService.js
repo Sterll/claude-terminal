@@ -86,12 +86,55 @@ function gitUnavailableMessage(payload) {
   return payload.message || null;
 }
 
-/** Empty-state markup for "git could not run", with the concrete reason. */
-function gitUnavailableStateHtml(message) {
+/** Where "Install Git" sends the user: the official page, which picks the OS. */
+const GIT_DOWNLOAD_URL = 'https://git-scm.com/downloads';
+
+/**
+ * Empty-state markup for "git could not run", with the concrete reason, and a
+ * way to install it when it is missing rather than slow.
+ * @param {string} message
+ * @param {string} [reason] - the payload's unavailableReason
+ */
+function gitUnavailableStateHtml(message, reason) {
   return `<div class="git-empty-state">
     <p>${escapeHtml(tOr('gitTab.gitUnavailable', 'Git could not run'))}</p>
     <p style="color:var(--text-secondary);font-size:var(--font-sm)">${escapeHtml(message)}</p>
+    ${reason === 'enoent' ? `<button type="button" class="btn btn-primary btn-sm" data-git-install>${escapeHtml(t('gitTab.installGit'))}</button>` : ''}
   </div>`;
+}
+
+function openGitDownload() {
+  window.electron_api?.dialog?.openExternal(GIT_DOWNLOAD_URL);
+}
+
+/**
+ * Say once, at startup, that git is missing: on a fresh install nothing else
+ * would until the first project's Git tab came up empty. Local git only; a
+ * remote project runs the host's own.
+ *
+ * @param {{ api?: Object, toast?: Function }} [deps]
+ * @returns {Promise<boolean>} whether the warning was shown
+ */
+async function warnIfGitMissing({ api = window.electron_api, toast = (opts) => Toast.showToast(opts) } = {}) {
+  if (typeof api?.git?.availability !== 'function') return false;
+  let status;
+  try {
+    status = await api.git.availability();
+  } catch (_) {
+    return false;
+  }
+  // Only a missing binary: a timeout says the machine was busy, not that
+  // anything needs installing.
+  if (!status || status.available || status.reason !== 'enoent') return false;
+  toast({
+    type: 'warning',
+    title: t('gitTab.gitMissingTitle'),
+    message: t('gitTab.gitMissingToast'),
+    action: t('gitTab.installGit'),
+    duration: 20000,
+    onAction: openGitDownload,
+  });
+  return true;
 }
 
 /**
@@ -1335,8 +1378,9 @@ function renderChanges(container) {
   if (!changesData || !changesData.success) {
     const unavailable = gitUnavailableMessage(changesData);
     container.innerHTML = unavailable
-      ? gitUnavailableStateHtml(unavailable)
+      ? gitUnavailableStateHtml(unavailable, changesData?.unavailableReason)
       : `<div class="git-empty-state"><p>${t('gitTab.notGitRepo')}</p></div>`;
+    container.querySelector('[data-git-install]')?.addEventListener('click', openGitDownload);
     return;
   }
 
@@ -3306,5 +3350,7 @@ function initGitTab() {
 module.exports = {
   initGitTab,
   selectProject: selectProjectById,
-  renderGitTab
+  renderGitTab,
+  warnIfGitMissing,
+  gitUnavailableStateHtml
 };

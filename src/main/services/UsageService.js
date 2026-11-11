@@ -66,6 +66,12 @@ function entryFor(accountId) {
       // The store answered, but with an access token past its expiry. Not a
       // refusal: see TOKEN_EXPIRED_RECHECK.
       tokenExpired: false,
+      // The store answered and says this account is signed out: no access
+      // token at all (the CLI blanks it to '' when a refresh is refused), or
+      // still the very token the API refused. Unlike an expired token, nothing
+      // renews this on its own; only signing in again does. A store that did
+      // not answer (a refused Keychain read) is unknown, not signed out.
+      signedOut: false,
       // When a chat session last reported this account's figures; see
       // applyRateLimitInfo().
       streamedAt: 0,
@@ -276,6 +282,7 @@ function startTokenRead(entry) {
     let token = null;
     let expiresAt = null;
     let expired = false;
+    let answered = false;
     try {
       const { value: creds, keychainFailed } = await auditKeychainReads(() => readCredentialsFor(entry.accountId));
       token = tokenFromCredentials(creds);
@@ -289,6 +296,7 @@ function startTokenRead(entry) {
       // reopened every five minutes for good, one password dialog each time.
       // Behind a refusal it is a refusal, and climbs the ladder like one.
       expired = !keychainFailed && !token && !!creds?.claudeAiOauth?.accessToken;
+      answered = !keychainFailed;
     } catch (e) {
       // Store unreadable: Keychain access refused, or the file is malformed.
       // Treated as no token, and backed off, rather than retried on every tick.
@@ -302,9 +310,11 @@ function startTokenRead(entry) {
     if (token !== null && token === entry.rejectedToken) {
       // The store still holds the token the API just refused. Reading it again
       // buys nothing until the CLI writes a new one.
+      entry.signedOut = answered;
       backOffToken(entry, now);
       return null;
     }
+    entry.signedOut = answered && !token && !expired;
 
     entry.rejectedToken = null;
     entry.tokenCache = token;
@@ -384,6 +394,7 @@ function invalidateCredentials(accountId) {
     entry.tokenFailures = 0;
     entry.tokenGaveUp = false;
     entry.tokenExpired = false;
+    entry.signedOut = false;
     entry.rejectedToken = null;
     entry.readGeneration += 1;
     entry.tokenRead = null;
@@ -854,7 +865,9 @@ function getUsageData(accountId) {
     // moment. Surfaced so "the chip stopped moving" can be read as "waiting
     // until 14:05, click to try now" rather than as an app that has broken.
     retryAt: retryAtFor(entry),
-    gaveUp: !!entry.tokenGaveUp
+    gaveUp: !!entry.tokenGaveUp,
+    // Signed out for good until someone signs in again; see entryFor().
+    signedOut: !!entry.signedOut
   };
 }
 
@@ -894,7 +907,9 @@ function getFetchState(accountId) {
     error: entry.lastError,
     lastFetch: entry.lastFetch ? entry.lastFetch.toISOString() : null,
     retryAt: retryAtFor(entry),
-    gaveUp: !!entry.tokenGaveUp
+    gaveUp: !!entry.tokenGaveUp,
+    // Signed out for good until someone signs in again; see entryFor().
+    signedOut: !!entry.signedOut
   };
 }
 

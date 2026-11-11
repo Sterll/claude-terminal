@@ -3320,7 +3320,16 @@ class SettingsPanel extends BasePanel {
   _paintAccountsUsage(listEl = document.getElementById('claude-accounts-list')) {
     if (!listEl) return;
     for (const slot of listEl.querySelectorAll('.account-row-usage[data-usage-for]')) {
-      slot.innerHTML = buildAccountUsageHtml(this._accountsUsage?.[slot.dataset.usageFor]);
+      const usage = this._accountsUsage?.[slot.dataset.usageFor];
+      slot.innerHTML = buildAccountUsageHtml(usage);
+      // A signed-out account's way back is its Reconnect button, so that is
+      // the one that stands out on its row.
+      const row = slot.closest('.account-row');
+      const signedOut = !!usage?.signedOut;
+      row?.classList.toggle('signed-out', signedOut);
+      const btn = row?.querySelector('[data-action="reconnect"]');
+      btn?.classList.toggle('btn-primary', signedOut);
+      btn?.classList.toggle('btn-secondary', !signedOut);
     }
   }
 

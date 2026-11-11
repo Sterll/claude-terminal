@@ -1945,8 +1945,15 @@ class ChatService {
         // something else: the account is out of budget either way.
         // A remote session runs on the host's own login: there is no local
         // account to switch to, so its limit is shown as the error it is.
-        const errorType = (!session?.remote && (pendingAccountLimit || this._isUsageLimitError(err.message, stderrLog)))
-          ? 'usage_limit' : 'generic';
+        // A lost login is the other failure the user can fix from the tab:
+        // `auth` lets the renderer offer to reconnect the account instead of
+        // sending them to a terminal. Remote sessions run on the host's own
+        // login, which no local account can fix.
+        const errorType = session?.remote
+          ? 'generic'
+          : (pendingAccountLimit || this._isUsageLimitError(err.message, stderrLog))
+            ? 'usage_limit'
+            : this._isAuthError(err.message, stderrLog) ? 'auth' : 'generic';
         if (errorType === 'usage_limit') {
           await this._emitAccountLimit(sessionId, session, pendingAccountLimit || errorMsg);
           pendingAccountLimit = null;
@@ -1971,6 +1978,27 @@ class ChatService {
    * Combines SDK error message and accumulated stderr (the SDK often surfaces
    * the API error there before exiting with a non-zero code).
    */
+  /**
+   * Whether a session died because its account is not signed in: a refused
+   * or missing OAuth token, as the CLI words it on its way out.
+   * @param {string} rawError
+   * @param {string} [stderrLog]
+   * @returns {boolean}
+   */
+  _isAuthError(rawError, stderrLog = '') {
+    const haystack = `${rawError || ''}
+${stderrLog || ''}`.toLowerCase();
+    return /401/.test(haystack)
+      || haystack.includes('unauthorized')
+      || haystack.includes('authentication_error')
+      || haystack.includes('authentication error')
+      || haystack.includes('authentication failed')
+      || haystack.includes('not logged in')
+      || haystack.includes('please run /login')
+      || haystack.includes('oauth token has expired')
+      || haystack.includes('invalid api key');
+  }
+
   _isUsageLimitError(rawError, stderrLog = '') {
     const haystack = `${rawError || ''}\n${stderrLog || ''}`.toLowerCase();
     return haystack.includes('429')

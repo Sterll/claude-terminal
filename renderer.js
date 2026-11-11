@@ -523,6 +523,17 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     isFreshProfile: (projectsState.get().projects || []).length === 0,
   }).catch((err) => console.warn('[renderer] account onboarding failed:', err?.message));
 
+  // Two things that break silently until they are needed: git missing from
+  // the machine, and a saved account whose login was lost. Said once at
+  // startup, after the first paint, so neither competes with the boot.
+  setTimeout(() => {
+    GitTabService.warnIfGitMissing().catch(() => {});
+  }, 4000);
+  setTimeout(() => {
+    require('./src/renderer/ui/components/AccountLoginModal').warnSignedOutAccounts()
+      .catch((err) => console.warn('[renderer] signed-out account check failed:', err?.message));
+  }, 20000);
+
   // Initialize Claude event bus and provider (hooks or scraping)
   initClaudeEvents();
 

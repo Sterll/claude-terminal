@@ -15,9 +15,10 @@
  * name to ask for, and main refuses a sign-in that lands on another account.
  *
  * With `onboarding`, it is the first-launch prompt shown when the machine has
- * no Claude login at all: worded as a welcome, "Later" instead of "Cancel",
- * and the account it signs in becomes the default, since nothing else would
- * put it in the machine-wide store the CLI in a terminal tab reads.
+ * no Claude login at all: worded as a welcome, "Later" instead of "Cancel".
+ * `onboarding` and `makeDefault` both make the account it signs in the
+ * default, since nothing else would put it in the machine-wide store that
+ * unbound work, and the CLI in a terminal tab, read.
  *
  * Resolves with the account's summary, or null if the user gave up.
  */
@@ -40,9 +41,9 @@ function accountErrorMessage(res, fallback) {
 }
 
 /**
- * @param {{ reconnect?: { id: string, name: string }, onboarding?: boolean }} [opts]
+ * @param {{ reconnect?: { id: string, name: string }, onboarding?: boolean, makeDefault?: boolean }} [opts]
  */
-function showAccountLoginModal({ reconnect = null, onboarding = false } = {}) {
+function showAccountLoginModal({ reconnect = null, onboarding = false, makeDefault = false } = {}) {
   const api = window.electron_api;
 
   return new Promise((resolve) => {
@@ -155,7 +156,7 @@ function showAccountLoginModal({ reconnect = null, onboarding = false } = {}) {
       running = false;
       if (done) return;
 
-      if (res?.success && onboarding && res.data?.id) {
+      if (res?.success && (onboarding || makeDefault) && !reconnect && res.data?.id) {
         // The first account on a machine with no login is the one everything
         // runs as: putting it in the machine-wide store is what makes a plain
         // `claude` in a terminal tab signed in too.
@@ -235,4 +236,80 @@ async function maybeShowAccountOnboarding({ accountsState, getSetting, setSettin
   return showAccountLoginModal({ onboarding: true });
 }
 
-module.exports = { showAccountLoginModal, maybeShowAccountOnboarding, accountErrorMessage };
+/**
+ * Sign the account a conversation runs on back in, after Claude refused its
+ * login.
+ *
+ * A conversation bound to an account reconnects that account. An unbound one
+ * runs on the machine-wide login, so the account that holds it (else the
+ * default) is reconnected and made the default, which is what writes the
+ * fresh login back into that store. With no saved account to name, it signs
+ * a new one in and makes it the default.
+ *
+ * @param {{ accountId?: string|null, projectId?: string|null, state?: Object }} opts
+ *   `state` is the renderer state module, injectable for tests
+ * @returns {Promise<Object|null>} the account now signed in, or null
+ */
+async function reconnectForConversation({ accountId = null, projectId = null, state = require('../../state') } = {}) {
+  const bound = accountId ? state.getAccount(accountId) : null;
+  const target = bound || (accountId ? null : state.getUsageAccountForProject(projectId)?.account) || null;
+  if (!target) {
+    const none = !(state.getAccounts() || []).length;
+    return showAccountLoginModal({ makeDefault: true, onboarding: none });
+  }
+  const account = await showAccountLoginModal({ reconnect: { id: target.id, name: target.name } });
+  if (account && !bound) {
+    const def = await window.electron_api.accounts.setDefault(target.id);
+    if (!def?.success) console.warn('[AccountLoginModal] could not put the reconnected account in the machine-wide store:', def?.error);
+  }
+  return account;
+}
+
+/**
+ * Say at startup which saved accounts are signed out, before a session on
+ * one of them fails: one toast per account, with its Reconnect button.
+ *
+ * Only accounts something runs on: the default, the one holding the
+ * machine-wide login, and any bound to a project. A spare account nobody uses
+ * being signed out is worth a line in Settings, not an interruption.
+ *
+ * "Signed out" is UsageService's verdict, which only a store that answered
+ * can give (an empty token, or the very one the API refused), so a Keychain
+ * that did not answer never raises this.
+ *
+ * @param {{ api?: Object, state?: Object, getProjectsForAccount?: Function, toast?: Function }} [deps]
+ * @returns {Promise<Object[]>} the accounts reported
+ */
+async function warnSignedOutAccounts({
+  api = window.electron_api,
+  state = require('../../state'),
+  getProjectsForAccount = require('../../state/projects.state').getProjectsForAccount,
+  toast = (opts) => require('./Toast').showToast(opts),
+} = {}) {
+  const accounts = state.getAccounts() || [];
+  if (!accounts.length || typeof api?.accounts?.usage !== 'function') return [];
+  const res = await api.accounts.usage();
+  if (!res?.success || !res.data) return [];
+  const { defaultId, liveId } = state.accountsState.get();
+  const inUse = (a) => a.id === defaultId || a.id === liveId || (getProjectsForAccount(a.id) || []).length > 0;
+  const signedOut = accounts.filter(a => res.data[a.id]?.signedOut && inUse(a));
+  for (const account of signedOut) {
+    toast({
+      type: 'warning',
+      title: t('accounts.signedOutTitle', { name: account.name }),
+      message: t('accounts.signedOutToast'),
+      action: t('accounts.reconnect'),
+      duration: 0,
+      onAction: () => showAccountLoginModal({ reconnect: { id: account.id, name: account.name } }),
+    });
+  }
+  return signedOut;
+}
+
+module.exports = {
+  showAccountLoginModal,
+  maybeShowAccountOnboarding,
+  reconnectForConversation,
+  warnSignedOutAccounts,
+  accountErrorMessage
+};

@@ -157,6 +157,34 @@ function notAGitRepo(result) {
   };
 }
 
+/** The answer of the last local `git --version`, shared by every caller. */
+let _gitAvailability = null;
+
+/**
+ * Whether this machine can run git at all, asked once of a local
+ * `git --version` rather than read off a project's first failure: a fresh
+ * install has no project to fail on, and is exactly the machine likely to
+ * have no git. A missing binary is cached for the run (the PATH this process
+ * started with will not grow one), `force` asks again.
+ *
+ * @param {{ force?: boolean }} [opts]
+ * @returns {Promise<{available: boolean, version?: string, reason?: 'enoent'|'timeout'|'exit', message?: string}>}
+ */
+function checkGitAvailable({ force = false } = {}) {
+  if (_gitAvailability && !force) return _gitAvailability;
+  _gitAvailability = new Promise((resolve) => {
+    execFile('git', ['--version'], { encoding: 'utf8', timeout: 10000, windowsHide: true }, (error, stdout) => {
+      if (!error) {
+        resolve({ available: true, version: String(stdout || '').trim().replace(/^git versions*/i, '') });
+        return;
+      }
+      const reason = error.code === 'ENOENT' ? 'enoent' : (error.killed ? 'timeout' : 'exit');
+      resolve({ available: false, reason, message: describeGitFailure({ reason, error: error.message }) });
+    });
+  });
+  return _gitAvailability;
+}
+
 /** Record the failures that are actionable; stay silent on routine ones. */
 function _logGitFailure(cwd, argsArray, reason, error) {
   const log = _errorLog();
@@ -2814,6 +2842,7 @@ async function getRemotes(projectPath) {
 }
 
 module.exports = {
+  checkGitAvailable,
   parseGitStatus,
   parseDiffNumstat,
   unquoteGitPath,

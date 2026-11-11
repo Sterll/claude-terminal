@@ -8164,7 +8164,7 @@ class ChatView extends BaseComponent {
         : '';
       const text = errorTextForCode(msg.error, recorded);
       removeThinkingIndicator();
-      appendError(text);
+      appendError(text, msg.error === 'authentication_failed' ? reconnectErrorAction() : null);
       turnErrorShown = true;
       setStreaming(false);
       return;
@@ -8346,7 +8346,8 @@ class ChatView extends BaseComponent {
     // The dedicated chat-account-limit handler will surface the switch modal
     // and replay the turn — suppress the generic error banner in that case.
     if (!isAborting && !switchingAccount && errorType !== 'usage_limit') {
-      appendError(error);
+      if (errorType === 'auth') appendError(t('chat.errorAuth'), reconnectErrorAction());
+      else appendError(error);
     }
     isAborting = false;
     setStreaming(false);
@@ -8373,9 +8374,11 @@ class ChatView extends BaseComponent {
    *
    * @param {string} newId - the account to run as
    * @param {boolean} resumeTurn - whether a turn was cut off mid-flight
+   * @param {{ reconnected?: boolean }} [opts] - the same account signed back
+   *   in rather than another one, which the notice says instead of "switched"
    * @returns {Promise<boolean>} whether the tab is now on `newId`
    */
-  async function restartOnAccount(newId, resumeTurn) {
+  async function restartOnAccount(newId, resumeTurn, { reconnected = false } = {}) {
     if (destroyed) return false;
     // Tell main to close the SDK process so the new credentials take effect
     const prep = await api.chat.prepareSwitchAccount({ sessionId });
@@ -8386,7 +8389,9 @@ class ChatView extends BaseComponent {
     }
     // Re-launch the same session with the new account
     if (!lastStartOpts) {
-      appendSystemNotice(t('accounts.switched') || 'Account switched. Send a message to continue.', 'info');
+      appendSystemNotice(reconnected
+        ? t('accounts.reconnectedSend')
+        : (t('accounts.switched') || 'Account switched. Send a message to continue.'), 'info');
       sessionId = null;
       return true;
     }
@@ -8445,7 +8450,11 @@ class ChatView extends BaseComponent {
     const replayed = Boolean(
       (restartOpts.prompt || '').trim() || restartOpts.images.length || restartOpts.mentions.length
     );
-    const notice = queued.length
+    const notice = reconnected && !queued.length
+      ? (continueTurn
+        ? t('accounts.reconnectedResumed')
+        : replayed ? t('accounts.reconnectedResent') : t('accounts.reconnectedSend'))
+      : queued.length
       ? (t('accounts.switchedQueuedResent') || 'Account switched. Your last message never reached the previous account, so it is being sent again.')
       : continueTurn
         ? (t('accounts.switchedResumed') || 'Account switched. Picking the interrupted turn back up.')
@@ -8547,16 +8556,40 @@ class ChatView extends BaseComponent {
     return true;
   }
 
-  async function switchAccountAndRestart(accountId, { resumeTurn = turnCutByLimit } = {}) {
+  async function switchAccountAndRestart(accountId, { resumeTurn = turnCutByLimit, reconnected = false } = {}) {
     // `null` is a target of its own — the project following the default account
     // rather than pinning one — so only an absent argument is refused.
     if (destroyed || accountId === undefined || switchingAccount) return false;
     switchingAccount = true;
     try {
-      return await restartOnAccount(accountId, resumeTurn);
+      return await restartOnAccount(accountId, resumeTurn, { reconnected });
     } finally {
       switchingAccount = false;
     }
+  }
+
+  /**
+   * The way out of a refused login: sign the conversation's account back in
+   * from here, then bring the tab back up on it, picking the refused turn up
+   * again. The CLI that was refused holds the dead credentials it started
+   * with, so the restart is what makes the new login count.
+   *
+   * Local sessions only: a remote CLI runs on its host's own login.
+   *
+   * @returns {{label: string, onClick: Function}|null}
+   */
+  function reconnectErrorAction() {
+    if (remoteChat.isRemote) return null;
+    return {
+      label: t('chat.reconnectAccount'),
+      onClick: async () => {
+        const accountId = conversationAccountId();
+        const { reconnectForConversation } = require('./AccountLoginModal');
+        const account = await reconnectForConversation({ accountId, projectId: project.id });
+        if (!account || destroyed) return;
+        await switchAccountAndRestart(accountId ?? null, { resumeTurn: true, reconnected: true });
+      }
+    };
   }
 
   /**

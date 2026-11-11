@@ -164,7 +164,9 @@ describe('remote chat tabs', () => {
     const remoteText = wrapper.querySelector('.chat-msg-error .chat-error-content').textContent;
     expect(remoteText).toContain('yanis@build');
     expect(remoteText).toContain('/login');
-    expect(remoteText).not.toMatch(/running "claude" in a terminal/);
+    expect(remoteText).not.toMatch(/Reconnect it/);
+    // No local account can fix a host's login, so there is no button for it
+    expect(wrapper.querySelector('.chat-msg-error .chat-error-action')).toBeNull();
     view.destroy();
 
     wrapper.innerHTML = '';
@@ -173,7 +175,9 @@ describe('remote chat tabs', () => {
     await flush();
     listeners.onMessage(authFailure(view.getSessionId()));
     await flush();
-    expect(wrapper.querySelector('.chat-msg-error .chat-error-content').textContent).toMatch(/running "claude" in a terminal/);
+    // Locally the account is reconnected from the tab, not from a terminal
+    expect(wrapper.querySelector('.chat-msg-error .chat-error-content').textContent).toMatch(/Reconnect it/);
+    expect(wrapper.querySelector('.chat-msg-error .chat-error-action')?.textContent).toBe('Reconnect');
   });
 
   test('the Reconnect button asks for the host and resumes', async () => {

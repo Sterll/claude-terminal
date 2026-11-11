@@ -84,6 +84,11 @@ function buildAccountUsageHtml(usage) {
   if (!usage) {
     return `<div class="account-usage-note">${escapeHtml(t('accounts.usageLoading') || 'Reading usage…')}</div>`;
   }
+  // Signed out is not "unavailable": nothing will bring the figures back
+  // until someone signs in again, so it says that, in the danger colour.
+  if (usage.signedOut) {
+    return `<div class="account-usage-note account-usage-note--signed-out" title="${escapeHtml(usage.error || '')}">${escapeHtml(t('accounts.signedOut'))}</div>`;
+  }
   const buckets = usage.data?.buckets;
   if (!Array.isArray(buckets) || !buckets.length) {
     return `<div class="account-usage-note" title="${escapeHtml(usage.error || '')}">${escapeHtml(t('accounts.usageUnavailable') || 'Usage unavailable - run "claude /login" on this account')}</div>`;

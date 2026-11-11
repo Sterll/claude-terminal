@@ -3113,6 +3113,15 @@
   padding: 2px 0;
 }
 
+/* Signed out: nothing renews it on its own, the row says so. */
+.account-usage-note--signed-out {
+  color: var(--danger);
+}
+
+.account-row.signed-out .account-row-name {
+  color: var(--text-secondary);
+}
+
 /* ── Claude in Chrome status ──────────────────────────────────────────────── */
 
 .chrome-bridge-status {
