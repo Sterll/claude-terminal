@@ -20,6 +20,7 @@ const {
   orderPrimary,
   modelFamily,
   modelTier,
+  withAccountModels,
   CLAUDE_MODEL_VALUES,
   MODEL_OPTIONS,
   LEGACY_MODELS,
@@ -318,8 +319,9 @@ const SERVED_322_MODELS = [
   { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5', description: 'Most capable for your hardest and longest-running tasks' },
 ];
 
-// The row the server adds to the menu of an account admitted to Mythos, shaped
-// like the Fable row it adds the same way (`additionalModelOptionsCache`).
+// A Mythos row as the CLI would list it, shaped like its Fable row. CLI 0.3.322
+// lists none, even for an admitted account (ACCOUNT_GATED_MODELS covers that),
+// but a CLI that starts to must still land it in the right place.
 const MYTHOS_ROW = { value: 'claude-mythos-5-2[1m]', resolvedModel: 'claude-mythos-5-2', displayName: 'Mythos', description: 'Mythos 5.2 · For your toughest challenges' };
 
 // The pipeline ModelCatalogService._shape runs on every read.
@@ -455,12 +457,12 @@ describe('Fable 5.2 and Mythos 5.2 (CLI 0.3.322)', () => {
     expect(legacy.filter(m => baseModelId(m.value) === 'claude-fable-5-1')).toHaveLength(1);
   });
 
-  test('an account the CLI offers no Mythos to sees none', () => {
+  test('the CLI catalog alone offers no Mythos', () => {
     const { primary, legacy } = tiers(SERVED_322_MODELS);
     expect([...primary, ...legacy].filter(m => modelFamily(m) === 'mythos')).toEqual([]);
   });
 
-  test('an account admitted to Mythos gets it next to Fable, by name', () => {
+  test('a CLI that lists Mythos gets it next to Fable, by name', () => {
     const [defaultRow, opus, fable, ...rest] = SERVED_322_MODELS;
     const { primary } = tiers([defaultRow, opus, fable, MYTHOS_ROW, ...rest]);
     expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Mythos 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
@@ -471,6 +473,43 @@ describe('Fable 5.2 and Mythos 5.2 (CLI 0.3.322)', () => {
     const { primary, legacy } = tiers([...SERVED_322_MODELS, MYTHOS_ROW, older]);
     expect(primary.filter(m => modelFamily(m) === 'mythos').map(m => m.displayName)).toEqual(['Mythos 5.2']);
     expect(legacy.map(m => m.value)).toContain('claude-mythos-5-1');
+  });
+});
+
+describe('withAccountModels', () => {
+  // What the Models API listed for each account on 2026-11-11.
+  const ADMITTED = ['claude-mythos-5-2', 'claude-fable-5-2', 'claude-opus-5-5', 'claude-mythos-5-1', 'claude-fable-5-1'];
+  const NOT_ADMITTED = ['claude-fable-5-2', 'claude-opus-5-5', 'claude-fable-5-1'];
+
+  test('adds Mythos 5.2 next to Fable and Mythos 5.1 under More models', () => {
+    const { primary, legacy } = withAccountModels(tiers(SERVED_322_MODELS), ADMITTED);
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Mythos 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
+    expect(legacy.map(m => m.displayName).slice(0, 3)).toEqual(['Fable 5.1', 'Fable 5', 'Mythos 5.1']);
+  });
+
+  test('adds nothing for an account the Models API lists no Mythos for', () => {
+    const catalog = tiers(SERVED_322_MODELS);
+    expect(withAccountModels(catalog, NOT_ADMITTED)).toBe(catalog);
+  });
+
+  test('adds nothing while the account\'s list is unknown', () => {
+    const catalog = tiers(SERVED_322_MODELS);
+    expect(withAccountModels(catalog, null)).toBe(catalog);
+    expect(withAccountModels(catalog, [])).toBe(catalog);
+  });
+
+  test('never adds a row the catalog already has', () => {
+    const [defaultRow, opus, fable, ...rest] = SERVED_322_MODELS;
+    const catalog = tiers([defaultRow, opus, fable, MYTHOS_ROW, ...rest]);
+    const { primary } = withAccountModels(catalog, ADMITTED);
+    expect(primary.filter(m => modelFamily(m) === 'mythos')).toHaveLength(1);
+  });
+
+  test('a gated row is premium and matches the ids the stream reports', () => {
+    const models = (({ primary, legacy }) => [...primary, ...legacy])(withAccountModels(tiers(SERVED_322_MODELS), ADMITTED));
+    const row = matchModel(models, 'claude-mythos-5-2[1m]');
+    expect(row?.displayName).toBe('Mythos 5.2');
+    expect(modelTier(row)).toBe('premium');
   });
 });
 
@@ -608,10 +647,9 @@ describe('catalog contents', () => {
     expect(FALLBACK_PRIMARY.map(m => m.value)).not.toContain('claude-fable-5-1');
   });
 
-  test('no hand-written list offers Mythos', () => {
-    // Every list here is shown to every account, and Mythos runs only on the
-    // accounts admitted to it. The CLI advertises it to those, so the primary
-    // tier is the only way in.
+  test('no list shown to every account offers Mythos', () => {
+    // Mythos runs only on the accounts admitted to it, so its rows live in
+    // ACCOUNT_GATED_MODELS and reach a menu through withAccountModels alone.
     const ids = [
       ...CLAUDE_MODEL_VALUES,
       ...MODEL_OPTIONS.map(o => o.value),

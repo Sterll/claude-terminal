@@ -1171,6 +1171,7 @@ module.exports = {
   refreshUsage,
   usageForAccount,
   fetchUsage,
+  readOAuthToken,
   applyRateLimitInfo,
   invalidateCredentials,
   setFocusedAccount,

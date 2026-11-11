@@ -18,11 +18,12 @@
  * ids. Keeping them here is what lets "More models" stay useful without the
  * primary tier going stale.
  *
- * Why Mythos appears in none of the lists below: it is reserved to accounts
- * admitted to it, and the CLI only advertises it to those (the server adds the
- * row to that account's menu). Every list here is shown to every account, so
- * naming it would offer a model the account cannot run. It reaches the picker
- * through the primary tier alone; this file only has to recognise its family.
+ * Why Mythos appears in none of those lists: it is reserved to the accounts
+ * admitted to it, and every one of them is shown to every account. Nor does the
+ * CLI's menu carry it, even for an admitted account. Its rows live apart, in
+ * `ACCOUNT_GATED_MODELS`, and reach the chat picker through
+ * `withAccountModels` only when the Models API lists them for the tab's
+ * account (see ModelAccessService).
  */
 
 'use strict';
@@ -258,6 +259,60 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: true,
   },
 ];
+
+/**
+ * Models offered only to the accounts the Models API lists them for, one list
+ * per tier. Never shown unconditionally: `withAccountModels` is the only way
+ * in, and it needs the account's own model list.
+ */
+const ACCOUNT_GATED_MODELS = {
+  primary: [
+    {
+      value: 'claude-mythos-5-2',
+      displayName: 'Mythos 5.2',
+      description: 'Demanding reasoning and long-horizon agentic work',
+      supportsEffort: true,
+      supportedEffortLevels: ALL_EFFORTS,
+      supportsAdaptiveThinking: true,
+    },
+  ],
+  legacy: [
+    {
+      value: 'claude-mythos-5-1',
+      displayName: 'Mythos 5.1',
+      description: 'Previous generation Mythos',
+      supportsEffort: true,
+      supportedEffortLevels: ALL_EFFORTS,
+      supportsAdaptiveThinking: true,
+    },
+  ],
+};
+
+/**
+ * The catalog one account sees: `catalog` plus each gated row whose id
+ * `available` lists, in its own tier. A row the catalog already covers is not
+ * added twice, so a CLI that one day lists Mythos keeps its own row.
+ *
+ * @param {{primary: Array<object>, legacy: Array<object>}} catalog
+ * @param {Array<string>|null} available Model ids the account may run, or
+ *   null when unknown, which adds nothing.
+ * @returns {object} `catalog` itself when there is nothing to add
+ */
+function withAccountModels(catalog, available) {
+  if (!catalog || !Array.isArray(available) || available.length === 0) return catalog;
+  const allowed = new Set(available.map(baseModelId));
+  const known = [...(catalog.primary || []), ...(catalog.legacy || [])];
+  const extra = tier => ACCOUNT_GATED_MODELS[tier]
+    .filter(m => allowed.has(m.value) && !matchModel(known, m.value));
+  const primary = extra('primary');
+  const legacy = extra('legacy');
+  if (primary.length === 0 && legacy.length === 0) return catalog;
+  return {
+    ...catalog,
+    primary: orderPrimary([...(catalog.primary || []), ...primary]),
+    legacy: orderPrimary([...(catalog.legacy || []), ...legacy]),
+  };
+}
 
 /**
  * Strip a CLI variant suffix: 'claude-opus-5[1m]' -> 'claude-opus-5'.
@@ -692,6 +747,8 @@ module.exports = {
   withSubagentEffort,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
+  ACCOUNT_GATED_MODELS,
+  withAccountModels,
   DEFAULT_ALIAS,
   MODEL_FAMILIES,
   PREMIUM_FAMILIES,
