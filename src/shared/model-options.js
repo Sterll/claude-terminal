@@ -17,6 +17,12 @@
  * (it dropped Fable 5 the day Fable 5.1 shipped), but it still *accepts* older
  * ids. Keeping them here is what lets "More models" stay useful without the
  * primary tier going stale.
+ *
+ * Why Mythos appears in none of the lists below: it is reserved to accounts
+ * admitted to it, and the CLI only advertises it to those (the server adds the
+ * row to that account's menu). Every list here is shown to every account, so
+ * naming it would offer a model the account cannot run. It reaches the picker
+ * through the primary tier alone; this file only has to recognise its family.
  */
 
 'use strict';
@@ -24,6 +30,7 @@
 // Ordered list of accepted `model` property values ('' = inherit / auto).
 const CLAUDE_MODEL_VALUES = [
   '',
+  'claude-fable-5-2',
   'claude-fable-5-1',
   'claude-fable-5',
   'claude-opus-5-5',
@@ -43,6 +50,7 @@ const CLAUDE_MODEL_VALUES = [
 // Human-readable labels, in the same order.
 const MODEL_OPTIONS = [
   { value: '',                  label: 'Default (inherit)' },
+  { value: 'claude-fable-5-2',  label: 'Fable 5.2' },
   { value: 'claude-fable-5-1',  label: 'Fable 5.1' },
   { value: 'claude-fable-5',    label: 'Fable 5' },
   { value: 'claude-opus-5-5',   label: 'Opus 5.5' },
@@ -132,9 +140,17 @@ const DEFAULT_ALIAS = 'default';
  */
 const LEGACY_MODELS = [
   {
+    value: 'claude-fable-5-1',
+    displayName: 'Fable 5.1',
+    description: 'Previous generation Fable',
+    supportsEffort: true,
+    supportedEffortLevels: ALL_EFFORTS,
+    supportsAdaptiveThinking: true,
+  },
+  {
     value: 'claude-fable-5',
     displayName: 'Fable 5',
-    description: 'Previous generation Fable',
+    description: 'Older Fable generation',
     supportsEffort: true,
     supportedEffortLevels: ALL_EFFORTS,
     supportsAdaptiveThinking: true,
@@ -218,8 +234,8 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: true,
   },
   {
-    value: 'claude-fable-5-1',
-    displayName: 'Fable 5.1',
+    value: 'claude-fable-5-2',
+    displayName: 'Fable 5.2',
     description: 'Demanding reasoning and long-horizon agentic work',
     supportsEffort: true,
     supportedEffortLevels: ALL_EFFORTS,
@@ -390,7 +406,7 @@ const CONTEXT_NOTE = /\s*(?:with\s+1M\s+context|\(1M\s+context\))/i;
 // Family and version out of a wire id: 'claude-haiku-4-5-20251001' -> haiku 4.5.
 // The version is one or two short numeric segments, so a trailing date is not
 // read as part of it.
-const WIRE_VERSION = /(fable|opus|sonnet|haiku)-(\d{1,2})(?:-(\d{1,2}))?(?!\d)/;
+const WIRE_VERSION = /(fable|mythos|opus|sonnet|haiku)-(\d{1,2})(?:-(\d{1,2}))?(?!\d)/;
 
 /**
  * 'Opus 4.8' for 'claude-opus-4-8', or '' when the id does not spell a family
@@ -482,8 +498,9 @@ function normalizeModelRow(m) {
 // Model families, most capable first. Menu order for the primary tier follows
 // it — the CLI's own order puts Opus ahead of Fable; we surface the more capable
 // model first — and so does the family colour on the footer chip. Anything
-// unrecognised sorts last in the order the CLI gave it.
-const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
+// unrecognised sorts last in the order the CLI gave it. Mythos is Fable's tier
+// (same capabilities and prices), offered only to the accounts admitted to it.
+const MODEL_FAMILIES = ['fable', 'mythos', 'opus', 'sonnet', 'haiku'];
 
 /**
  * Families the plan meters on their own.
@@ -495,11 +512,11 @@ const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
  * limit. So a tab left on one quietly spends a quota the next tab may want.
  *
  * Hand-curated, because the CLI catalog says nothing about it: its descriptions
- * carry per-token prices only, which are stripped for display anyway. Fable is
- * the family this applies to, so it is the one the chip, the composer border
- * and the tab tag single out.
+ * carry per-token prices only, which are stripped for display anyway. Fable and
+ * Mythos are the families this applies to, so they are the ones the chip, the
+ * composer border and the tab tag single out.
  */
-const PREMIUM_FAMILIES = ['fable'];
+const PREMIUM_FAMILIES = ['fable', 'mythos'];
 
 /**
  * Effort levels flagged as heavy on the chip whatever the model — they spend

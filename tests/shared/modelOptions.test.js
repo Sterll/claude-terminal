@@ -253,9 +253,10 @@ describe('orderPrimary', () => {
     expect(ordered.indexOf('claude-fable-5-1[1m]')).toBeLessThan(ordered.indexOf('opus[1m]'));
   });
 
-  test('orders the families fable → opus → sonnet → haiku', () => {
-    expect(orderPrimary(MENU_MODELS).map(m => m.value)).toEqual([
-      'claude-fable-5-1[1m]', 'opus[1m]', 'sonnet', 'haiku',
+  test('orders the families fable → mythos → opus → sonnet → haiku', () => {
+    const rows = [...MENU_MODELS, { value: 'claude-mythos-5-2[1m]', resolvedModel: 'claude-mythos-5-2' }];
+    expect(orderPrimary(rows).map(m => m.value)).toEqual([
+      'claude-fable-5-1[1m]', 'claude-mythos-5-2[1m]', 'opus[1m]', 'sonnet', 'haiku',
     ]);
   });
 
@@ -303,6 +304,23 @@ const SERVED_CLI_MODELS = [
   { value: 'claude-sonnet-4-6', resolvedModel: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6', description: 'Efficient for routine tasks' },
 ];
 const SERVED_OLDER = ['claude-sonnet-5', 'claude-opus-5', 'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6'];
+
+// What CLI 0.3.322 returned on an account without Mythos (served catalog):
+// Fable 5.2 behind the `fable` alias, Fable 5.1 appended with the older models.
+const SERVED_322_MODELS = [
+  { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)', description: 'Opus 5.5 · Best for everyday, complex tasks' },
+  { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5', description: 'For complex work and everyday tasks' },
+  { value: 'fable', resolvedModel: 'claude-fable-5-2', displayName: 'Fable 5.2', description: 'For your toughest challenges' },
+  { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5', description: 'Most efficient for simpler tasks' },
+  { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku 5.5', description: 'Fastest for quick answers' },
+  { value: 'claude-fable-5-1', resolvedModel: 'claude-fable-5-1', displayName: 'Fable 5.1', description: 'Most capable for your hardest and longest-running tasks' },
+  { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5', description: 'Most capable for your hardest and longest-running tasks' },
+];
+
+// The row the server adds to the menu of an account admitted to Mythos, shaped
+// like the Fable row it adds the same way (`additionalModelOptionsCache`).
+const MYTHOS_ROW = { value: 'claude-mythos-5-2[1m]', resolvedModel: 'claude-mythos-5-2', displayName: 'Mythos', description: 'Mythos 5.2 · For your toughest challenges' };
 
 // The pipeline ModelCatalogService._shape runs on every read.
 function tiers(raw) {
@@ -430,6 +448,32 @@ describe('legacyTier', () => {
   });
 });
 
+describe('Fable 5.2 and Mythos 5.2 (CLI 0.3.322)', () => {
+  test('Fable 5.2 leads the menu and Fable 5.1 moves to More models', () => {
+    const { primary, legacy } = tiers(SERVED_322_MODELS);
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
+    expect(legacy.filter(m => baseModelId(m.value) === 'claude-fable-5-1')).toHaveLength(1);
+  });
+
+  test('an account the CLI offers no Mythos to sees none', () => {
+    const { primary, legacy } = tiers(SERVED_322_MODELS);
+    expect([...primary, ...legacy].filter(m => modelFamily(m) === 'mythos')).toEqual([]);
+  });
+
+  test('an account admitted to Mythos gets it next to Fable, by name', () => {
+    const [defaultRow, opus, fable, ...rest] = SERVED_322_MODELS;
+    const { primary } = tiers([defaultRow, opus, fable, MYTHOS_ROW, ...rest]);
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Mythos 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
+  });
+
+  test('an older Mythos the CLI appends is superseded like any other family', () => {
+    const older = { value: 'claude-mythos-5-1', resolvedModel: 'claude-mythos-5-1', displayName: 'Mythos 5.1', description: 'For your toughest challenges' };
+    const { primary, legacy } = tiers([...SERVED_322_MODELS, MYTHOS_ROW, older]);
+    expect(primary.filter(m => modelFamily(m) === 'mythos').map(m => m.displayName)).toEqual(['Mythos 5.2']);
+    expect(legacy.map(m => m.value)).toContain('claude-mythos-5-1');
+  });
+});
+
 describe('dedupeLegacy', () => {
   test('drops a legacy entry the primary tier already covers', () => {
     const primary = [{ value: 'claude-opus-4-8', displayName: 'Opus 4.8' }];
@@ -461,9 +505,11 @@ describe('dedupeLegacy', () => {
     expect(result.find(m => m.value === 'claude-opus-5')).toBeUndefined();
     expect(result.find(m => m.value === 'claude-sonnet-5')).toBeUndefined();
     // Same for Haiku 4.5: in this catalog `haiku` still resolves to it, as it
-    // did before CLI 2.1.293 moved the alias to Haiku 5.5.
+    // did before CLI 2.1.293 moved the alias to Haiku 5.5. And for Fable 5.1,
+    // which this catalog still offers as the current Fable.
     expect(result.find(m => m.value === 'claude-haiku-4-5-20251001')).toBeUndefined();
-    expect(result).toHaveLength(LEGACY_MODELS.length - 3);
+    expect(result.find(m => m.value === 'claude-fable-5-1')).toBeUndefined();
+    expect(result).toHaveLength(LEGACY_MODELS.length - 4);
   });
 
   test('tolerates missing arguments', () => {
@@ -552,15 +598,33 @@ describe('catalog contents', () => {
     // missing from it is not rejected — `claude.node.js` silently swaps it for
     // null, so the automation runs on the inherited model without saying so.
     // Fable 5.1 was rejected that way while only Fable 5 was listed.
-    expect(CLAUDE_MODEL_VALUES).toContain('claude-fable-5-1');
+    expect(CLAUDE_MODEL_VALUES).toContain('claude-fable-5-2');
     expect(CLAUDE_MODEL_VALUES).toContain('claude-opus-5-5');
     expect(CLAUDE_MODEL_VALUES).toContain('claude-sonnet-5-5');
   });
 
+  test('the offline tier offers the current Fable, not the one it replaced', () => {
+    expect(FALLBACK_PRIMARY.map(m => m.value)).toContain('claude-fable-5-2');
+    expect(FALLBACK_PRIMARY.map(m => m.value)).not.toContain('claude-fable-5-1');
+  });
+
+  test('no hand-written list offers Mythos', () => {
+    // Every list here is shown to every account, and Mythos runs only on the
+    // accounts admitted to it. The CLI advertises it to those, so the primary
+    // tier is the only way in.
+    const ids = [
+      ...CLAUDE_MODEL_VALUES,
+      ...MODEL_OPTIONS.map(o => o.value),
+      ...LEGACY_MODELS.map(m => m.value),
+      ...FALLBACK_PRIMARY.map(m => m.value),
+    ];
+    expect(ids.filter(id => modelFamily(id) === 'mythos')).toEqual([]);
+  });
+
   test('a model demoted to the legacy tier stays selectable everywhere else', () => {
-    // Moving Opus 5 or Sonnet 5 into "More models" must not take it out of the
-    // workflow node's accepted values: existing automations still name it.
-    for (const id of ['claude-opus-5', 'claude-sonnet-5']) {
+    // Moving Fable 5.1, Opus 5 or Sonnet 5 into "More models" must not take it
+    // out of the workflow node's accepted values: existing automations name it.
+    for (const id of ['claude-fable-5-1', 'claude-opus-5', 'claude-sonnet-5']) {
       expect(LEGACY_MODELS.find(m => m.value === id)).toBeDefined();
       expect(CLAUDE_MODEL_VALUES).toContain(id);
       expect(MODEL_OPTIONS.find(o => o.value === id)).toBeDefined();
@@ -587,9 +651,12 @@ describe('modelFamily / modelTier', () => {
     expect(modelFamily('claude-haiku-4-5-20251001')).toBe('haiku');
   });
 
-  test('flags Fable as premium in both tiers, everything else as standard', () => {
+  test('flags Fable and Mythos as premium in both tiers, everything else as standard', () => {
     expect(modelTier(CLI_MODELS[2])).toBe('premium');
     expect(modelTier(LEGACY_MODELS.find(m => m.value === 'claude-fable-5'))).toBe('premium');
+    expect(modelTier(LEGACY_MODELS.find(m => m.value === 'claude-fable-5-1'))).toBe('premium');
+    expect(modelFamily(MYTHOS_ROW)).toBe('mythos');
+    expect(modelTier(MYTHOS_ROW)).toBe('premium');
     expect(modelTier(CLI_MODELS[1])).toBe('standard');
     expect(modelTier(MENU_MODELS[0])).toBe('standard');
     expect(modelTier('haiku')).toBe('standard');
