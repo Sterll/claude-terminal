@@ -12,7 +12,7 @@
  *
  * This lives in a util rather than in ChatService because two callers need the
  * very same binary: ChatService (to run the session) and ChromeBridgeService
- * (to run `--claude-in-chrome-mcp` and `--chrome-native-host`). Both must agree
+ * (to run `--chrome-native-host`). Both must agree
  * on the path, and ChromeBridgeService must not import ChatService — ChatService
  * imports it.
  */
