@@ -1,0 +1,201 @@
+/* ========== EMPTY STATE (shared) ==========
+ * The block drawn by src/renderer/ui/components/EmptyState.js on every screen
+ * that has nothing to show yet: what the screen is for, and one click to start.
+ */
+
+.empty-guide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.empty-guide-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.empty-guide-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.empty-guide-title {
+  margin: 0;
+  font-size: var(--font-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.empty-guide-purpose {
+  margin: 0;
+  font-size: var(--font-sm);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.empty-guide-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.empty-guide-action:hover {
+  background: var(--accent-hover);
+}
+
+.empty-guide-btn-icon {
+  display: inline-flex;
+}
+
+.empty-guide-btn-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.empty-guide-examples {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.empty-guide-examples-label {
+  margin: 0;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.empty-guide-example-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.empty-guide-example {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.empty-guide-example:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.empty-guide-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  margin-top: 4px;
+}
+
+.empty-guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--font-xs);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.empty-guide-link:hover {
+  color: var(--text-secondary);
+}
+
+.empty-guide-kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-2xs);
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+/* Refused for this project (remote SSH): drawn, never runnable, reason below. */
+.empty-guide .is-disabled,
+.empty-guide .is-disabled:hover {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.empty-guide-action.is-disabled:hover {
+  background: var(--accent);
+}
+
+.empty-guide-reason {
+  margin: 2px 0 0;
+  max-width: 380px;
+  font-size: var(--font-xs);
+  line-height: 1.5;
+  color: var(--warning);
+}
+
+.empty-guide--compact {
+  gap: 8px;
+  padding: 28px 16px;
+}
+
+.empty-guide--compact .empty-guide-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.empty-guide--compact .empty-guide-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.empty-guide--compact .empty-guide-title {
+  font-size: var(--font-base);
+}

@@ -5687,5 +5687,52 @@
     "greetNight": "Encore debout ? Ne veille pas trop tard.",
     "line7": "Desserre la mâchoire.",
     "line8": "Je suis fier de toi."
+  },
+  "emptyStates": {
+    "common": {
+      "addProject": "Ajouter un projet",
+      "openRemote": "Ou ouvrir un projet sur un hôte SSH"
+    },
+    "dashboard": {
+      "title": "Aucun projet pour l'instant",
+      "purpose": "Un projet, c'est un dossier sur lequel vous travaillez avec Claude. Ajoutez-en un et cette page résume sa semaine : temps passé, coût, commits, dernières sessions à reprendre et ce qui vous attend."
+    },
+    "database": {
+      "title": "Aucune base de données connectée",
+      "purpose": "Connectez une base pour parcourir ses tables, lancer des requêtes et laisser Claude lire le schéma quand il écrit du code dessus.",
+      "action": "Ajouter une connexion",
+      "examples": "Ou partir d'un moteur",
+      "detect": "Détecter les bases de {name}"
+    },
+    "controlTower": {
+      "purpose": "Chaque session Claude lancée dans vos projets apparaît ici en direct : ce qu'elle fait, celles qui attendent votre réponse, et de quoi intervenir sans changer d'onglet.",
+      "action": "Lancer une session Claude"
+    },
+    "plugins": {
+      "purpose": "Un plugin regroupe skills, agents, commandes slash et hooks en une seule installation, pour que Claude adopte d'un coup toute une façon de travailler.",
+      "action": "Parcourir le catalogue"
+    },
+    "workflows": {
+      "purpose": "Un workflow enchaîne des étapes (prompts Claude, commandes shell, git, notifications) et les exécute selon un planning, sur un événement git ou quand vous cliquez sur Lancer.",
+      "examples": "Ou partir d'une tâche toute prête",
+      "hub": "Parcourir les workflows partagés"
+    },
+    "parallel": {
+      "purpose": "Confiez à Claude une fonctionnalité trop grosse pour une seule session : il découpe l'objectif en sous-tâches indépendantes, lance chacune dans son propre worktree git en même temps, puis fusionne les branches.",
+      "examples": "Ou essayer un objectif d'exemple",
+      "exampleTests": "Tester les modules non couverts",
+      "exampleTestsGoal": "Ajoute des tests unitaires pour les modules qui n'en ont pas encore. Fais de chaque module une sous-tâche, et suis les conventions de test déjà utilisées dans ce dépôt.",
+      "exampleDocs": "Documenter les modules",
+      "exampleDocsGoal": "Rédige la documentation de chaque module principal : à quoi il sert, ses fonctions clés avec un court exemple, et ses limites connues. Fais de chaque module une sous-tâche."
+    },
+    "git": {
+      "purpose": "Faites de ce dossier un dépôt Git pour suivre chaque modification de Claude, relire le diff avant de commiter et annuler ce que vous ne voulez pas.",
+      "action": "Initialiser un dépôt Git",
+      "done": "{name} est maintenant un dépôt Git",
+      "failed": "Impossible d'initialiser le dépôt"
+    },
+    "files": {
+      "purpose": "Parcourez les fichiers d'un projet, prévisualisez-les et voyez exactement ce que chaque session Claude a modifié, à côté du code."
+    }
   }
 }

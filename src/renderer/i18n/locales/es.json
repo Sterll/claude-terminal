@@ -5687,5 +5687,52 @@
     "greetNight": "¿Todavía despierto? No trasnoches mucho.",
     "line7": "Relaja la mandíbula.",
     "line8": "Estoy orgulloso de ti."
+  },
+  "emptyStates": {
+    "common": {
+      "addProject": "Añadir un proyecto",
+      "openRemote": "O abrir un proyecto en un host SSH"
+    },
+    "dashboard": {
+      "title": "Aún no hay proyectos",
+      "purpose": "Un proyecto es una carpeta en la que trabajas con Claude. Añade uno y esta página resume su semana: tiempo dedicado, coste, commits, las últimas sesiones para retomar y lo que te espera."
+    },
+    "database": {
+      "title": "No hay ninguna base de datos conectada",
+      "purpose": "Conecta una base de datos para explorar sus tablas, ejecutar consultas y dejar que Claude lea el esquema mientras escribe código para ella.",
+      "action": "Añadir una conexión",
+      "examples": "O empezar desde un motor",
+      "detect": "Detectar las bases de datos de {name}"
+    },
+    "controlTower": {
+      "purpose": "Cada sesión de Claude en tus proyectos aparece aquí en directo: qué está haciendo, cuáles esperan tu respuesta y una forma de intervenir sin cambiar de pestaña.",
+      "action": "Iniciar una sesión de Claude"
+    },
+    "plugins": {
+      "purpose": "Un plugin agrupa skills, agentes, comandos slash y hooks en una sola instalación, para que Claude adopte de una vez toda una forma de trabajar.",
+      "action": "Explorar el catálogo"
+    },
+    "workflows": {
+      "purpose": "Un workflow encadena pasos (prompts de Claude, comandos de shell, git, notificaciones) y los ejecuta según un horario, ante un evento de git o cuando pulsas Ejecutar.",
+      "examples": "O empezar desde una tarea lista",
+      "hub": "Explorar workflows compartidos"
+    },
+    "parallel": {
+      "purpose": "Dale a Claude una funcionalidad demasiado grande para una sola sesión: divide el objetivo en subtareas independientes, ejecuta cada una en su propio worktree de git a la vez y luego fusiona las ramas.",
+      "examples": "O probar un objetivo de ejemplo",
+      "exampleTests": "Cubrir módulos sin tests",
+      "exampleTestsGoal": "Añade tests unitarios a los módulos que aún no tienen. Haz de cada módulo una subtarea y sigue las convenciones de test que ya usa este repositorio.",
+      "exampleDocs": "Documentar los módulos",
+      "exampleDocsGoal": "Escribe la documentación de cada módulo principal: para qué sirve, sus funciones clave con un ejemplo corto y sus límites conocidos. Haz de cada módulo una subtarea."
+    },
+    "git": {
+      "purpose": "Convierte esta carpeta en un repositorio Git para seguir cada cambio de Claude, revisar el diff antes de hacer commit y deshacer lo que no quieras.",
+      "action": "Inicializar un repositorio Git",
+      "done": "{name} ya es un repositorio Git",
+      "failed": "No se pudo inicializar el repositorio"
+    },
+    "files": {
+      "purpose": "Explora los archivos de un proyecto, previsualízalos y mira exactamente qué cambió cada sesión de Claude, junto al código."
+    }
   }
 }

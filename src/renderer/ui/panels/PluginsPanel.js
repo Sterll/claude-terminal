@@ -7,6 +7,7 @@ const { BasePanel } = require('../../core/BasePanel');
 const { escapeHtml } = require('../../utils');
 const { t } = require('../../i18n');
 const { showConfirm } = require('../components/Modal');
+const { mountEmptyState } = require('../components/EmptyState');
 const { renderReadmeMarkdown, bindReadmeLinks } = require('../../utils/markdown');
 
 const PLUGIN_CATEGORIES = {
@@ -299,6 +300,23 @@ class PluginsPanel extends BasePanel {
         p.name.toLowerCase().includes(query) ||
         p.description.toLowerCase().includes(query)
       );
+    }
+
+    // Nothing installed at all (not a search with no hit): say what a plugin
+    // brings and open the catalog. Installing stays a click on a card there.
+    if (!query && plugins.length === 0) {
+      mountEmptyState(content, {
+        id: 'plugins',
+        icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/></svg>',
+        title: t('plugins.noInstalled'),
+        purpose: t('emptyStates.plugins.purpose'),
+        action: {
+          id: 'plugins-empty-discover',
+          label: t('emptyStates.plugins.action'),
+          onClick: () => document.querySelector('.plugins-sub-tab[data-subtab="discover"]')?.click(),
+        },
+      });
+      return;
     }
 
     if (plugins.length === 0) {

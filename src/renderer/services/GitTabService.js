@@ -13,6 +13,7 @@ const { showConfirm, createModal, showModal, closeModal } = require('../ui/compo
 const { isRemoteProject } = require('../../shared/remote-capabilities');
 const remotePathLib = require('../../shared/remote-path');
 const nestedRepos = require('../utils/nestedRepos');
+const { mountEmptyState } = require('../ui/components/EmptyState');
 
 // ========== GIT ERROR MAPPER ==========
 
@@ -101,6 +102,48 @@ function gitUnavailableStateHtml(message, reason) {
     <p style="color:var(--text-secondary);font-size:var(--font-sm)">${escapeHtml(message)}</p>
     ${reason === 'enoent' ? `<button type="button" class="btn btn-primary btn-sm" data-git-install>${escapeHtml(t('gitTab.installGit'))}</button>` : ''}
   </div>`;
+}
+
+/**
+ * True for a project folder git answered "not a repository" for, and nothing
+ * else: not git missing, not a host that is away, not a folder that groups
+ * repositories in its sub-folders (that one gets the repository switcher).
+ */
+function isPlainNotARepo(payload) {
+  return Boolean(selectedProject && payload && payload.success === false
+    && payload.error === 'Not a git repository' && !payload.reason && !payload.gitUnavailable
+    && !(nestedReposData && nestedReposData.length));
+}
+
+/**
+ * The Git tab of a folder that is not a repository: what the tab gives once it
+ * is one, and `git init` on a click (on the host, for a remote project).
+ */
+function mountNotARepoState(container) {
+  const project = selectedProject;
+  const projectId = selectedProjectId;
+  mountEmptyState(container, {
+    id: 'git-not-a-repo',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7"/><path d="M18 11.5c0 3-3 4-7.5 4.5"/></svg>',
+    title: t('gitTab.notGitRepo'),
+    purpose: t('emptyStates.git.purpose'),
+    action: {
+      id: 'git-empty-init',
+      label: t('emptyStates.git.action'),
+      onClick: async (event) => {
+        const btn = event?.currentTarget;
+        if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
+        try {
+          await api.project.initGit({ projectPath: project.path });
+          Toast.showToast({ type: 'success', title: t('emptyStates.git.done', { name: project.name || '' }) });
+          if (selectedProjectId === projectId) await selectProjectById(projectId);
+        } catch (e) {
+          if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
+          Toast.showToast({ type: 'error', title: t('emptyStates.git.failed'), message: e?.message || String(e) });
+        }
+      },
+    },
+  });
 }
 
 function openGitDownload() {
@@ -1353,7 +1396,13 @@ function renderSubTabContent() {
 
   // Re-bind events based on sub-tab
   switch (currentSubTab) {
-    case 'changes': bindChangesEvents(content); break;
+    case 'changes': {
+      const slot = content.querySelector('[data-git-not-a-repo-slot]');
+      if (slot) mountNotARepoState(slot);
+      content.querySelector('[data-git-install]')?.addEventListener('click', openGitDownload);
+      bindChangesEvents(content);
+      break;
+    }
     case 'history': bindHistoryEvents(content); break;
     case 'pullrequests': bindPullRequestEvents(content); break;
     case 'issues': bindIssuesEvents(content); break;
@@ -1377,10 +1426,16 @@ function renderSubTabContent() {
 function renderChanges(container) {
   if (!changesData || !changesData.success) {
     const unavailable = gitUnavailableMessage(changesData);
+    // renderSubTabContent copies this container's markup, which drops any
+    // listener bound here: the init block goes in a slot it mounts afterwards,
+    // and the Install Git button is bound there too.
+    if (!unavailable && isPlainNotARepo(changesData)) {
+      container.innerHTML = '<div class="git-not-a-repo-slot" data-git-not-a-repo-slot></div>';
+      return;
+    }
     container.innerHTML = unavailable
       ? gitUnavailableStateHtml(unavailable, changesData?.unavailableReason)
       : `<div class="git-empty-state"><p>${t('gitTab.notGitRepo')}</p></div>`;
-    container.querySelector('[data-git-install]')?.addEventListener('click', openGitDownload);
     return;
   }
 

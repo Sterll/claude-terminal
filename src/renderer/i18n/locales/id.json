@@ -5687,5 +5687,52 @@
     "greetNight": "Masih bangun? Jangan begadang terlalu lama.",
     "line7": "Lemaskan rahangmu.",
     "line8": "Aku bangga padamu."
+  },
+  "emptyStates": {
+    "common": {
+      "addProject": "Tambah proyek",
+      "openRemote": "Atau buka proyek di host SSH"
+    },
+    "dashboard": {
+      "title": "Belum ada proyek",
+      "purpose": "Proyek adalah folder yang Anda kerjakan bersama Claude. Tambahkan satu dan halaman ini merangkum minggunya: waktu, biaya, commit, sesi terakhir untuk dilanjutkan, dan apa yang menunggu Anda."
+    },
+    "database": {
+      "title": "Tidak ada database yang terhubung",
+      "purpose": "Hubungkan database untuk menjelajahi tabelnya, menjalankan kueri, dan membiarkan Claude membaca skemanya saat menulis kode untuknya.",
+      "action": "Tambah koneksi",
+      "examples": "Atau mulai dari mesin database",
+      "detect": "Deteksi database di {name}"
+    },
+    "controlTower": {
+      "purpose": "Setiap sesi Claude yang berjalan di proyek Anda muncul di sini secara langsung: apa yang sedang dikerjakan, mana yang menunggu jawaban Anda, dan cara untuk turun tangan tanpa berpindah tab.",
+      "action": "Mulai sesi Claude"
+    },
+    "plugins": {
+      "purpose": "Plugin menggabungkan skill, agen, perintah slash, dan hook dalam satu instalasi, sehingga Claude langsung memakai satu cara kerja utuh.",
+      "action": "Jelajahi katalog"
+    },
+    "workflows": {
+      "purpose": "Workflow merangkai langkah seperti prompt Claude, perintah shell, git, dan notifikasi, lalu menjalankannya sesuai jadwal, saat ada event git, atau saat Anda mengklik Jalankan.",
+      "examples": "Atau mulai dari tugas siap pakai",
+      "hub": "Jelajahi workflow yang dibagikan"
+    },
+    "parallel": {
+      "purpose": "Berikan Claude fitur yang terlalu besar untuk satu sesi: ia membagi tujuan menjadi subtugas independen, menjalankan masing-masing di worktree git sendiri secara bersamaan, lalu menggabungkan branch-nya.",
+      "examples": "Atau coba contoh tujuan",
+      "exampleTests": "Uji modul yang belum teruji",
+      "exampleTestsGoal": "Tambahkan unit test untuk modul yang belum punya. Jadikan setiap modul satu subtugas, dan ikuti konvensi test yang sudah dipakai di repositori ini.",
+      "exampleDocs": "Dokumentasikan modul",
+      "exampleDocsGoal": "Tulis dokumentasi untuk setiap modul utama: kegunaannya, fungsi utamanya dengan contoh singkat, dan batasan yang diketahui. Jadikan setiap modul satu subtugas."
+    },
+    "git": {
+      "purpose": "Jadikan folder ini repositori Git untuk melacak setiap perubahan Claude, meninjau diff sebelum commit, dan membatalkan yang tidak Anda inginkan.",
+      "action": "Inisialisasi repositori Git",
+      "done": "{name} sekarang adalah repositori Git",
+      "failed": "Gagal menginisialisasi repositori"
+    },
+    "files": {
+      "purpose": "Jelajahi file proyek, pratinjau isinya, dan lihat persis apa yang diubah setiap sesi Claude, berdampingan dengan kodenya."
+    }
   }
 }

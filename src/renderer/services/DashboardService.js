@@ -20,6 +20,7 @@ const Brief = require('./dashboard/briefing');
 const { isRemoteProject, can } = require('../../shared/remote-capabilities');
 const remotePathLib = require('../../shared/remote-path');
 const nestedRepos = require('../utils/nestedRepos');
+const { mountEmptyState } = require('../ui/components/EmptyState');
 
 // Per-project active view: 'overview' | 'kanban' | 'timeline'
 const _dashViews = new Map();
@@ -2932,9 +2933,21 @@ function renderOverview(container, projects, options = {}) {
   const firstPaint = !container.querySelector('.dash-overview');
   _overviewRenders.set(container, token);
 
-  container.innerHTML = projects.length
-    ? `<div class="dash-overview">${buildOverviewTopHtml(projects, dataMap, timesMap)}${buildOverviewHtml(projects, options)}</div>`
-    : buildOverviewHtml(projects, options);
+  // No project yet: the overview is where a new user lands first, so it says
+  // what a project gives them and opens the same wizard as the sidebar's "+".
+  if (!projects.length) {
+    mountEmptyState(container, {
+      id: 'dashboard',
+      icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>',
+      title: t('emptyStates.dashboard.title'),
+      purpose: t('emptyStates.dashboard.purpose'),
+      action: { id: 'dash-empty-add-project', label: t('emptyStates.common.addProject'), onClick: () => document.getElementById('btn-new-project')?.click() },
+      links: [{ id: 'dash-empty-open-remote', label: t('emptyStates.common.openRemote'), onClick: () => document.getElementById('btn-new-remote-project')?.click() }],
+    });
+    return;
+  }
+
+  container.innerHTML = `<div class="dash-overview">${buildOverviewTopHtml(projects, dataMap, timesMap)}${buildOverviewHtml(projects, options)}</div>`;
 
   container.querySelectorAll('.dash-todo-item[data-project-index]').forEach(item => {
     item.addEventListener('click', () => onCardClick?.(parseInt(item.dataset.projectIndex, 10)));

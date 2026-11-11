@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 347 test files)
+npm test                 # Run Jest tests (jsdom, 349 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -86,7 +86,7 @@ Electron Main Process (Node.js)
 ├── main.js                          # Bootstrap, lifecycle, single-instance lock, global shortcuts
 ├── src/main/preload.js              # IPC bridge (window.electron_api)
 ├── src/main/preload-quickpicker.js  # Preload for Quick Picker window
-├── src/main/ipc/                    # 40 IPC files, 390 handlers total
+├── src/main/ipc/                    # 40 IPC files, 391 handlers total
 ├── src/main/services/               # 46 services
 ├── src/main/windows/                # 5 window managers
 ├── src/main/utils/                  # 33 utilities
@@ -101,14 +101,14 @@ Electron Renderer Process (Browser)
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
 ├── src/renderer/ui/companion/       # Claude companion desk pet: ClaudeCompanion (behaviour), sprite (pixel art, colours, accessories, props), sound (Web Audio)
 ├── src/renderer/ambience/           # App themes: ThemeEngine, animated scenes (canvas), palette derivation, procedural ambient sound
-├── src/renderer/ui/components/      # 26 UI components
+├── src/renderer/ui/components/      # 27 UI components
 ├── src/renderer/ui/panels/          # 28 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4933 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4960 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked), focusGuard (keeps the user's focus and caret across a tab update an agent made)
 
 Project Types (Plugin System)
@@ -118,7 +118,7 @@ Shared code
 └── src/shared/                      # 27 modules shared between main, renderer and the MCP server
 
 Styles
-└── styles/                          # 37 modular CSS files (~64,200 lines total)
+└── styles/                          # 38 modular CSS files (~64,200 lines total)
 
 MCP Servers (shipped with the app)
 └── resources/mcp-servers/
@@ -178,7 +178,7 @@ Remote UI (PWA for mobile)
 | `cloud-shared.js` | - | Helpers shared by the three cloud IPC files |
 | `index.js` | - | Orchestrator - registers all handlers |
 
-**Total: 390 IPC handlers across 40 files.**
+**Total: 391 IPC handlers across 40 files.**
 
 ### Services (`src/main/services/`)
 
@@ -376,11 +376,13 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 ### UI Components (`src/renderer/ui/components/`)
 
-`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `AccountLoginModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`, `ticketsSettings`, `AmbiencePopover`, `NewProjectModal`.
+`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `AccountLoginModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`, `ticketsSettings`, `AmbiencePopover`, `NewProjectModal`, `EmptyState`.
 
 `NewProjectModal` is "New project" in one screen: source (existing folder / create / clone / template), name, location, a type chip row preselected from the folder's content (`utils/newProject.js` `detectProjectType`), colour and group, the per-type fields behind "More options", and "start a conversation right away". Everything that would make Create fail is checked as the user types (`validateDraft`), including a duplicate before a clone starts. The parent folder of the last creation is `projectsRootDir`, granted to the renderer at boot by `rendererSecurity` (never the home folder or a filesystem root, `isGrantableProjectsRoot`) and used as the folder dialog's `defaultPath`. A folder dropped on the projects list or the project bar opens it prefilled, then the folder dialog on that folder, since only the dialog grants a path. A project can carry its own picture as its glyph (Customize, Icon tab, "Image…"): `utils/projectImage.js` reads the file the dialog granted, crops it to a centred 96px square and stores it on the project as a small webp data: URL (`project.image`, `setProjectImage`), re-checked by `isSafeImage` before every render since projects.json is writable by other processes. `AmbiencePopover` is the titlebar's ambience button: theme strip, sound, animation, zen mode.
 
 `RemoteProjectModal` is "Open Remote Project" (choose an SSH host, browse its directories, open, create, `git init` or clone a folder) and also hosts the SSH profile editor that Settings → SSH hosts reuses, plus the "Verify host" view, a small xterm running OpenSSH's own host key prompt. `RemoteHostBadge` draws the host label and the state-coloured dot remote projects carry in `ProjectList` and `ProjectBar`, and `refuseForRemote()` turns a capability row of `src/shared/remote-capabilities.js` into a toast so a disabled action never fails silently.
+
+`EmptyState` is the one empty-screen block every panel shares (`createEmptyState` / `mountEmptyState`): a title, a sentence saying what the screen is for in terms of the user's problem, one primary action, optional example chips and secondary links. It never acts before a click: an example pre-fills the panel's existing form or wizard, which the user still confirms. An item carrying `requires: { project, feature }` is checked with `can()` from `src/shared/remote-capabilities.js`; refused, it is drawn disabled, its click does nothing, and the row's translated reason is shown under it. Its text goes in through `textContent`; `icon` is the only markup and must be a static SVG from the caller. Its strings live under `emptyStates.*`.
 
 > `ChatView.js` is 8,641 lines, `renderer.js` 7,654 and `TerminalManager.js` 4,539 - still the three largest files in the repo, ~20,800 lines between them, and still past the point where they should be split. Splitting is underway and has its own conventions, below. Prefer adding new chat behaviour as a sibling module over growing `ChatView.js` further.
 
@@ -463,7 +465,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4933 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4960 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -566,7 +568,7 @@ system OpenSSH client; the app stays the UI. The pieces, end to end:
 | `setup-wizard.html` | 2287 | 10-step onboarding with embedded EN/FR/ES/ID/pt-BR translations |
 | `notification.html` | 398 | Desktop toast on the theme's colours: one line for a finished task (the whole card opens it, a countdown ring on the icon, held while hovered), buttons only when there is a choice |
 
-## CSS Architecture (`styles/` - 37 files, ~64,200 lines)
+## CSS Architecture (`styles/` - 38 files, ~64,200 lines)
 
 ### CSS Variables (`:root` in `base.css`)
 
@@ -628,6 +630,7 @@ mixes into the translucent pane tokens.
 | `memory.css` | 1147 | CLAUDE.md editor + global knowledge |
 | `cloud.css` | 956 | Cloud sync |
 | `tickets.css` | 951 | Tickets screen: toolbar, filter menus, grouped rows, detail pane |
+| `empty-state.css` | 201 | The shared empty-state block (`EmptyState.js`): icon, purpose line, primary action, example chips, links, remote refusal reason |
 | `control-tower.css` | 947 | Control Tower |
 | `workspace.css` | 824 | Workspace KB |
 | `mcp.css` | 816 | MCP management |
@@ -816,7 +819,7 @@ Worker); neither is bundled into the desktop app.
 ## Testing
 
 ```bash
-npm test                    # Run all 347 unit test files (jsdom environment)
+npm test                    # Run all 349 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -825,7 +828,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 347 test files
+- **Framework:** Jest with jsdom, 349 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -1030,12 +1033,13 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **Commits:** `feat(scope): description` in English, imperative mood
 - **IPC pattern:** Service (main) -> IPC handler -> Preload bridge -> Renderer service
 - **Dashboard sections:** `buildXxxHtml()` in `DashboardService.js`
-- **CSS:** `.component-name.state` pattern, CSS variables, 37 modular files in `styles/`. No colour literals outside `base.css` - every hard-coded hex is a colour the theme system cannot reach
+- **CSS:** `.component-name.state` pattern, CSS variables, 38 modular files in `styles/`. No colour literals outside `base.css` - every hard-coded hex is a colour the theme system cannot reach
 - **i18n:** add keys to all six locales (`en`, `fr`, `es`, `id`, `zh-CN`, `pt-BR`) - `tests/i18n/i18n-coherence.test.js` fails otherwise; use `t('dot.path')`. Main-process error messages stay in English.
 - **State updates:** `state.set()` / `state.setProp()`, subscribe with `state.subscribe()`
 - **File I/O:** atomic writes for user data (temp + rename), `.bak` backup
 - **Project types:** extend `base-type.js`, register in `registry.js`, provide service + IPC + dashboard + i18n. Look a project's type up with `registry.forProject(project)`, which keeps type hooks away from remote projects
 - **Remote projects:** a feature that reads local files, spawns a local process or watches a local folder either works over the SSH channel or gets a row in `src/shared/remote-capabilities.js` (reason in all six locales, a line in `design/remote-ssh.md` section 8), a greyed control with that reason, and a refusal in main. Local behaviour must not move: `can()` answers `{ ok: true }` for a local project
+- **Empty states:** a screen with nothing to show uses `EmptyState` (`src/renderer/ui/components/EmptyState.js`), not a panel-local `*-empty` block: what the screen is for, one click to start through the panel's existing "new" handler, nothing created before that click, and `requires` for an action a remote project cannot run.
 - **Markdown:** prefer the rich custom blocks (tree, timeline, compare, metrics, api, tabs, discord-embed, workspace-doc, git-commit, workspace-links...) over plain bullet lists.
 - **Security:** sanitize user-supplied markdown with `dompurify`; never inject untrusted HTML into chat or dashboard panels.
 - **Lint:** `npm run lint` before pushing. The boundary rules encode the main/renderer split described above - if one fires, the fix is a new IPC handler, not an `eslint-disable`.

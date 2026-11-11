@@ -11,6 +11,7 @@ const { t, onLanguageChange } = require('../../i18n');
 const { getSetting, setSetting } = require('../../state/settings.state');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 const { can } = require('../../../shared/remote-capabilities');
+const { mountEmptyState } = require('../components/EmptyState');
 const { isRemotePath } = require('../../../shared/remote-path');
 const {
   parallelTaskState,
@@ -156,12 +157,6 @@ function _wireEvents() {
   const runsList = document.getElementById('pt-runs-list');
   if (runsList) {
     runsList.addEventListener('click', async (e) => {
-      // Empty state CTA
-      if (e.target.closest('#pt-empty-new-run')) {
-        _openNewRunModal();
-        return;
-      }
-
       // Run toggle button (collapse/expand)
       const toggleBtn = e.target.closest('.pt-run-toggle-btn');
       if (toggleBtn) {
@@ -331,7 +326,11 @@ function _buildNewRunModal() {
   `;
 }
 
-function _openNewRunModal() {
+/**
+ * @param {{ goal?: string }} [prefill]  an example goal from the empty state:
+ *   written into the goal field, never started; the user still reviews and runs it.
+ */
+function _openNewRunModal(prefill = null) {
   // With the project bar on screen the run targets the active project, so a
   // remote one is refused here with its reason (the button already says so).
   // In sidebar mode the modal's own picker offers local projects only.
@@ -415,6 +414,12 @@ function _openNewRunModal() {
       try { previouslyFocused.focus(); } catch (_) { /* element may be unfocusable */ }
     }
   });
+
+  const goalInput = modalOverlay.querySelector('#pm-goal-input');
+  if (goalInput && prefill && typeof prefill.goal === 'string') {
+    goalInput.value = prefill.goal;
+    goalInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
 
   // Focus textarea
   setTimeout(() => modalOverlay.querySelector('#pm-goal-input')?.focus(), 50);
@@ -546,27 +551,7 @@ function _updateBoard() {
 
   // Empty state
   if (runs.length === 0) {
-    if (!listEl.querySelector('.pt-empty-runs')) {
-      listEl.innerHTML = `
-        <div class="pt-empty-runs">
-          <div class="pt-empty-runs-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" width="36" height="36">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-              <path d="M2 17l10 5 10-5"/>
-              <path d="M2 12l10 5 10-5"/>
-            </svg>
-          </div>
-          <p class="pt-empty-runs-title">${t('parallel.empty.title')}</p>
-          <p class="pt-empty-runs-hint">${t('parallel.empty.hint')}</p>
-          <button class="pt-empty-runs-cta" id="pt-empty-new-run">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="11" height="11">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            ${t('parallel.newRunBtn')}
-          </button>
-        </div>
-      `;
-    }
+    _mountEmptyRuns(listEl);
     _applyNewRunAvailability();
     return;
   }
@@ -1537,6 +1522,44 @@ function _isSidebarMode() {
 function _refuseRemote(project) {
   if (!project) return false;
   return require('../components/RemoteHostBadge').refuseForRemote(project, 'parallelTasks');
+}
+
+/** Example goals of the empty state: each pre-fills the New Run form, nothing more. */
+const EMPTY_EXAMPLE_GOALS = [
+  { id: 'tests', labelKey: 'emptyStates.parallel.exampleTests', goalKey: 'emptyStates.parallel.exampleTestsGoal' },
+  { id: 'docs', labelKey: 'emptyStates.parallel.exampleDocs', goalKey: 'emptyStates.parallel.exampleDocsGoal' },
+];
+
+/**
+ * The board with no run: what parallel runs are for, New Run, and example
+ * goals. Redrawn only when the project it was drawn for changes, since the
+ * board updates on every run event.
+ */
+function _mountEmptyRuns(listEl) {
+  const active = _activeProject();
+  // In sidebar mode the modal picks its own (local) project; with the bar on
+  // screen the run targets the active project, which may be remote.
+  const requires = active && !_isSidebarMode() ? { project: active, feature: 'parallelTasks' } : undefined;
+  const key = `${_isSidebarMode() ? 'sidebar' : 'bar'}:${active?.id || active?.path || ''}`;
+  const current = listEl.querySelector('.pt-empty-runs');
+  if (current && current.dataset.emptyFor === key) return;
+  const block = mountEmptyState(listEl, {
+    id: 'parallel',
+    className: 'pt-empty-runs',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
+    title: t('parallel.empty.title'),
+    purpose: t('emptyStates.parallel.purpose'),
+    action: { id: 'pt-empty-new-run', label: t('parallel.newRunBtn'), onClick: () => _openNewRunModal(), requires },
+    examples: {
+      label: t('emptyStates.parallel.examples'),
+      items: EMPTY_EXAMPLE_GOALS.map(ex => ({
+        id: `pt-empty-example-${ex.id}`,
+        label: t(ex.labelKey),
+        onClick: () => _openNewRunModal({ goal: t(ex.goalKey) }),
+      })),
+    },
+  });
+  if (block) block.dataset.emptyFor = key;
 }
 
 /**

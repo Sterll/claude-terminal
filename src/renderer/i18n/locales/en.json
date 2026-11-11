@@ -5687,5 +5687,52 @@
     "greetNight": "Still up? Don't stay up too late.",
     "line7": "Unclench your jaw.",
     "line8": "Proud of you."
+  },
+  "emptyStates": {
+    "common": {
+      "addProject": "Add a project",
+      "openRemote": "Or open a project on an SSH host"
+    },
+    "dashboard": {
+      "title": "No projects yet",
+      "purpose": "A project is a folder you work on with Claude. Add one and this page sums up its week: time spent, cost, commits, the last sessions to resume and what is waiting on you."
+    },
+    "database": {
+      "title": "No database connected",
+      "purpose": "Connect a database to browse its tables, run queries, and let Claude read the schema while it writes code against it.",
+      "action": "Add a connection",
+      "examples": "Or start from an engine",
+      "detect": "Detect the databases of {name}"
+    },
+    "controlTower": {
+      "purpose": "Every Claude session running in your projects shows up here live: what each one is doing, which ones are waiting for your answer, and a way to step in without switching tabs.",
+      "action": "Start a Claude session"
+    },
+    "plugins": {
+      "purpose": "A plugin bundles skills, agents, slash commands and hooks into one install, so Claude picks up a whole way of working at once.",
+      "action": "Browse the catalog"
+    },
+    "workflows": {
+      "purpose": "A workflow chains steps such as Claude prompts, shell commands, git and notifications, and runs them on a schedule, on a git event or when you click Run.",
+      "examples": "Or start from a ready-made task",
+      "hub": "Browse workflows shared by others"
+    },
+    "parallel": {
+      "purpose": "Give Claude a feature too big for one session: it splits the goal into independent sub-tasks, runs each one in its own git worktree at the same time, then merges the branches.",
+      "examples": "Or try an example goal",
+      "exampleTests": "Cover untested modules",
+      "exampleTestsGoal": "Add unit tests for the modules that have none yet. Make each module its own sub-task, and follow the test conventions already used in this repository.",
+      "exampleDocs": "Document the modules",
+      "exampleDocsGoal": "Write documentation for each main module: what it is for, its key functions with a short example, and its known limits. Make each module its own sub-task."
+    },
+    "git": {
+      "purpose": "Make this folder a Git repository to track every change Claude makes, review the diff before you commit, and undo what you do not want.",
+      "action": "Initialize a Git repository",
+      "done": "{name} is now a Git repository",
+      "failed": "Could not initialize the repository"
+    },
+    "files": {
+      "purpose": "Browse a project's files, preview them, and see exactly what each Claude session changed, next to the code."
+    }
   }
 }

@@ -5687,5 +5687,52 @@
     "greetNight": "还没睡？别熬太晚哦。",
     "line7": "放松一下下巴。",
     "line8": "我为你骄傲。"
+  },
+  "emptyStates": {
+    "common": {
+      "addProject": "添加项目",
+      "openRemote": "或打开 SSH 主机上的项目"
+    },
+    "dashboard": {
+      "title": "还没有项目",
+      "purpose": "项目就是你与 Claude 一起工作的文件夹。添加一个后，这里会汇总它的一周：花费的时间、成本、提交、可继续的最近会话，以及等你处理的事项。"
+    },
+    "database": {
+      "title": "未连接数据库",
+      "purpose": "连接数据库即可浏览表、运行查询，并让 Claude 在编写相关代码时读取其结构。",
+      "action": "添加连接",
+      "examples": "或从数据库引擎开始",
+      "detect": "检测 {name} 中的数据库"
+    },
+    "controlTower": {
+      "purpose": "你项目中运行的每个 Claude 会话都会实时显示在这里：它在做什么、哪些在等你回答，并且无需切换标签页即可介入。",
+      "action": "启动 Claude 会话"
+    },
+    "plugins": {
+      "purpose": "插件把技能、代理、斜杠命令和钩子打包成一次安装，让 Claude 一次就掌握一整套工作方式。",
+      "action": "浏览目录"
+    },
+    "workflows": {
+      "purpose": "工作流把 Claude 提示、shell 命令、git 和通知等步骤串联起来，按计划、在 git 事件发生时或在你点击运行时执行。",
+      "examples": "或从现成的任务开始",
+      "hub": "浏览他人分享的工作流"
+    },
+    "parallel": {
+      "purpose": "把一个大到单个会话无法完成的功能交给 Claude：它会把目标拆分为独立的子任务，在各自的 git worktree 中同时运行，然后合并分支。",
+      "examples": "或试试示例目标",
+      "exampleTests": "为未测试的模块补测试",
+      "exampleTestsGoal": "为还没有测试的模块添加单元测试。每个模块作为一个子任务，并遵循本仓库已有的测试约定。",
+      "exampleDocs": "为模块写文档",
+      "exampleDocsGoal": "为每个主要模块编写文档：它的用途、带简短示例的关键函数，以及已知的限制。每个模块作为一个子任务。"
+    },
+    "git": {
+      "purpose": "把这个文件夹变成 Git 仓库，即可跟踪 Claude 的每处修改、在提交前审阅差异，并撤销你不想要的改动。",
+      "action": "初始化 Git 仓库",
+      "done": "{name} 现在是一个 Git 仓库",
+      "failed": "无法初始化仓库"
+    },
+    "files": {
+      "purpose": "浏览项目的文件并预览，还能在代码旁边看到每个 Claude 会话具体改了什么。"
+    }
   }
 }

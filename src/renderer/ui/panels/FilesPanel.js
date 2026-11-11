@@ -20,6 +20,7 @@
 const FileExplorer = require('../components/FileExplorer');
 const FileViewer = require('../components/FileViewer');
 const { escapeHtml } = require('../../utils');
+const { mountEmptyState } = require('../components/EmptyState');
 const { t } = require('../../i18n');
 const { getOpenProjects } = require('../../state');
 const { isRemoteProject } = require('../../../shared/remote-capabilities');
@@ -157,12 +158,25 @@ function _dockHtml() {
     </div>`;
 }
 
-/** Empty-state when no project is open — the tree has nothing to point at. */
-function _noProjectHtml() {
-  return `<div class="files-empty">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-    <p>${escapeHtml(t('files.noProject'))}</p>
-  </div>`;
+/**
+ * Empty state when no project is open: the tree has nothing to point at. What
+ * the screen does, and with no project at all, the wizard to add the first.
+ */
+function _mountNoProject(root) {
+  const { projectsState } = require('../../state');
+  const hasProjects = (projectsState?.get?.().projects || []).length > 0;
+  mountEmptyState(root, {
+    id: hasProjects ? 'files' : 'files-no-project',
+    className: 'files-empty',
+    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>',
+    title: t('files.noProject'),
+    purpose: t('emptyStates.files.purpose'),
+    action: hasProjects ? undefined : {
+      id: 'files-empty-add-project',
+      label: t('emptyStates.common.addProject'),
+      onClick: () => document.getElementById('btn-new-project')?.click(),
+    },
+  });
 }
 
 // ── Session overlay ──────────────────────────────────────────────────────────
@@ -481,7 +495,8 @@ function _mount(root, project, mode) {
   _project = project || null;
 
   if (!_project) {
-    root.innerHTML = mode === 'dock' ? '' : _noProjectHtml();
+    if (mode === 'dock') root.innerHTML = '';
+    else _mountNoProject(root);
     _mounted = false;
     return;
   }

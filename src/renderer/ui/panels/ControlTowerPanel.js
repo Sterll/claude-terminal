@@ -5,6 +5,7 @@
  */
 
 const { t } = require('../../i18n');
+const { mountEmptyState } = require('../components/EmptyState');
 const { escapeHtml } = require('../../utils');
 // Shared modal primitives — role="dialog", aria-modal, labelled close button,
 // Escape-to-close, Tab focus trap and body scroll locking.
@@ -1226,21 +1227,27 @@ function _buildAgentCard(agent) {
   `;
 }
 
-function _buildEmptyState() {
-  return `
-    <div class="ct-empty-state">
-      <div class="ct-empty-icon">
-        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.25">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-          <line x1="9" y1="9" x2="9.01" y2="9"/>
-          <line x1="15" y1="9" x2="15.01" y2="9"/>
-        </svg>
-      </div>
-      <p class="ct-empty-title">${escapeHtml(t('controlTower.emptyTitle'))}</p>
-      <p class="ct-empty-desc">${escapeHtml(t('controlTower.emptyDesc'))}</p>
-    </div>
-  `;
+const CT_EMPTY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>';
+
+/**
+ * No session is running. Says what the tower is for and starts one; with no
+ * project yet, the first step is adding one. Redrawn only when that variant
+ * changes, since the board re-renders on every status tick.
+ */
+function _mountEmptyState(container) {
+  const hasProjects = _getAllProjects().length > 0;
+  const id = hasProjects ? 'control-tower' : 'control-tower-no-project';
+  if (container.firstElementChild?.dataset?.emptyState === id && container.children.length === 1) return;
+  mountEmptyState(container, {
+    id,
+    className: 'ct-empty-state',
+    icon: CT_EMPTY_ICON,
+    title: t('controlTower.emptyTitle'),
+    purpose: t('emptyStates.controlTower.purpose'),
+    action: hasProjects
+      ? { id: 'ct-empty-spawn', label: t('emptyStates.controlTower.action'), onClick: () => _openSpawnModal() }
+      : { id: 'ct-empty-add-project', label: t('emptyStates.common.addProject'), onClick: () => document.getElementById('btn-new-project')?.click() },
+  });
 }
 
 // Status filter groups: select value -> agent statuses it matches
@@ -1431,7 +1438,7 @@ function _render() {
   if (_overlayRestore) _renderFilmstrip();
 
   if (agents.length === 0) {
-    container.innerHTML = _buildEmptyState();
+    _mountEmptyState(container);
     return;
   }
 

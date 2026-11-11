@@ -10,6 +10,7 @@ const { highlight } = require('../../utils/syntaxHighlight');
 const { t } = require('../../i18n');
 const { showConfirm, createModal, showModal, closeModal } = require('../components/Modal');
 const { createRedisBrowser } = require('./database/redisBrowser');
+const { mountEmptyState } = require('../components/EmptyState');
 const { parseRedisUrl, buildRedisUrl } = require('./database/redisUrl');
 const { redisCompletions } = require('./database/redisCompletion');
 
@@ -267,16 +268,26 @@ function renderConnections(container) {
   const detected = state.getDetectedDatabases();
 
   if (connections.length === 0 && detected.length === 0) {
-    container.innerHTML = `
-      <div class="database-empty-state">
-        <div class="database-empty-icon">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="48" height="48">
-            <path d="M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.72 1.23 6 1.23s4.39-.45 6-1.23V17zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2V9.77C7.61 10.55 9.72 11 12 11s4.39-.45 6-1.23V12zm-6-3c-3.87 0-6-1.5-6-2s2.13-2 6-2 6 1.5 6 2-2.13 2-6 2z"/>
-          </svg>
-        </div>
-        <div class="database-empty-text">${t('database.noConnections')}</div>
-        <div class="database-empty-hint">${t('database.noConnectionsHint')}</div>
-      </div>`;
+    const target = detectTargetProject();
+    const engines = DB_TYPE_OPTIONS.filter(o => o.value !== 'mariadb');
+    mountEmptyState(container, {
+      id: 'database',
+      icon: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C7.58 3 4 4.79 4 7v10c0 2.21 3.58 4 8 4s8-1.79 8-4V7c0-2.21-3.58-4-8-4zm6 14c0 .5-2.13 2-6 2s-6-1.5-6-2v-2.23c1.61.78 3.72 1.23 6 1.23s4.39-.45 6-1.23V17zm0-5c0 .5-2.13 2-6 2s-6-1.5-6-2V9.77C7.61 10.55 9.72 11 12 11s4.39-.45 6-1.23V12zm-6-3c-3.87 0-6-1.5-6-2s2.13-2 6-2 6 1.5 6 2-2.13 2-6 2z"/></svg>',
+      title: t('emptyStates.database.title'),
+      purpose: t('emptyStates.database.purpose'),
+      action: { id: 'database-empty-add', label: t('emptyStates.database.action'), onClick: () => showConnectionForm() },
+      // An engine pre-selects the form's type; the form is still the user's to fill and save.
+      examples: {
+        label: t('emptyStates.database.examples'),
+        items: engines.map(o => ({ id: `database-empty-type-${o.value}`, label: o.label, onClick: () => showConnectionForm(null, { type: o.value }) })),
+      },
+      links: target ? [{
+        id: 'database-empty-detect',
+        label: t('emptyStates.database.detect', { name: target.name || target.path }),
+        onClick: () => runAutoDetect(),
+        requires: { project: target, feature: 'databaseDetect' },
+      }] : [],
+    });
     return;
   }
 
@@ -2693,11 +2704,17 @@ async function deleteConnection(id) {
 }
 
 
-async function runAutoDetect() {
+/** The project auto-detection scans: the opened one, else the first. */
+function detectTargetProject() {
   const state = require('../../state');
   const projects = state.projectsState ? state.projectsState.get().projects : ctx.projectsState.get().projects;
   const openedId = projects.length > 0 ? (state.projectsState || ctx.projectsState).get().openedProjectId : null;
-  const project = openedId ? projects.find(p => p.id === openedId) : projects[0];
+  return (openedId ? projects.find(p => p.id === openedId) : projects[0]) || null;
+}
+
+async function runAutoDetect() {
+  const state = require('../../state');
+  const project = detectTargetProject();
 
   if (!project || !project.path) {
     ctx.showToast({ type: 'warning', title: t('database.noDetected') });

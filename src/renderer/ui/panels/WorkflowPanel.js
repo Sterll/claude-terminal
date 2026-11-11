@@ -13,7 +13,8 @@ const { showToast } = require('../components/Toast');
 const nodeRegistry = require('../../services/NodeRegistry');
 const fieldRegistry = require('../../workflow-fields/_registry');
 const TasksView = require('./TasksView');
-const { isSimpleTask } = require('../../../shared/simple-task');
+const { isSimpleTask, TASK_PRESETS } = require('../../../shared/simple-task');
+const { mountEmptyState } = require('../components/EmptyState');
 const { accountLabel } = require('../../utils/accountChoices');
 
 const {
@@ -681,18 +682,24 @@ function renderContent() {
  */
 function renderWorkflowList(el, workflows = state.workflows) {
   if (!workflows.length) {
-    el.innerHTML = `
-      <div class="wf-empty">
-        <div class="wf-empty-glyph">${svgWorkflow(36)}</div>
-        <p class="wf-empty-title">${t('workflow.list.emptyTitle')}</p>
-        <p class="wf-empty-sub">${t('workflow.list.emptySub')}</p>
-        <button class="wf-create-btn" id="wf-empty-new">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
-          ${t('workflow.list.createBtn')}
-        </button>
-      </div>
-    `;
-    el.querySelector('#wf-empty-new').addEventListener('click', () => openCreateChoiceModal());
+    // A ready-made task opens the simple sheet pre-filled from TASK_PRESETS;
+    // nothing is saved until the user confirms it there.
+    mountEmptyState(el, {
+      id: 'workflows',
+      icon: svgWorkflow(26),
+      title: t('workflow.list.emptyTitle'),
+      purpose: t('emptyStates.workflows.purpose'),
+      action: { id: 'wf-empty-new', label: t('workflow.list.createBtn'), onClick: () => openCreateChoiceModal() },
+      examples: {
+        label: t('emptyStates.workflows.examples'),
+        items: TASK_PRESETS.slice(0, 3).map(preset => ({
+          id: `wf-empty-preset-${preset.id}`,
+          label: t(preset.titleKey),
+          onClick: () => TasksView.openTaskModal(tasksDeps(), null, preset),
+        })),
+      },
+      links: [{ id: 'wf-empty-hub', label: t('emptyStates.workflows.hub'), onClick: () => WorkflowMarketplace.open() }],
+    });
     return;
   }
 
