@@ -1,4 +1,42 @@
 {
+  "discovery": {
+    "showMe": "Tunjukkan",
+    "dontShowAgain": "Jangan tampilkan lagi",
+    "settingLabel": "Saran fitur",
+    "settingDesc": "Sesekali, tunjukkan fitur aplikasi tepat saat fitur itu berguna. Paling banyak satu per hari, dan setiap saran bisa dimatikan untuk seterusnya.",
+    "rules": {
+      "controlTower": {
+        "title": "{count} sesi Claude di proyek ini",
+        "body": "Control Tower menampilkan semua sesi yang berjalan dalam satu layar, beserta apa yang sedang dikerjakan masing-masing. Untuk menaruh dua sesi berdampingan, bagi tampilan dengan {shortcut}.",
+        "bodyNoSplit": "Control Tower menampilkan semua sesi yang berjalan dalam satu layar, beserta apa yang dikerjakan masing-masing dan mana yang menunggu jawaban Anda."
+      },
+      "repeatedPrompt": {
+        "title": "Anda sering mengirim prompt ini",
+        "body": "Prompt panjang yang sama sudah dikirim {count} kali. Otomatisasi bisa mengirimnya untuk Anda sesuai jadwal, atau saat sesuatu terjadi di proyek."
+      },
+      "commitGenerate": {
+        "title": "Biarkan pesan commit ditulis otomatis",
+        "body": "Panel Git bisa menyusun pesan commit dari perubahan yang dipilih. Anda tetap bisa mengeditnya sebelum commit."
+      },
+      "contextHandoff": {
+        "title": "Percakapan ini sudah terisi {percent}%",
+        "body": "Dengan serah terima konteks aktif, sesi yang panjang mencatat posisinya lalu berlanjut di sesi baru, alih-alih dipadatkan."
+      },
+      "database": {
+        "title": "Ada basis data di {project}",
+        "bodySqlite": "{file} adalah basis data SQLite. Layar Basis Data bisa membukanya untuk menjelajahi tabel dan menjalankan kueri tanpa meninggalkan aplikasi.",
+        "bodyEnv": "{file} menetapkan DATABASE_URL. Layar Basis Data bisa terhubung ke sana untuk menjelajahi tabel dan menjalankan kueri tanpa meninggalkan aplikasi."
+      },
+      "ticketTracker": {
+        "title": "{key} tampak seperti tiket",
+        "body": "Branch {branch} menyebut sebuah tiket. Hubungkan pelacak tiket Anda dan setiap sesi akan menampilkan tiketnya beserta statusnya selama Anda bekerja."
+      },
+      "secondAccount": {
+        "title": "{percent}% batas penggunaan terpakai",
+        "body": "Dengan akun Claude kedua yang terhubung, Anda bisa beralih ke akun itu saat satu akun habis, atau memberi setiap proyek akunnya sendiri."
+      }
+    }
+  },
   "language": {
     "name": "Bahasa Indonesia",
     "code": "id"

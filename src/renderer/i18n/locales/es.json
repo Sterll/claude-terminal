@@ -1,4 +1,42 @@
 {
+  "discovery": {
+    "showMe": "Muéstrame",
+    "dontShowAgain": "No volver a mostrar",
+    "settingLabel": "Sugerencias de funciones",
+    "settingDesc": "De vez en cuando, señala una función de la app en el momento en que puede ayudar. Como mucho una al día, y cada una se puede desactivar para siempre.",
+    "rules": {
+      "controlTower": {
+        "title": "{count} sesiones de Claude en este proyecto",
+        "body": "Control Tower muestra todas las sesiones en curso en una sola pantalla, con lo que hace cada una. Para tener dos lado a lado, divide la vista con {shortcut}.",
+        "bodyNoSplit": "Control Tower muestra todas las sesiones en curso en una sola pantalla, con lo que hace cada una y cuáles esperan tu respuesta."
+      },
+      "repeatedPrompt": {
+        "title": "Envías este prompt a menudo",
+        "body": "El mismo prompt largo se ha enviado {count} veces. Una automatización puede enviarlo por ti con un horario, o cuando pase algo en un proyecto."
+      },
+      "commitGenerate": {
+        "title": "Deja que el mensaje de commit se escriba solo",
+        "body": "El panel Git puede redactar un mensaje de commit a partir de los cambios seleccionados. Siempre puedes editarlo antes de hacer el commit."
+      },
+      "contextHandoff": {
+        "title": "Esta conversación está llena al {percent} %",
+        "body": "Con el relevo de contexto activado, una sesión larga anota en qué punto está y continúa en una nueva, en lugar de compactarse."
+      },
+      "database": {
+        "title": "Hay una base de datos en {project}",
+        "bodySqlite": "{file} es una base de datos SQLite. La pantalla Base de datos la abre para explorar sus tablas y lanzar consultas sin salir de la app.",
+        "bodyEnv": "{file} define un DATABASE_URL. La pantalla Base de datos puede conectarse a ella para explorar sus tablas y lanzar consultas sin salir de la app."
+      },
+      "ticketTracker": {
+        "title": "{key} parece un ticket",
+        "body": "La rama {branch} nombra un ticket. Conecta tu gestor de tickets y cada sesión mostrará sus tickets y su estado mientras trabajas."
+      },
+      "secondAccount": {
+        "title": "{percent} % de un límite de uso consumido",
+        "body": "Con una segunda cuenta de Claude conectada, puedes cambiar a ella cuando una se agote, o asignar una cuenta a cada proyecto."
+      }
+    }
+  },
   "language": {
     "name": "Español",
     "code": "es"

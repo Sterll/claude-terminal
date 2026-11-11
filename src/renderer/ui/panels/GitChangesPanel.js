@@ -11,6 +11,7 @@ const { t } = require('../../i18n');
 const { getSetting } = require('../../state');
 const { createModal, showModal, closeModal } = require('../components/Modal');
 const nestedRepos = require('../../utils/nestedRepos');
+const Discovery = require('../../services/discovery');
 
 class GitChangesPanel extends BasePanel {
   /**
@@ -189,6 +190,9 @@ class GitChangesPanel extends BasePanel {
         if (result.success && result.message) {
           this._gitCommitMessage.value = result.message;
           this._updateCommitButton();
+          // For the feature suggestions: this commit's message was drafted here.
+          this._commitMessageGenerated = true;
+          Discovery.markUsed('git:generate-commit');
 
           const sourceLabel = result.source === 'ai' ? t('gitChanges.sourceAi') : t('gitChanges.sourceHeuristic');
           this._showToast({
@@ -249,6 +253,10 @@ class GitChangesPanel extends BasePanel {
           useAi: getSetting('aiCommitMessages') !== false
         });
         if (result.cancelled || this._btnSmartCommit.dataset.cancelled || this._state.projectPath !== projectPath) return;
+        if (result.success) {
+          this._commitMessageGenerated = true;
+          Discovery.markUsed('git:generate-commit');
+        }
 
         if (!result.success || !result.commits || result.commits.length <= 1) {
           // Only one group — use normal flow
@@ -323,6 +331,8 @@ class GitChangesPanel extends BasePanel {
         }
 
         if (commitResult.success) {
+          Discovery.report('git:committed', { generated: !!this._commitMessageGenerated, amend: !!isAmend });
+          this._commitMessageGenerated = false;
           this._showGitToast({
             success: true,
             title: isAmend ? t('gitChanges.commitAmended') : t('gitChanges.commitCreated'),

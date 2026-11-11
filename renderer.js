@@ -121,6 +121,7 @@ const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
 const WhatsNew = require('./src/renderer/ui/components/WhatsNew');
 const { createFileLinkHistory } = require('./src/renderer/features/FileLinkHistory');
+const Discovery = require('./src/renderer/services/discovery');
 const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, CloudPanel, ConnectivityPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel, CostPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
@@ -489,6 +490,17 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   document.body.dataset.activeTab = document.body.dataset.activeTab || 'claude';
   syncOverviewEntry();
   syncFilesDock();
+
+  // Contextual feature suggestions (services/discovery). Its "Show me" goes
+  // through the same navigation the sidebar uses, like What's new below.
+  Discovery.setCallbacks({
+    onOpenTab: (tab) => document.querySelector(`.nav-tab[data-tab="${tab}"]`)?.click(),
+    onOpenSetting: ({ tab, anchor }) => {
+      _leaveCurrentTab('settings');
+      registry.ensureAllLoaded().then(() => SettingsPanel.focusSetting({ tab, anchor }));
+    },
+  });
+  Discovery.init().catch((err) => console.warn('[renderer] discovery init failed:', err?.message));
 
   // First launch on a new version: say what moved, since the update banner's
   // "What's new" was only ever shown before the restart. A profile with no
@@ -7090,6 +7102,7 @@ function updateUsageDisplay(usageData) {
   }
 
   renderUsageBuckets(buckets);
+  Discovery.report('usage:updated', { buckets });
 
   // Extra usage (paid tokens beyond plan) — show only when non-zero
   updateExtraUsage(usageData.data.extraUsage);

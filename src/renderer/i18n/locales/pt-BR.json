@@ -1,4 +1,42 @@
 {
+  "discovery": {
+    "showMe": "Mostre-me",
+    "dontShowAgain": "Não mostrar de novo",
+    "settingLabel": "Sugestões de recursos",
+    "settingDesc": "De vez em quando, aponta um recurso do app no momento em que ele pode ajudar. No máximo uma por dia, e cada uma pode ser desativada de vez.",
+    "rules": {
+      "controlTower": {
+        "title": "{count} sessões do Claude neste projeto",
+        "body": "O Control Tower mostra todas as sessões em andamento em uma só tela, com o que cada uma está fazendo. Para manter duas lado a lado, divida a visualização com {shortcut}.",
+        "bodyNoSplit": "O Control Tower mostra todas as sessões em andamento em uma só tela, com o que cada uma está fazendo e quais aguardam sua resposta."
+      },
+      "repeatedPrompt": {
+        "title": "Você envia este prompt com frequência",
+        "body": "O mesmo prompt longo já foi enviado {count} vezes. Uma automação pode enviá-lo por você em um horário, ou quando algo acontecer em um projeto."
+      },
+      "commitGenerate": {
+        "title": "Deixe a mensagem de commit se escrever sozinha",
+        "body": "O painel Git pode redigir uma mensagem de commit a partir das alterações selecionadas. Você ainda pode editá-la antes de fazer o commit."
+      },
+      "contextHandoff": {
+        "title": "Esta conversa está {percent}% cheia",
+        "body": "Com a passagem de contexto ativada, uma sessão longa anota onde está e continua em uma nova, em vez de ser compactada."
+      },
+      "database": {
+        "title": "Há um banco de dados em {project}",
+        "bodySqlite": "{file} é um banco SQLite. A tela Banco de dados o abre para você navegar pelas tabelas e executar consultas sem sair do app.",
+        "bodyEnv": "{file} define um DATABASE_URL. A tela Banco de dados pode se conectar a ele para você navegar pelas tabelas e executar consultas sem sair do app."
+      },
+      "ticketTracker": {
+        "title": "{key} parece um ticket",
+        "body": "A branch {branch} nomeia um ticket. Conecte seu gerenciador de tickets e cada sessão mostrará seus tickets e o status deles enquanto você trabalha."
+      },
+      "secondAccount": {
+        "title": "{percent}% de um limite de uso consumido",
+        "body": "Com uma segunda conta do Claude conectada, você pode mudar para ela quando uma se esgotar, ou dar a cada projeto a sua."
+      }
+    }
+  },
   "language": {
     "name": "Português (Brasil)",
     "code": "pt-BR"

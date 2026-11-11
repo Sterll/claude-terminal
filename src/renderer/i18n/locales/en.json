@@ -1,4 +1,42 @@
 {
+  "discovery": {
+    "showMe": "Show me",
+    "dontShowAgain": "Don't show again",
+    "settingLabel": "Feature suggestions",
+    "settingDesc": "Now and then, point out a feature of the app at the moment it would help. At most one a day, and each one can be turned off for good.",
+    "rules": {
+      "controlTower": {
+        "title": "{count} Claude sessions on this project",
+        "body": "Control Tower shows every running session on one screen, with what each one is doing. To keep two side by side instead, split the view with {shortcut}.",
+        "bodyNoSplit": "Control Tower shows every running session on one screen, with what each one is doing and which ones are waiting on you."
+      },
+      "repeatedPrompt": {
+        "title": "You keep sending this prompt",
+        "body": "The same long prompt went out {count} times. An automation can send it for you on a schedule, or whenever something happens in a project."
+      },
+      "commitGenerate": {
+        "title": "Let the commit message write itself",
+        "body": "The Git panel can draft a commit message from the selected changes. You can still edit it before you commit."
+      },
+      "contextHandoff": {
+        "title": "This conversation is {percent}% full",
+        "body": "With the context handoff on, a long session writes down where it stands and carries on in a fresh one, instead of being compacted."
+      },
+      "database": {
+        "title": "There is a database in {project}",
+        "bodySqlite": "{file} is a SQLite database. The Database screen opens it so you can browse its tables and run queries without leaving the app.",
+        "bodyEnv": "{file} sets a DATABASE_URL. The Database screen can connect to it so you can browse its tables and run queries without leaving the app."
+      },
+      "ticketTracker": {
+        "title": "{key} looks like a ticket",
+        "body": "The branch {branch} names a ticket. Connect your tracker and each session shows its tickets and their status as you work."
+      },
+      "secondAccount": {
+        "title": "{percent}% of a usage limit used",
+        "body": "With a second Claude account connected, you can switch to it when one runs out, or give each project its own."
+      }
+    }
+  },
   "language": {
     "name": "English",
     "code": "en"

@@ -126,9 +126,14 @@ class Toast extends BaseComponent {
    * @param {string} [opts.action]        Label for an inline action button
    * @param {Function} [opts.onAction]    Handler for that button
    * @param {boolean} [opts.dedupe=true]  Fold repeats into one card
+   * @param {string} [opts.secondaryAction]   Label for a second, quieter button.
+   *   With one, both buttons sit on their own row under the text.
+   * @param {Function} [opts.onSecondaryAction]
+   * @param {Function} [opts.onHide]       Called once when the toast goes away, whatever the reason
+   * @param {string} [opts.className]      Extra class on the toast element
    * @returns {HTMLElement} the toast element
    */
-  showToast({ message, title, type = 'info', duration, action, onAction, dedupe = true }) {
+  showToast({ message, title, type = 'info', duration, action, onAction, dedupe = true, secondaryAction, onSecondaryAction, onHide, className }) {
     const container = this._ensureContainer();
 
     const safeTitle = title ? String(title) : '';
@@ -137,27 +142,33 @@ class Toast extends BaseComponent {
     if (duration === undefined) duration = calculateDuration(safeMessage || safeTitle);
 
     // A persistent toast is a handle its caller keeps and mutates — never fold those.
-    const key = `${type}|${safeTitle}|${safeMessage}|${action || ''}`;
+    const key = `${type}|${safeTitle}|${safeMessage}|${action || ''}|${secondaryAction || ''}`;
     if (dedupe && duration > 0) {
       const merged = this._coalesce(key);
       if (merged) return merged;
     }
 
     const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
+    toast.className = `toast toast-${type}${className ? ` ${className}` : ''}`;
     toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
     toast._toastKey = key;
     toast._toastCount = 1;
 
     const body = safeMessage ? escapeHtml(safeMessage).replace(/\n/g, '<br>') : '';
 
+    const actionHtml = action ? `<button class="toast-action" type="button">${escapeHtml(action)}</button>` : '';
+    const actionsRow = secondaryAction
+      ? `<div class="toast-actions">${actionHtml}<button class="toast-action toast-action--secondary" type="button">${escapeHtml(secondaryAction)}</button></div>`
+      : '';
+
     toast.innerHTML = `
       <span class="toast-icon">${TOAST_ICONS[type] || TOAST_ICONS.info}</span>
       <div class="toast-content">
         ${safeTitle ? `<div class="toast-title">${escapeHtml(safeTitle)}</div>` : ''}
         ${body ? `<div class="toast-message">${body}</div>` : ''}
+        ${actionsRow}
       </div>
-      ${action ? `<button class="toast-action" type="button">${escapeHtml(action)}</button>` : ''}
+      ${secondaryAction ? '' : actionHtml}
       <button class="toast-close" type="button" aria-label="${escapeHtml(t('common.close') || 'Close')}">${CLOSE_ICON}</button>
       ${duration > 0 ? '<div class="toast-progress"></div>' : ''}
     `;
@@ -165,11 +176,18 @@ class Toast extends BaseComponent {
     toast.querySelector('.toast-close').onclick = () => this.hideToast(toast);
 
     if (action && onAction) {
-      toast.querySelector('.toast-action').onclick = () => {
+      toast.querySelector('.toast-action:not(.toast-action--secondary)').onclick = () => {
         onAction();
         this.hideToast(toast);
       };
     }
+    if (secondaryAction) {
+      toast.querySelector('.toast-action--secondary').onclick = () => {
+        if (onSecondaryAction) onSecondaryAction();
+        this.hideToast(toast);
+      };
+    }
+    if (onHide) toast._onHide = onHide;
 
     container.appendChild(toast);
     this._enforceStackLimit();
@@ -246,6 +264,11 @@ class Toast extends BaseComponent {
     toast._hiding = true;
 
     if (toast._clearTimer) toast._clearTimer();
+    if (toast._onHide) {
+      const onHide = toast._onHide;
+      toast._onHide = null;
+      try { onHide(); } catch (e) { console.warn('[Toast] onHide failed:', e?.message); }
+    }
 
     toast.classList.remove('show');
     toast.classList.add('hide');

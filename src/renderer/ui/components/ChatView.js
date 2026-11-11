@@ -67,6 +67,7 @@ const { PERMISSION_MODES, permissionModeInfo, modeFromSetting, settingFromMode }
 const { contextTokensFromMessage, contextTokensFromUsage, contextWindowFromResult } = require('../../../shared/context-usage');
 const { parseTerminalCommand } = require('../../../shared/terminal-commands');
 const ModelCatalog = require('../../services/ModelCatalogClient');
+const Discovery = require('../../services/discovery');
 
 // Catalog access is shared with the project-settings and parallel-run pickers
 // (see ModelCatalogClient), so all three always agree on which models exist.
@@ -3762,6 +3763,8 @@ class ChatView extends BaseComponent {
     // What the user typed may name a ticket. After the mentions, so a ticket
     // cited with @tickets is already linked and not suggested again.
     if (text && api.issueLinks?.observeText) api.issueLinks.observeText(ticketsTab.getKey(), text, 'prompt').catch(() => {});
+    // A prompt sent again and again is an automation waiting to happen.
+    if (text) Discovery.report('prompt:sent', { text, source: 'chat' });
 
     // Prepare images payload (without dataUrl to reduce IPC size)
     const imagesPayload = images.map(({ base64, mediaType }) => ({ base64, mediaType }));
@@ -7024,6 +7027,7 @@ class ChatView extends BaseComponent {
     // that is worth seeing without opening the breakdown.
     statusTokens.classList.toggle('warn', ratio >= 0.75 && ratio < 0.9);
     statusTokens.classList.toggle('danger', ratio >= 0.9);
+    if (ratio > 0) Discovery.report('context:usage', { ratio, used, limit });
     statusTokens.setAttribute(
       'aria-label',
       `${t('chat.contextWindowUsage') || 'Context window'}: ${contextSummaryText(used, limit)}`

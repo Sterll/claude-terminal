@@ -1,4 +1,42 @@
 {
+  "discovery": {
+    "showMe": "带我去看",
+    "dontShowAgain": "不再显示",
+    "settingLabel": "功能建议",
+    "settingDesc": "在某个功能正好能帮上忙时，偶尔提示一下。每天最多一条，每条都可以永久关闭。",
+    "rules": {
+      "controlTower": {
+        "title": "此项目上有 {count} 个 Claude 会话",
+        "body": "Control Tower 在一个屏幕上显示所有正在运行的会话，以及每个会话在做什么。如果想并排查看两个，可以用 {shortcut} 拆分视图。",
+        "bodyNoSplit": "Control Tower 在一个屏幕上显示所有正在运行的会话，以及每个会话在做什么、哪些在等你回复。"
+      },
+      "repeatedPrompt": {
+        "title": "你经常发送这条提示词",
+        "body": "同一条长提示词已经发送了 {count} 次。自动化可以按计划替你发送，或在项目中发生某件事时发送。"
+      },
+      "commitGenerate": {
+        "title": "让提交信息自动写好",
+        "body": "Git 面板可以根据所选更改起草提交信息。提交前你仍然可以修改。"
+      },
+      "contextHandoff": {
+        "title": "此对话的上下文已用 {percent}%",
+        "body": "开启上下文交接后，长会话会记下当前进展，然后在新会话中继续，而不是被压缩。"
+      },
+      "database": {
+        "title": "{project} 中有一个数据库",
+        "bodySqlite": "{file} 是一个 SQLite 数据库。数据库页面可以打开它，让你无需离开应用即可浏览表并运行查询。",
+        "bodyEnv": "{file} 设置了 DATABASE_URL。数据库页面可以连接它，让你无需离开应用即可浏览表并运行查询。"
+      },
+      "ticketTracker": {
+        "title": "{key} 看起来像一个工单",
+        "body": "分支 {branch} 指向一个工单。连接你的工单工具后，每个会话都会在你工作时显示它的工单及其状态。"
+      },
+      "secondAccount": {
+        "title": "某项用量限额已用 {percent}%",
+        "body": "连接第二个 Claude 账户后，一个账户用完时可以切换过去，也可以为每个项目指定各自的账户。"
+      }
+    }
+  },
   "language": {
     "name": "简体中文",
     "code": "zh-CN"

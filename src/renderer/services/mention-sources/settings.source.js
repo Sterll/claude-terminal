@@ -34,6 +34,7 @@ const CATALOG = [
   { id: 'launchAtStartup', tab: 'general', labelKey: 'settings.launchAtStartup', descKey: 'settings.launchAtStartupDesc', anchor: 'launch-at-startup-toggle' },
   { id: 'navigationMode', tab: 'general', labelKey: 'navigationMode.settingsLabel', descKey: 'navigationMode.settingsHint', anchor: 'navigation-mode-dropdown' },
   { id: 'compactProjects', tab: 'general', labelKey: 'settings.compactProjects', descKey: 'settings.compactProjectsDesc', anchor: 'compact-projects-toggle' },
+  { id: 'discoverySuggestions', tab: 'general', labelKey: 'discovery.settingLabel', descKey: 'discovery.settingDesc', anchor: 'discovery-suggestions-toggle' },
   { id: 'aiCommitMessages', tab: 'general', labelKey: 'settings.aiCommitMessages', descKey: 'settings.aiCommitMessagesDesc', anchor: 'ai-commit-toggle' },
   { id: 'editor', tab: 'general', labelKey: 'settings.editor', descKey: 'settings.editorDesc', anchor: 'editor-dropdown' },
   { id: 'closeWindow', tab: 'general', labelKey: 'settings.closeWindow', descKey: 'settings.closeWindowDesc', anchor: 'close-action-dropdown' },

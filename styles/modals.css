@@ -1602,6 +1602,42 @@ mark.qp-hl {
   outline-offset: 1px;
 }
 
+/* Two buttons (a suggestion's "Show me" and "Don't show again") get a row of
+   their own under the text, so a long message does not squeeze them. */
+.toast-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.toast-action.toast-action--secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.toast-action.toast-action--secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* Feature suggestions (services/discovery): the accent, not the info blue,
+   because they point at the app rather than report on it. */
+.toast.toast-suggestion {
+  --toast-accent: var(--accent);
+}
+
+/* What "Show me" lands on, flashed once. Finite on purpose: infinite
+   animations are paused while the window is unfocused anyway. */
+.discovery-highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0.25);
+  transition: box-shadow 0.3s, outline-color 0.3s;
+}
+
 /* Driven by Toast.js so the countdown can pause on hover — transform only,
    which keeps it off the layout path. */
 .toast-progress {

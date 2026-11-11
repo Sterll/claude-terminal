@@ -100,6 +100,9 @@ const defaultSettings = {
   telemetryConsentShown: false, // Whether consent prompt was shown
   agentColors: {}, // Custom colors per tool/agent name: { 'Grep': '#ff0000', 'my-agent': '#00ff00' }
   enableFollowupSuggestions: true, // Show AI-generated follow-up suggestion chips after Claude responds (uses Haiku)
+  // Contextual feature suggestions (services/discovery): at most one a day, at the
+  // moment a feature would help. Per-suggestion dismissals live in discovery.json.
+  discoverySuggestionsEnabled: true,
   enhancePrompts: false, // Opt-in: reformulate prompts via Haiku for better prompt engineering before sending
   chromeBridgeEnabled: false, // Opt-in: let chat sessions drive Chrome via the Claude browser extension
   // Opt-in: let the MCP chat_respond_permission tool grant, not only deny, another

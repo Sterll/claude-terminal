@@ -1169,6 +1169,16 @@ class SettingsPanel extends BasePanel {
               </div>
               <div class="settings-toggle-row">
                 <div class="settings-toggle-label">
+                  <div>${t('discovery.settingLabel')}</div>
+                  <div class="settings-toggle-desc">${t('discovery.settingDesc')}</div>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="discovery-suggestions-toggle" ${settings.discoverySuggestionsEnabled !== false ? 'checked' : ''}>
+                  <span class="settings-toggle-slider"></span>
+                </label>
+              </div>
+              <div class="settings-toggle-row">
+                <div class="settings-toggle-label">
                   <div>${t('settings.aiCommitMessages')}</div>
                   <div class="settings-toggle-desc">${t('settings.aiCommitMessagesDesc')}</div>
                 </div>
@@ -2597,6 +2607,8 @@ class SettingsPanel extends BasePanel {
 
       const compactProjectsToggle = document.getElementById('compact-projects-toggle');
       const newCompactProjects = compactProjectsToggle ? compactProjectsToggle.checked : true;
+      const discoveryToggle = document.getElementById('discovery-suggestions-toggle');
+      const newDiscoverySuggestions = discoveryToggle ? discoveryToggle.checked : settings.discoverySuggestionsEnabled !== false;
       const restoreSessionsToggle = document.getElementById('restore-sessions-toggle');
       const newRestoreTerminalSessions = restoreSessionsToggle ? restoreSessionsToggle.checked : true;
       const reduceMotionToggle = document.getElementById('reduce-motion-toggle');
@@ -2719,6 +2731,7 @@ class SettingsPanel extends BasePanel {
         terminalWebglRenderer: newTerminalWebgl,
         language: newLanguage,
         compactProjects: newCompactProjects,
+        discoverySuggestionsEnabled: newDiscoverySuggestions,
         restoreTerminalSessions: newRestoreTerminalSessions,
         reduceMotion: newReduceMotion,
         aiCommitMessages: newAiCommitMessages,
