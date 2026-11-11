@@ -40,7 +40,7 @@ jest.mock('../../src/main/utils/sdkCli', () => ({
 
 const { getSdkCliPath } = require('../../src/main/utils/sdkCli');
 const service = require('../../src/main/services/ChromeBridgeService');
-const { HOST_NAME, EXTENSION_ID, MCP_SERVER_NAME } = service;
+const { HOST_NAME, EXTENSION_ID } = service;
 
 // macOS layout is used throughout so the assertions are identical on every CI
 // runner; the Windows-specific branches are exercised explicitly.
@@ -509,23 +509,16 @@ describe('ChromeBridgeService — session wiring', () => {
     expect(service.getSessionConfig()).toBeNull();
   });
 
-  test('contributes the MCP server and a system prompt when enabled', () => {
+  test('turns on the CLI integration with --chrome and adds a system prompt when enabled', () => {
     writeJson(mockSettingsFile, { chromeBridgeEnabled: true });
     const cfg = service.getSessionConfig();
 
-    expect(cfg.mcpServers[MCP_SERVER_NAME]).toEqual({
-      type: 'stdio',
-      command: global.__ctCliPath,
-      args: ['--claude-in-chrome-mcp']
-    });
+    expect(cfg.extraArgs).toEqual({ chrome: null });
+    // The CLI drops a caller's server registered under its reserved name, so
+    // handing one over is how no session ever got the browser tools.
+    expect(cfg).not.toHaveProperty('mcpServers');
     // The ordering constraint is the one thing the tool descriptions don't state.
     expect(cfg.systemPrompt).toContain('tabs_context_mcp');
-  });
-
-  test('contributes nothing when the bundled binary is missing', () => {
-    writeJson(mockSettingsFile, { chromeBridgeEnabled: true });
-    global.__ctCliPath = null;
-    expect(service.getSessionConfig()).toBeNull();
   });
 
   test('contributes nothing on an unsupported platform', () => {

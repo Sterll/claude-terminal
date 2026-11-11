@@ -907,19 +907,22 @@ class ChatService {
       // Arrives via task_progress system messages with a `summary` field.
       options.agentProgressSummaries = true;
 
-      // Claude in Chrome: hand the session the browser-automation MCP server.
+      // Claude in Chrome: turn on the CLI's own browser integration (`--chrome`).
+      // A flag rather than an entry in mcpServers, because the CLI drops a
+      // caller's `claude-in-chrome` server as a reserved name (see
+      // ChromeBridgeService).
       //
       // Skipped for a self-restricting session (see RESTRICTED_SESSION_MAX_TURNS):
       // it runs unattended off a possibly-misheard transcription, and its
-      // allowlist would withhold the browser tools anyway, so spawning the
-      // server would only cost a process.
+      // allowlist would withhold the browser tools anyway, so starting the
+      // server would only cost a connection.
       //
-      // Never for a remote session: the server is a local binary the remote
-      // CLI cannot start.
+      // Never for a remote session: the browser is this machine's, which the
+      // remote CLI cannot reach.
       if (!allowedTools?.length && !remote) {
         const chrome = chromeBridgeService.getSessionConfig();
         if (chrome) {
-          options.mcpServers = { ...(options.mcpServers || {}), ...chrome.mcpServers };
+          options.extraArgs = { ...(options.extraArgs || {}), ...chrome.extraArgs };
           options.systemPrompt = this._appendSystemPrompt(options.systemPrompt, chrome.systemPrompt);
         }
       }
