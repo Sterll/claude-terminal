@@ -135,3 +135,50 @@ describe('pushed catalogs', () => {
     expect(catalog.primary[0].displayName).toBe('Opus 5.5');
   });
 });
+
+describe('per-account models', () => {
+  // The CLI's menu never lists Mythos, so a tab learns it from main, per account.
+  const accessApi = (byAccount) => ({
+    chat: {
+      modelCatalog: jest.fn(async () => OPUS_5_5),
+      modelAccess: jest.fn(async ({ accountId }) => ({ success: true, models: byAccount[accountId] ?? [] })),
+    },
+  });
+  const mythos = models => models.filter(m => m.value.startsWith('claude-mythos')).map(m => m.displayName);
+
+  test('a tab sees Mythos only when its own account lists it', async () => {
+    const api = accessApi({ team: ['claude-mythos-5-2', 'claude-mythos-5-1'], max: ['claude-fable-5-2'] });
+    await ModelCatalog.load(api);
+    await Promise.all([ModelCatalog.loadAccess(api, 'team'), ModelCatalog.loadAccess(api, 'max')]);
+
+    expect(mythos(ModelCatalog.modelsFor('team'))).toEqual(['Mythos 5.2', 'Mythos 5.1']);
+    expect(mythos(ModelCatalog.modelsFor('max'))).toEqual([]);
+    // The shared catalog, which the other pickers read, never gains them.
+    expect(mythos(ModelCatalog.allModels())).toEqual([]);
+  });
+
+  test('asks main once per account', async () => {
+    const api = accessApi({ team: ['claude-mythos-5-2'] });
+    await Promise.all([ModelCatalog.loadAccess(api, 'team'), ModelCatalog.loadAccess(api, 'team')]);
+    await ModelCatalog.loadAccess(api, null);
+
+    expect(api.chat.modelAccess.mock.calls.map(c => c[0].accountId)).toEqual(['team', null]);
+  });
+
+  test('repaints the pickers when the answer arrives', async () => {
+    const api = accessApi({ team: ['claude-mythos-5-2'] });
+    const listener = jest.fn();
+    ModelCatalog.subscribe(listener);
+
+    await ModelCatalog.loadAccess(api, 'team');
+
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  test('a failed answer adds nothing', async () => {
+    const api = { chat: { modelAccess: jest.fn(async () => ({ success: false, error: 'offline' })) } };
+    await ModelCatalog.loadAccess(api, 'team');
+
+    expect(mythos(ModelCatalog.modelsFor('team'))).toEqual([]);
+  });
+});

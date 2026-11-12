@@ -701,7 +701,7 @@ function _deriveTerminalAgentStatus(td, id) {
 
 // Recognise a model reference in terminal output, e.g. "claude-sonnet-4-6",
 // "Sonnet 4.6", "fable". Keep in sync with Anthropic model family names.
-const MODEL_PATTERN = /(?:claude-)?(fable|opus|sonnet|haiku)(?:[-\s]?([0-9][\d.-]*))?/i;
+const MODEL_PATTERN = /(?:claude-)?(fable|mythos|opus|sonnet|haiku)(?:[-\s]?([0-9][\d.-]*))?/i;
 
 function _formatModel(raw) {
   if (!raw) return null;

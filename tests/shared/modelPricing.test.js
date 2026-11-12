@@ -32,7 +32,17 @@ describe('model-pricing', () => {
     expect(price.estimated).toBe(true);
     expect(price.id).toBe('claude-sonnet-5-5');
     expect(priceFor('claude-haiku-6').id).toBe('claude-haiku-5-5');
+    expect(priceFor('claude-fable-6').id).toBe('claude-fable-5-2');
     expect(priceFor('claude-opus-5').estimated).toBe(false);
+  });
+
+  // The rates CLI 0.3.322 compiles in (`tier_8_40_cache_read_0_20`).
+  test('Fable 5.2 and Mythos 5.2 are listed at their own rates', () => {
+    for (const id of ['claude-fable-5-2', 'claude-mythos-5-2[1m]']) {
+      const price = priceFor(id);
+      expect(price.estimated).toBe(false);
+      expect(price).toMatchObject({ input: 8, output: 40, cacheRead: 0.2 });
+    }
   });
 
   // https://platform.claude.com/docs/en/about-claude/pricing

@@ -19,7 +19,15 @@ const NOW_ISO = '2026-10-09T09:00:00.000Z';
 const client = () => linear.createClient({ secret: fixture.secret, fetch: fixture.fetch });
 const keysOf = async (raw) => (await client().listIssues(normalizeQuery({ limit: 100, ...raw }), null)).issues.map((i) => i.key).sort();
 
-beforeEach(() => fixture.reset());
+// The fixture's dates are fixed around NOW_ISO, but the adapter reads the real
+// clock (the cycle lookback window), so the clock is pinned to the same moment.
+// Unpinned, the active ENG cycle fell out of that window on 2026-11-12.
+let clock;
+beforeEach(() => {
+  fixture.reset();
+  clock = jest.spyOn(Date, 'now').mockReturnValue(Date.parse(NOW_ISO));
+});
+afterEach(() => clock.mockRestore());
 
 describe('queries reach Linear with the right meaning', () => {
   test('an identifier finds that issue, whatever its case', async () => {

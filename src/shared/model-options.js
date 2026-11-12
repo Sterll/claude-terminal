@@ -17,6 +17,13 @@
  * (it dropped Fable 5 the day Fable 5.1 shipped), but it still *accepts* older
  * ids. Keeping them here is what lets "More models" stay useful without the
  * primary tier going stale.
+ *
+ * Why Mythos appears in none of those lists: it is reserved to the accounts
+ * admitted to it, and every one of them is shown to every account. Nor does the
+ * CLI's menu carry it, even for an admitted account. Its rows live apart, in
+ * `ACCOUNT_GATED_MODELS`, and reach the chat picker through
+ * `withAccountModels` only when the Models API lists them for the tab's
+ * account (see ModelAccessService).
  */
 
 'use strict';
@@ -24,6 +31,7 @@
 // Ordered list of accepted `model` property values ('' = inherit / auto).
 const CLAUDE_MODEL_VALUES = [
   '',
+  'claude-fable-5-2',
   'claude-fable-5-1',
   'claude-fable-5',
   'claude-opus-5-5',
@@ -43,6 +51,7 @@ const CLAUDE_MODEL_VALUES = [
 // Human-readable labels, in the same order.
 const MODEL_OPTIONS = [
   { value: '',                  label: 'Default (inherit)' },
+  { value: 'claude-fable-5-2',  label: 'Fable 5.2' },
   { value: 'claude-fable-5-1',  label: 'Fable 5.1' },
   { value: 'claude-fable-5',    label: 'Fable 5' },
   { value: 'claude-opus-5-5',   label: 'Opus 5.5' },
@@ -132,9 +141,17 @@ const DEFAULT_ALIAS = 'default';
  */
 const LEGACY_MODELS = [
   {
+    value: 'claude-fable-5-1',
+    displayName: 'Fable 5.1',
+    description: 'Previous generation Fable',
+    supportsEffort: true,
+    supportedEffortLevels: ALL_EFFORTS,
+    supportsAdaptiveThinking: true,
+  },
+  {
     value: 'claude-fable-5',
     displayName: 'Fable 5',
-    description: 'Previous generation Fable',
+    description: 'Older Fable generation',
     supportsEffort: true,
     supportedEffortLevels: ALL_EFFORTS,
     supportsAdaptiveThinking: true,
@@ -218,8 +235,8 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: true,
   },
   {
-    value: 'claude-fable-5-1',
-    displayName: 'Fable 5.1',
+    value: 'claude-fable-5-2',
+    displayName: 'Fable 5.2',
     description: 'Demanding reasoning and long-horizon agentic work',
     supportsEffort: true,
     supportedEffortLevels: ALL_EFFORTS,
@@ -242,6 +259,90 @@ const FALLBACK_PRIMARY = [
     supportsAdaptiveThinking: true,
   },
 ];
+
+/**
+ * Models offered only to the accounts the Models API lists them for, one list
+ * per tier. Never shown unconditionally: `withAccountModels` is the only way
+ * in, and it needs the account's own model list.
+ *
+ * Two kinds of row live here. Mythos is reserved to admitted accounts and the
+ * CLI's menu never lists it. Fable 5.2 is the CLI lagging: its menu comes from
+ * a per-account server answer, and on 2026-11-12 that answer still offered
+ * Fable 5.1 to accounts the Models API lists Fable 5.2 for. A CLI that lists
+ * Fable 5.2 itself keeps its own row and this one is never added.
+ */
+const ACCOUNT_GATED_MODELS = {
+  primary: [
+    {
+      value: 'claude-fable-5-2',
+      displayName: 'Fable 5.2',
+      description: 'Demanding reasoning and long-horizon agentic work',
+      supportsEffort: true,
+      supportedEffortLevels: ALL_EFFORTS,
+      supportsAdaptiveThinking: true,
+    },
+    {
+      value: 'claude-mythos-5-2',
+      displayName: 'Mythos 5.2',
+      description: 'Demanding reasoning and long-horizon agentic work',
+      supportsEffort: true,
+      supportedEffortLevels: ALL_EFFORTS,
+      supportsAdaptiveThinking: true,
+    },
+  ],
+  legacy: [
+    {
+      value: 'claude-mythos-5-1',
+      displayName: 'Mythos 5.1',
+      description: 'Previous generation Mythos',
+      supportsEffort: true,
+      supportedEffortLevels: ALL_EFFORTS,
+      supportsAdaptiveThinking: true,
+    },
+  ],
+};
+
+/**
+ * The catalog one account sees: `catalog` plus each gated row whose id
+ * `available` lists, in its own tier. A row the catalog already covers is not
+ * added twice, so a CLI that one day lists Mythos keeps its own row.
+ *
+ * An added row can be newer than the version the CLI offers for its family
+ * (Fable 5.2 over the CLI's Fable 5.1). The CLI's row then moves to More
+ * models, by the same rule `ModelCatalogService` applies to the CLI's own list,
+ * and a curated legacy row wins over it so More models describes it the usual
+ * way.
+ *
+ * @param {{primary: Array<object>, legacy: Array<object>}} catalog
+ * @param {Array<string>|null} available Model ids the account may run, or
+ *   null when unknown, which adds nothing.
+ * @returns {object} `catalog` itself when there is nothing to add
+ */
+function withAccountModels(catalog, available) {
+  if (!catalog || !Array.isArray(available) || available.length === 0) return catalog;
+  const allowed = new Set(available.map(baseModelId));
+  const known = [...(catalog.primary || []), ...(catalog.legacy || [])];
+  const extra = tier => ACCOUNT_GATED_MODELS[tier]
+    .filter(m => allowed.has(m.value) && !matchModel(known, m.value));
+  const added = extra('primary');
+  const addedLegacy = extra('legacy');
+  if (added.length === 0 && addedLegacy.length === 0) return catalog;
+
+  const { current, superseded } = splitSuperseded([...(catalog.primary || []), ...added]);
+  const gatedLegacy = ACCOUNT_GATED_MODELS.legacy.filter(m => allowed.has(m.value));
+  const seen = new Set();
+  const curated = [...LEGACY_MODELS, ...gatedLegacy, ...(catalog.legacy || [])].filter((m) => {
+    const id = baseModelId(m.value);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  return {
+    ...catalog,
+    primary: orderPrimary(current),
+    legacy: legacyTier(current, superseded, curated),
+  };
+}
 
 /**
  * Strip a CLI variant suffix: 'claude-opus-5[1m]' -> 'claude-opus-5'.
@@ -390,7 +491,7 @@ const CONTEXT_NOTE = /\s*(?:with\s+1M\s+context|\(1M\s+context\))/i;
 // Family and version out of a wire id: 'claude-haiku-4-5-20251001' -> haiku 4.5.
 // The version is one or two short numeric segments, so a trailing date is not
 // read as part of it.
-const WIRE_VERSION = /(fable|opus|sonnet|haiku)-(\d{1,2})(?:-(\d{1,2}))?(?!\d)/;
+const WIRE_VERSION = /(fable|mythos|opus|sonnet|haiku)-(\d{1,2})(?:-(\d{1,2}))?(?!\d)/;
 
 /**
  * 'Opus 4.8' for 'claude-opus-4-8', or '' when the id does not spell a family
@@ -482,8 +583,9 @@ function normalizeModelRow(m) {
 // Model families, most capable first. Menu order for the primary tier follows
 // it — the CLI's own order puts Opus ahead of Fable; we surface the more capable
 // model first — and so does the family colour on the footer chip. Anything
-// unrecognised sorts last in the order the CLI gave it.
-const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
+// unrecognised sorts last in the order the CLI gave it. Mythos is Fable's tier
+// (same capabilities and prices), offered only to the accounts admitted to it.
+const MODEL_FAMILIES = ['fable', 'mythos', 'opus', 'sonnet', 'haiku'];
 
 /**
  * Families the plan meters on their own.
@@ -495,11 +597,11 @@ const MODEL_FAMILIES = ['fable', 'opus', 'sonnet', 'haiku'];
  * limit. So a tab left on one quietly spends a quota the next tab may want.
  *
  * Hand-curated, because the CLI catalog says nothing about it: its descriptions
- * carry per-token prices only, which are stripped for display anyway. Fable is
- * the family this applies to, so it is the one the chip, the composer border
- * and the tab tag single out.
+ * carry per-token prices only, which are stripped for display anyway. Fable and
+ * Mythos are the families this applies to, so they are the ones the chip, the
+ * composer border and the tab tag single out.
  */
-const PREMIUM_FAMILIES = ['fable'];
+const PREMIUM_FAMILIES = ['fable', 'mythos'];
 
 /**
  * Effort levels flagged as heavy on the chip whatever the model — they spend
@@ -675,6 +777,8 @@ module.exports = {
   withSubagentEffort,
   LEGACY_MODELS,
   FALLBACK_PRIMARY,
+  ACCOUNT_GATED_MODELS,
+  withAccountModels,
   DEFAULT_ALIAS,
   MODEL_FAMILIES,
   PREMIUM_FAMILIES,

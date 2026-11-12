@@ -22,6 +22,7 @@ const {
   FALLBACK_PRIMARY,
   LEGACY_MODELS,
   dedupeLegacy,
+  withAccountModels,
 } = require('../../shared/model-options');
 
 // `recommended` is the model the CLI's `default` row points at — empty offline,
@@ -39,6 +40,10 @@ let watching = false;
 // main only pushes what the running CLI just said, which outranks anything a
 // load in flight is still waiting for (a failed fetch answers with the cache).
 let generation = 0;
+// Per account: the model ids the Models API lists for it, behind the rows the
+// CLI's menu never carries (Mythos). Asked once per account per window; main
+// caches across windows. `ids: null` until known, which adds nothing.
+const access = new Map();
 
 /** Adopt an answer shaped like `chat-model-catalog`'s. Ignores empty ones. */
 function apply(res) {
@@ -60,14 +65,18 @@ function watch(api) {
     if (!apply(res)) return;
     generation++;
     inflight = Promise.resolve(catalog);
-    for (const fn of listeners) {
-      try {
-        fn(catalog);
-      } catch (err) {
-        console.warn('[ModelCatalogClient] listener failed:', err?.message || err);
-      }
-    }
+    notify();
   });
+}
+
+function notify() {
+  for (const fn of listeners) {
+    try {
+      fn(catalog);
+    } catch (err) {
+      console.warn('[ModelCatalogClient] listener failed:', err?.message || err);
+    }
+  }
 }
 
 /**
@@ -90,6 +99,46 @@ function getCatalog() {
 /** Both tiers flattened, in menu order. */
 function allModels() {
   return [...catalog.primary, ...catalog.legacy];
+}
+
+/**
+ * Ask main, once per account, which models `accountId` may run. Subscribers
+ * hear about it when the answer adds something, the same way as a pushed
+ * catalog.
+ *
+ * @param {object} api The renderer API bridge (window.electron_api).
+ * @param {string|null} accountId null for the machine-wide login
+ * @returns {Promise<Array<string>|null>}
+ */
+function loadAccess(api, accountId) {
+  const key = accountId || '';
+  if (access.has(key)) return access.get(key).promise;
+  const entry = { ids: null, promise: null };
+  access.set(key, entry);
+  entry.promise = (async () => {
+    try {
+      const res = await api?.chat?.modelAccess?.({ accountId: accountId || null });
+      if (res?.success && Array.isArray(res.models)) {
+        entry.ids = res.models;
+        notify();
+      }
+    } catch (err) {
+      console.warn('[ModelCatalogClient] model access unavailable:', err?.message || err);
+    }
+    return entry.ids;
+  })();
+  return entry.promise;
+}
+
+/** The catalog as `accountId` sees it: the shared tiers plus its gated models. */
+function catalogFor(accountId) {
+  return withAccountModels(catalog, access.get(accountId || '')?.ids ?? null);
+}
+
+/** `catalogFor`, both tiers flattened, in menu order. */
+function modelsFor(accountId) {
+  const c = catalogFor(accountId);
+  return [...c.primary, ...c.legacy];
 }
 
 /**
@@ -128,6 +177,7 @@ function _reset() {
   listeners.clear();
   watching = false;
   generation = 0;
+  access.clear();
 }
 
-module.exports = { getCatalog, allModels, load, subscribe, _reset };
+module.exports = { getCatalog, allModels, catalogFor, modelsFor, load, loadAccess, subscribe, _reset };
