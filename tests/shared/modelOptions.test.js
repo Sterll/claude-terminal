@@ -319,6 +319,25 @@ const SERVED_322_MODELS = [
   { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5', description: 'Most capable for your hardest and longest-running tasks' },
 ];
 
+// What CLI 0.3.322 served on 2026-11-12 to an account the Models API lists
+// Fable 5.2 for: its per-account menu still offered Fable 5.1, by explicit id,
+// and no Fable 5.2 at all.
+const SERVED_322_FABLE_51 = [
+  { value: 'default', resolvedModel: 'claude-opus-5-5', displayName: 'Default (recommended)', description: 'Opus 5.5 · Best for everyday, complex tasks' },
+  { value: 'opus', resolvedModel: 'claude-opus-5-5', displayName: 'Opus 5.5', description: 'For complex work and everyday tasks' },
+  { value: 'claude-fable-5-1', resolvedModel: 'claude-fable-5-1', displayName: 'Fable 5.1', description: 'For your toughest challenges' },
+  { value: 'sonnet', resolvedModel: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5', description: 'Most efficient for simpler tasks' },
+  { value: 'haiku', resolvedModel: 'claude-haiku-5-5', displayName: 'Haiku 5.5', description: 'Fastest for quick answers' },
+  { value: 'claude-haiku-4-5-20251001', resolvedModel: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5', description: 'Fastest for quick answers' },
+  { value: 'claude-sonnet-5', resolvedModel: 'claude-sonnet-5', displayName: 'Sonnet 5', description: 'Efficient for routine tasks' },
+  { value: 'claude-opus-5', resolvedModel: 'claude-opus-5', displayName: 'Opus 5', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-fable-5', resolvedModel: 'claude-fable-5', displayName: 'Fable 5', description: 'Most capable for your hardest and longest-running tasks' },
+  { value: 'claude-opus-4-8', resolvedModel: 'claude-opus-4-8', displayName: 'Opus 4.8', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-opus-4-7', resolvedModel: 'claude-opus-4-7', displayName: 'Opus 4.7', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-opus-4-6', resolvedModel: 'claude-opus-4-6', displayName: 'Opus 4.6', description: 'Best for everyday, complex tasks' },
+  { value: 'claude-sonnet-4-6', resolvedModel: 'claude-sonnet-4-6', displayName: 'Sonnet 4.6', description: 'Efficient for routine tasks' },
+];
+
 // A Mythos row as the CLI would list it, shaped like its Fable row. CLI 0.3.322
 // lists none, even for an admitted account (ACCOUNT_GATED_MODELS covers that),
 // but a CLI that starts to must still land it in the right place.
@@ -503,6 +522,34 @@ describe('withAccountModels', () => {
     const catalog = tiers([defaultRow, opus, fable, MYTHOS_ROW, ...rest]);
     const { primary } = withAccountModels(catalog, ADMITTED);
     expect(primary.filter(m => modelFamily(m) === 'mythos')).toHaveLength(1);
+  });
+
+  test('puts Fable 5.2 in place of the Fable 5.1 a lagging CLI still offers', () => {
+    const { primary, legacy } = withAccountModels(tiers(SERVED_322_FABLE_51), NOT_ADMITTED);
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
+    const fable51 = legacy.filter(m => baseModelId(m.value) === 'claude-fable-5-1');
+    expect(fable51).toEqual([LEGACY_MODELS.find(m => m.value === 'claude-fable-5-1')]);
+    expect(legacy.map(m => m.displayName).slice(0, 2)).toEqual(['Fable 5.1', 'Fable 5']);
+  });
+
+  test('does the same next to Mythos for an admitted account', () => {
+    const { primary, legacy } = withAccountModels(tiers(SERVED_322_FABLE_51), ADMITTED);
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Mythos 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
+    expect(legacy.map(m => m.displayName).slice(0, 3)).toEqual(['Fable 5.1', 'Fable 5', 'Mythos 5.1']);
+  });
+
+  test('moves a Mythos 5.1 the CLI lists by id under More models once Mythos 5.2 is added', () => {
+    // Served the same day, between two launches that listed no Mythos at all.
+    const mythos51 = { value: 'claude-mythos-5-1', resolvedModel: 'claude-mythos-5-1', displayName: 'Mythos 5.1', description: '' };
+    const { primary, legacy } = withAccountModels(tiers([...SERVED_322_FABLE_51, mythos51]), ADMITTED);
+    expect(primary.map(m => m.displayName)).toEqual(['Fable 5.2', 'Mythos 5.2', 'Opus 5.5', 'Sonnet 5.5', 'Haiku 5.5']);
+    const rows = legacy.filter(m => modelFamily(m) === 'mythos');
+    expect(rows.map(m => [m.displayName, m.description])).toEqual([['Mythos 5.1', 'Previous generation Mythos']]);
+  });
+
+  test('leaves Fable 5.1 alone for an account the Models API lists no Fable 5.2 for', () => {
+    const catalog = tiers(SERVED_322_FABLE_51);
+    expect(withAccountModels(catalog, ['claude-opus-5-5', 'claude-fable-5-1'])).toBe(catalog);
   });
 
   test('a gated row is premium and matches the ids the stream reports', () => {

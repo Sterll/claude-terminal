@@ -264,9 +264,23 @@ const FALLBACK_PRIMARY = [
  * Models offered only to the accounts the Models API lists them for, one list
  * per tier. Never shown unconditionally: `withAccountModels` is the only way
  * in, and it needs the account's own model list.
+ *
+ * Two kinds of row live here. Mythos is reserved to admitted accounts and the
+ * CLI's menu never lists it. Fable 5.2 is the CLI lagging: its menu comes from
+ * a per-account server answer, and on 2026-11-12 that answer still offered
+ * Fable 5.1 to accounts the Models API lists Fable 5.2 for. A CLI that lists
+ * Fable 5.2 itself keeps its own row and this one is never added.
  */
 const ACCOUNT_GATED_MODELS = {
   primary: [
+    {
+      value: 'claude-fable-5-2',
+      displayName: 'Fable 5.2',
+      description: 'Demanding reasoning and long-horizon agentic work',
+      supportsEffort: true,
+      supportedEffortLevels: ALL_EFFORTS,
+      supportsAdaptiveThinking: true,
+    },
     {
       value: 'claude-mythos-5-2',
       displayName: 'Mythos 5.2',
@@ -293,6 +307,12 @@ const ACCOUNT_GATED_MODELS = {
  * `available` lists, in its own tier. A row the catalog already covers is not
  * added twice, so a CLI that one day lists Mythos keeps its own row.
  *
+ * An added row can be newer than the version the CLI offers for its family
+ * (Fable 5.2 over the CLI's Fable 5.1). The CLI's row then moves to More
+ * models, by the same rule `ModelCatalogService` applies to the CLI's own list,
+ * and a curated legacy row wins over it so More models describes it the usual
+ * way.
+ *
  * @param {{primary: Array<object>, legacy: Array<object>}} catalog
  * @param {Array<string>|null} available Model ids the account may run, or
  *   null when unknown, which adds nothing.
@@ -304,13 +324,23 @@ function withAccountModels(catalog, available) {
   const known = [...(catalog.primary || []), ...(catalog.legacy || [])];
   const extra = tier => ACCOUNT_GATED_MODELS[tier]
     .filter(m => allowed.has(m.value) && !matchModel(known, m.value));
-  const primary = extra('primary');
-  const legacy = extra('legacy');
-  if (primary.length === 0 && legacy.length === 0) return catalog;
+  const added = extra('primary');
+  const addedLegacy = extra('legacy');
+  if (added.length === 0 && addedLegacy.length === 0) return catalog;
+
+  const { current, superseded } = splitSuperseded([...(catalog.primary || []), ...added]);
+  const gatedLegacy = ACCOUNT_GATED_MODELS.legacy.filter(m => allowed.has(m.value));
+  const seen = new Set();
+  const curated = [...LEGACY_MODELS, ...gatedLegacy, ...(catalog.legacy || [])].filter((m) => {
+    const id = baseModelId(m.value);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   return {
     ...catalog,
-    primary: orderPrimary([...(catalog.primary || []), ...primary]),
-    legacy: orderPrimary([...(catalog.legacy || []), ...legacy]),
+    primary: orderPrimary(current),
+    legacy: legacyTier(current, superseded, curated),
   };
 }
 

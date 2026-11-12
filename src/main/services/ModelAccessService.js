@@ -12,6 +12,10 @@
  * Models API does list them, for that account and not for one without access,
  * and the CLI accepts the id once it is picked.
  *
+ * It also covers the CLI's menu lagging behind a release. That menu comes from
+ * a per-account server answer, and on 2026-11-12 CLI 0.3.322 still offered
+ * Fable 5.1, and no Fable 5.2, to accounts this list names Fable 5.2 for.
+ *
  * The token comes from UsageService's reader, never from the credential store
  * directly: that reader's cache and back-off are what keep macOS from raising a
  * Keychain prompt on every call.
