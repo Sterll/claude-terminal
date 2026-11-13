@@ -92,10 +92,26 @@ function isSidebarNavigation(doc = typeof document !== 'undefined' ? document : 
   return !!doc && doc.body.classList.contains('nav-sidebar');
 }
 
+/**
+ * True when the projects popover is open as a popover.
+ *
+ * In sidebar mode the same element is the docked column, always visible, so it
+ * is never "open" in the sense its close handlers mean. Answering true there
+ * let the capture-phase Escape handler in renderer.js stop every Escape in the
+ * app, terminals and modals included, to close a popover that does not exist.
+ * @param {Document} [doc]
+ */
+function isProjectsPopoverOpen(doc = typeof document !== 'undefined' ? document : null) {
+  if (!doc || isSidebarNavigation(doc)) return false;
+  const popover = doc.getElementById('projects-popover');
+  return !!popover && popover.style.display !== 'none';
+}
+
 module.exports = {
   MODES,
   isNavigationMode,
   resolveNavigationMode,
   applyNavigationMode,
   isSidebarNavigation,
+  isProjectsPopoverOpen,
 };

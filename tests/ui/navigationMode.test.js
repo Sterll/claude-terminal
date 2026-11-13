@@ -10,6 +10,7 @@ const {
   resolveNavigationMode,
   applyNavigationMode,
   isSidebarNavigation,
+  isProjectsPopoverOpen,
 } = require('../../src/renderer/ui/navigationMode');
 
 /** The parts of index.html the mode actually moves things between. */
@@ -144,5 +145,54 @@ describe('applyNavigationMode', () => {
     document.body.innerHTML = '';
     expect(() => applyNavigationMode('sidebar')).not.toThrow();
     expect(document.body.classList.contains('nav-sidebar')).toBe(true);
+  });
+});
+
+describe('isProjectsPopoverOpen', () => {
+  test('tab bar: open only while the popover is shown', () => {
+    applyNavigationMode('tabs');
+    expect(isProjectsPopoverOpen()).toBe(false);
+
+    document.getElementById('projects-popover').style.display = 'flex';
+    expect(isProjectsPopoverOpen()).toBe(true);
+  });
+
+  test('sidebar: the docked column is never an open popover', () => {
+    applyNavigationMode('sidebar');
+    // Visible (no inline display), and still not "open".
+    expect(document.getElementById('projects-popover').style.display).toBe('');
+    expect(isProjectsPopoverOpen()).toBe(false);
+
+    document.getElementById('projects-popover').classList.add('collapsed');
+    expect(isProjectsPopoverOpen()).toBe(false);
+  });
+
+  test('no popover in the DOM is not open', () => {
+    document.body.innerHTML = '';
+    expect(isProjectsPopoverOpen()).toBe(false);
+  });
+
+  test('sidebar: Escape reaches the focused element, terminals included', () => {
+    // The shape of the capture-phase handler in renderer.js. With the old
+    // predicate it stopped every Escape in sidebar mode, so xterm never saw
+    // the key and Claude's "Esc to close" dialogs could not be closed.
+    const onEscape = (e) => {
+      if (e.key !== 'Escape' || !isProjectsPopoverOpen()) return;
+      e.stopPropagation();
+    };
+    document.addEventListener('keydown', onEscape, true);
+    try {
+      applyNavigationMode('sidebar');
+      const textarea = document.createElement('textarea');
+      document.getElementById('terminals-header').appendChild(textarea);
+      const received = jest.fn();
+      textarea.addEventListener('keydown', received);
+
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+      expect(received).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('keydown', onEscape, true);
+    }
   });
 });
