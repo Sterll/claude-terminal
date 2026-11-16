@@ -10,8 +10,8 @@
  * Prices are dollars per million tokens, from
  * https://platform.claude.com/docs/en/about-claude/pricing. A cache write costs
  * 1.25x the input price for the 5-minute TTL and 2x for the 1-hour one; a cache
- * read costs 0.1x unless the model publishes its own rate (Fable 5.1, Opus 5.5
- * and Sonnet 5.5 do). Fast mode doubles every rate.
+ * read costs 0.1x unless the model publishes its own rate (Fable 5.2, Mythos
+ * 5.2, Fable 5.1, Opus 5.5 and Sonnet 5.5 do). Fast mode doubles every rate.
  *
  * Haiku 5.5 is the one model priced by prompt length: a request whose prompt
  * (input, cache writes and cache reads together) is over 100,000 tokens pays
@@ -28,8 +28,10 @@
 
 // id -> { input, output, cacheRead?, longPrompt?: { over, input, output, cacheRead } }
 const PRICES = {
+  'claude-fable-5-2': { input: 8, output: 40, cacheRead: 0.2 },
   'claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.25 },
   'claude-fable-5': { input: 10, output: 50, cacheRead: 1 },
+  'claude-mythos-5-2': { input: 8, output: 40, cacheRead: 0.2 },
   'claude-mythos-5-1': { input: 10, output: 50 },
   'claude-mythos-5': { input: 10, output: 50 },
   'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2 },
@@ -56,7 +58,7 @@ const PRICES = {
 
 // Family fallback for ids the table does not list yet.
 const FAMILY_FALLBACK = [
-  [/fable|mythos/, 'claude-fable-5-1'],
+  [/fable|mythos/, 'claude-fable-5-2'],
   [/opus/, 'claude-opus-5-5'],
   [/sonnet/, 'claude-sonnet-5-5'],
   [/haiku/, 'claude-haiku-5-5'],

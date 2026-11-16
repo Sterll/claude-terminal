@@ -51,7 +51,7 @@ function getToolDisplayInfo(toolName, input) {
 // short on purpose: a long stale list here would outlive the real one.
 const MODEL_OPTIONS = [
   { value: 'claude-opus-5-5', displayName: 'Opus 5.5' },
-  { value: 'claude-fable-5-1', displayName: 'Fable 5.1' },
+  { value: 'claude-fable-5-2', displayName: 'Fable 5.2' },
   { value: 'claude-sonnet-5-5', displayName: 'Sonnet 5.5' },
   { value: 'claude-haiku-4-5-20251001', displayName: 'Haiku 4.5' },
 ];

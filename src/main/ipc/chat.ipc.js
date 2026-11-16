@@ -6,6 +6,7 @@
 const { ipcMain, BrowserWindow } = require('electron');
 const chatService = require('../services/ChatService');
 const modelCatalog = require('../services/ModelCatalogService');
+const modelAccess = require('../services/ModelAccessService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 const { isRemotePath } = require('../../shared/remote-path');
 const { prepareRemoteChat } = require('../utils/sshClaudeSpawn');
@@ -156,6 +157,18 @@ function registerChatHandlers() {
       return { success: true, ...catalog };
     } catch (err) {
       console.error('[chat-model-catalog] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
+
+  // The models one account may run, for the rows the CLI's menu never lists
+  // (Mythos). `models: null` when that cannot be told, and the picker then
+  // adds nothing.
+  ipcMain.handle('chat-model-access', async (_event, { accountId = null } = {}) => {
+    try {
+      return { success: true, models: await modelAccess.modelIdsFor(accountId) };
+    } catch (err) {
+      console.error('[chat-model-access] Error:', err.message);
       return { success: false, error: err.message };
     }
   });

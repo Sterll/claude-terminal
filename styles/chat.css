@@ -4113,7 +4113,8 @@ hr.chat-plan-separator {
   flex-shrink: 0;
 }
 
-.chat-view[data-model-family="fable"] { --model-family-color: var(--premium-color); }
+.chat-view[data-model-family="fable"],
+.chat-view[data-model-family="mythos"] { --model-family-color: var(--premium-color); }
 .chat-view[data-model-family="opus"] { --model-family-color: var(--accent-color, #d97706); }
 .chat-view[data-model-family="sonnet"] { --model-family-color: #60a5fa; }
 .chat-view[data-model-family="haiku"] { --model-family-color: #34d399; }
