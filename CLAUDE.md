@@ -22,7 +22,7 @@ npm run build:win        # Windows NSIS installer
 npm run build:mac        # macOS DMG
 npm run build:linux      # Linux AppImage
 npm run publish          # Build and publish Windows installer to update server
-npm test                 # Run Jest tests (jsdom, 326 test files)
+npm test                 # Run Jest tests (jsdom, 332 test files)
 npm run test:watch       # Jest in watch mode
 npm run check:docs       # Fail if CLAUDE.md or the README translations have drifted
 npm run lint             # ESLint over main, renderer, shared, MCP servers and scripts
@@ -99,14 +99,15 @@ Electron Renderer Process (Browser)
 ├── src/renderer/core/               # DI container, BaseService/Component/Panel, ApiProvider
 ├── src/renderer/state/              # 16 observable state modules
 ├── src/renderer/services/           # 29 services + modular markdown renderer + mention sources
-├── src/renderer/ui/components/      # 24 UI components
-├── src/renderer/ui/panels/          # 27 UI panels
+├── src/renderer/ambience/           # App themes: ThemeEngine, animated scenes (canvas), palette derivation, procedural ambient sound
+├── src/renderer/ui/components/      # 26 UI components
+├── src/renderer/ui/panels/          # 28 UI panels
 ├── src/renderer/features/           # Keyboard shortcuts, quick picker, drag-drop
 ├── src/renderer/events/             # Claude event bus (hook + scraping providers)
 ├── src/renderer/workflow-fields/    # 14 custom UI fields for workflow nodes
 ├── src/renderer/workflow-triggers/  # 12 trigger types (definition + configurator)
 ├── src/renderer/viewers/            # PDF viewer + 3D (three.js) viewer
-├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4452 keys each)
+├── src/renderer/i18n/               # EN/FR/ES/ID/zh-CN/pt-BR locales (4811 keys each)
 └── src/renderer/utils/              # DOM, color, format, paths, icons, syntax highlighting, editor launch, projectFs (local/remote fs facade), nestedRepos (sub-folder repositories of a folder project and the one picked), focusGuard (keeps the user's focus and caret across a tab update an agent made)
 
 Project Types (Plugin System)
@@ -116,7 +117,7 @@ Shared code
 └── src/shared/                      # 25 modules shared between main, renderer and the MCP server
 
 Styles
-└── styles/                          # 33 modular CSS files (~61,600 lines total)
+└── styles/                          # 36 modular CSS files (~64,200 lines total)
 
 MCP Servers (shipped with the app)
 └── resources/mcp-servers/
@@ -371,7 +372,9 @@ Base class `State.js`: observable, `subscribe()`, batched notifications via `req
 
 ### UI Components (`src/renderer/ui/components/`)
 
-`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `AccountLoginModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`, `ticketsSettings`.
+`ProjectList`, `ProjectBar`, `TerminalManager`, `ChatView`, `FileExplorer`, `FileViewer`, `Modal`, `CustomizePicker`, `QuickActions`, `ContextMenu`, `Tab`, `Toast`, `ClaudeMdSuggestionModal`, `AccountMenu`, `AccountSwitchModal`, `AccountLoginModal`, `TranscriptPruner`, `WhatsNew`, `ControlTowerIncidents`, `usageChip`, `accountUsage`, `RemoteProjectModal`, `RemoteHostBadge`, `ticketsSettings`, `AmbiencePopover`, `NewProjectModal`.
+
+`NewProjectModal` is "New project" in one screen: source (existing folder / create / clone / template), name, location, a type chip row preselected from the folder's content (`utils/newProject.js` `detectProjectType`), colour and group, the per-type fields behind "More options", and "start a conversation right away". Everything that would make Create fail is checked as the user types (`validateDraft`), including a duplicate before a clone starts. The parent folder of the last creation is `projectsRootDir`, granted to the renderer at boot by `rendererSecurity` (never the home folder or a filesystem root, `isGrantableProjectsRoot`) and used as the folder dialog's `defaultPath`. A folder dropped on the projects list or the project bar opens it prefilled, then the folder dialog on that folder, since only the dialog grants a path. A project can carry its own picture as its glyph (Customize, Icon tab, "Image…"): `utils/projectImage.js` reads the file the dialog granted, crops it to a centred 96px square and stores it on the project as a small webp data: URL (`project.image`, `setProjectImage`), re-checked by `isSafeImage` before every render since projects.json is writable by other processes. `AmbiencePopover` is the titlebar's ambience button: theme strip, sound, animation, zen mode.
 
 `RemoteProjectModal` is "Open Remote Project" (choose an SSH host, browse its directories, open, create, `git init` or clone a folder) and also hosts the SSH profile editor that Settings → SSH hosts reuses, plus the "Verify host" view, a small xterm running OpenSSH's own host key prompt. `RemoteHostBadge` draws the host label and the state-coloured dot remote projects carry in `ProjectList` and `ProjectBar`, and `refuseForRemote()` turns a capability row of `src/shared/remote-capabilities.js` into a toast so a disabled action never fails silently.
 
@@ -384,6 +387,8 @@ Two things make this harder than it looks and set the shape of the modules. `Cha
 The tests are the point, not the line count. Everything listed above was unreachable from a test while it sat mid-closure, and `sessionCards` is what that costs: `renderer.js` held a second copy of four of its functions, and that copy's date formatter knew only French, so the sessions modal showed Spanish, Indonesian and Chinese users their dates in en-US. Extract with cover, or the next copy drifts the same way.
 
 `ProjectBar` vs `ProjectList` is the `navigationMode` setting: a horizontal project tab bar, or the classic projects sidebar column.
+
+`layoutMode: 'focus'` (`src/renderer/ui/focusLayout.js`) is a layer over either: one header in the titlebar (project and session menus, a new-session button, the git tools row, a Cmd/Ctrl+K search field, a Screens grid, a Stats popover holding the usage and time widgets, a running-tasks pill shown only while background work runs (its popover lists running and just-finished tasks from `backgroundTasks.state.js`), ambience, settings) while the sidebar, the project bar and the session row are hidden, not removed. Every menu drives those hidden elements (a screen is its nav tab's click, a session its tab's click, a right-click on a session row is forwarded to the tab's own context menu), so no behaviour is duplicated. The tools row and the two titlebar widgets are moved, like `navigationMode.js` moves its shared nodes, and given back on the way out. The command palette also opens in-app on Cmd+K (macOS) / Ctrl+K (elsewhere, except inside a terminal, where Ctrl+K is the shell's) and lists every screen as "Go to".
 
 ### UI Panels (`src/renderer/ui/panels/`)
 
@@ -415,6 +420,7 @@ The tests are the point, not the line count. Everything listed above was unreach
 | `TasksView` | The "simple mode" tab of the workflow panel. A task is a workflow with `mode: 'simple'`; the user edits what / when / where and `src/shared/simple-task.js` compiles the cron expression, graph and steps. It writes the same workflow object the advanced editor writes, through the same `workflow.save` IPC |
 | `ErrorLogPanel` | Error log viewer with level/domain filtering, pattern detection, AI diagnosis and export |
 | `IssuesPanel` | The **Tickets** screen, under Git in the sidebar: every ticket of the connected workspace (whole workspace, not the current project), quick "mine" chips, search, Status / Assignee / Priority / Labels menus plus one per facet the adapter declares, grouping and sorting, and a detail pane with description, sub-issues and comments. A **List / Board** toggle: the board's columns are the shared categories the tracker uses when several teams are listed (or when its states belong to no team) and that team's real states when one is, and dragging a card writes the state (in category mode, the first state of the card's own team in that category). State, assignee and priority also change from the detail pane, and **Start a session** opens a chat on a chosen project with the ticket linked and its content prefilled, unsent, optionally checking out the branch name the tracker gives (created if new; a failure is said and does not stop the session) and moving the ticket to its team's first started state, each offered only when the tracker has one. Writes are optimistic, undone on refusal, and bump the request sequence so a refresh already in flight cannot paint the old state back; a moved card survives background refreshes until the view changes, so a card dropped on Done does not vanish from a view of open tickets. The `dragover` handler reads the column from the event target and only writes a class when the column changes. Sub-issues sit under their parent, Linear-style (`nestIssues` in `issueView.js`): under the parent row when it is listed, otherwise under a context row drawn from what the child carries, shared by its siblings, so a sub-issue grouped apart from its parent still shows where it belongs; a parent shows its sub-issue progress (`1/3`) on the list, the board and the detail, and a sub-issue's detail leads back to its parent. Lazy-loaded. Its pure half (view to query, issues to groups, all HTML) is `issues/issueView.js`; the Status menu merges same-named states across teams and sends a whole category as a category. Refreshes every 60 s only while shown, focused, and not mid-drag or mid-write, drops any answer older than the latest request, and keeps its state when the tab is left |
+| `ThemeStudio` | Settings → Themes: theme gallery with live thumbnails, the theme editor (scene, scene parameters, palette, glass, terminal colours, soundscape, with a WCAG contrast badge and live preview through `ThemeEngine.preview`), JSON import/export (clipboard), and the scene, sound and layout options. Writes settings only |
 | `CostPanel` | The Cost tab: API-equivalent cost per account, project, model and day, for this week, last week, 7 / 30 days, this month or all time. Its weekly-limit card splits each account's percentage into this machine's share (a maximum) and everyone else's (a minimum), with the price floor of 1% behind it, from `CostService.getQuotaEstimate`. A second view, **Automations**, shows what each automation cost (runs, cost, cost per run, the accounts it spent, last run) from `CostService.getAutomationReport`; those runs are not in the overview, whose transcripts never hold them |
 
 The dashboard has three sub-views, switched by `_dashViews` and rendered from `DashboardService`: **Overview** (the default), **Kanban** (delegated to `KanbanPanel`) and **Timeline**. The timeline is the only one that loads its own data, through `ProjectTimeline`; it caches the collected events for 30 s so changing the period or a filter chip redraws without six more round trips, and `invalidateCache()` drops that cache alongside the dashboard one.
@@ -452,7 +458,7 @@ The dashboard has three sub-views, switched by `_dashViews` and rendered from `D
 ### Internationalization (`src/renderer/i18n/locales/`)
 
 - **Languages:** French (default), English (fallback), Spanish, Indonesian, Simplified Chinese, Brazilian Portuguese (`fr.json`, `en.json`, `es.json`, `id.json`, `zh-CN.json`, `pt-BR.json`)
-- **Keys:** 4452 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
+- **Keys:** 4811 per locale, all six in exact sync (enforced by `tests/i18n/i18n-coherence.test.js`)
 - **Loading:** only `en.json` is bundled eagerly, as the guaranteed-loaded fallback for `t()`; the others are fetched by `initI18n()`
 - **Detection:** auto-detect from `navigator.language`, `DEFAULT_LANGUAGE` is `fr`
 - **Usage:** `t('projects.openFolder')`, `t('key', { count: 5 })`, `data-i18n="..."` for static HTML
@@ -553,9 +559,9 @@ system OpenSSH client; the app stays the UI. The pieces, end to end:
 | `index.html` | 998 | Main app: titlebar, sidebar (customizable + pinned tabs), content panels, modals |
 | `quick-picker.html` | 531 | Command Palette (inline Node script) |
 | `setup-wizard.html` | 2287 | 10-step onboarding with embedded EN/FR/ES/ID/pt-BR translations |
-| `notification.html` | 262 | Custom toast with auto-dismiss progress bar |
+| `notification.html` | 398 | Desktop toast on the theme's colours: one line for a finished task (the whole card opens it, a countdown ring on the icon, held while hovered), buttons only when there is a choice |
 
-## CSS Architecture (`styles/` - 33 files, ~61,600 lines)
+## CSS Architecture (`styles/` - 36 files, ~64,200 lines)
 
 ### CSS Variables (`:root` in `base.css`)
 
@@ -585,9 +591,14 @@ system OpenSSH client; the app stays the UI. The pieces, end to end:
 --font-base: 0.875rem; --font-md: 1rem;       --font-lg: 1.125rem;
 ```
 
-Every colour in the app is expected to come from these variables. There is **no theme
-system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` (and the
-`--accent-rgb` kept in sync with it) is the only user-facing colour customisation.
+Every colour in the app is expected to come from these variables. The **theme system**
+(`src/renderer/ambience/`, see "App themes and ambience" under Key Implementation Details)
+rewrites them inline on `:root` from a theme's four-colour palette; the `classic` theme
+leaves base.css untouched. There is still no light mode and no `prefers-color-scheme`:
+the ~2,600 hard-coded colour literals across the stylesheets are tuned for dark surfaces,
+so theme palettes stay dark even over a bright scene. `--ct-bg`, `--ct-surface`,
+`--ct-surface-2` and `--ct-text` are solid copies of the palette that `ambience.css`
+mixes into the translucent pane tokens.
 
 ### CSS Files (biggest first)
 
@@ -623,7 +634,10 @@ system**: no light mode, no `prefers-color-scheme`, no `data-theme`. `--accent` 
 | `errorlog.css` | 430 | Error log panel |
 | `cost.css` | 443 | Cost panel |
 | `xterm.css` | 285 | xterm vendor |
-| `base.css` | 274 | Variables, fonts, reset |
+| `ambience.css` | 1992 | Ambient scene layer, translucent pane tokens and glass, layout options (floating panes, conversation width, fonts, radius, zen), Theme Studio, titlebar ambience popover |
+| `focus-layout.css` | 648 | Focus layout: the one-header titlebar, its project / session / screens / stats popovers, the chat tabs as a compact segmented control in their own slot |
+| `new-project.css` | 209 | One-screen New project dialog |
+| `base.css` | 312 | Variables, fonts, reset |
 | `diff.css` | 106 | DiffRenderer output |
 | `index.css` | 29 | Entry point - @imports all of the above, bundled by esbuild |
 
@@ -785,12 +799,14 @@ Worker); neither is bundled into the desktop app.
 - **Drag-reorder handlers measure before they write:** `dragover` fires on every pointer move, and a `getBoundingClientRect()` that follows a style write in the same document cannot be answered from the cached layout. The four tab-reorder handlers (sidebar rail and its Customize modal in `renderer.js`, `ProjectBar`, `TerminalManager`) each used to write a marker class and then measure, forcing one full synchronous layout per event over a document holding the chat transcript and the file tree, which is what made moving a tab freeze the window for seconds. They now read first and skip every write while the drop position is unchanged, which is most events. `ProjectList` reaches the same place by throttling to 50 ms instead. When adding another reorder surface, follow the same shape
 - **External editor launches report their failure:** `spawn` raises a missing binary asynchronously, so `openInEditor` awaits the child's `spawn`/`error` before answering and the preload bridge is `invoke`, not `send`. Renderer callers go through `src/renderer/utils/editor.js`, which toasts on `success: false`. On macOS a GUI editor whose CLI shim was never installed (the default for VS Code) falls back to `open -a <bundle>`; before this, "Open in editor" was simply a button that did nothing, anywhere in the app
 - **Remote SSH projects** (`design/remote-ssh.md`): a remote project is a `general` project whose `path` is `ssh-remote://<profileId><posix path>` and whose `remote` block holds `{ profileId, path, hostLabel }`. The URI is its identity, deduped exactly and case-sensitively, and it fails closed everywhere nothing was taught about it yet: it is not absolute, so `rendererSecurity` never grants it (and skips the project explicitly anyway), `fs.existsSync` answers false, and the startup git sweep, dashboard preload, missing-path check and session restore all skip it before probing. Nothing connects at startup; opening the project or clicking its badge does. Terminal tabs and quick actions run on the host over `ssh -tt`, resolved in main from the URI (the renderer never names a host); a dropped connection leaves the tab under a "connection lost" overlay and respawns it when the host is back (Claude tabs with `--resume`, shells in the same directory or reattached to their tmux session), automatic respawns never follow an auth or host key failure, and remote tabs come back from the last run when the project is opened, not at boot. Tab ownership is by project id as soon as a remote project is involved (`sameProject()`), and with hooks on, remote tabs get their events from the scraping provider (their CLI never reaches the local hook server). Chat runs the host's own `claude` through the SDK's `spawnClaudeCodeProcess` hook (`sshClaudeSpawn.js`), resolved in main from the URI with no account and no launch context from the renderer; the remote command line carries an env allowlist only, never PATH, HOME or a credential. A lost connection is `connection_lost`, and the tab resumes with the CLI session id once the host is back. The tab says that this app's MCP tools and Claude in Chrome do not reach a remote CLI, refuses local path attachments, and drops the `@errors` and `@selection` mentions. Session history, replay, changes and export are read from the remote `~/.claude/projects` over the channel by the same parsers; while the host is away the views say where the history is rather than show an empty list. Git runs on the host through the same `git.js` primitives (`[ -d dir ] || exit 96; cd -- dir && GIT_TERMINAL_PROMPT=0 exec git -c protocol.ext.allow=never ...`), so the Git panel, branch dropdown, dashboard, commit messages, PR descriptions, worktrees, stats and TODO scan keep their result contracts; a host that is away is `reason: 'disconnected'`, which the Git panel shows as "reconnecting to <host>" rather than "not a git repository". The startup sweep still skips remote projects and fills them in when their host connects; the dashboard of one whose host is away shows its last known data from `~/.claude-terminal/remote-cache/<projectId>/` and asks the host nothing. Files go through `src/renderer/utils/projectFs.js`, which hands a local path the very `fs.promises` and `path` it always had and a URI an adapter over the async `ssh-fs` IPC with POSIX path rules, so the explorer, the Files screen, file tabs, the Memory editor (the host's own `~/.claude/projects/<encoded>/` for private instructions and memory), context packs and the chat's `@file`, `@project`, Read/Edit cards and artifact capture work on the host and never touch the synchronous fs bridge. A directory is one request, a name search one `git ls-files` and a content search one `git grep`; expanded remote directories are polled in one batched request per host (or watched with `inotifywait`) only while the explorer is on screen and the window focused; a remote root whose host is not connected is shown with a Connect button rather than loaded, so selection never connects. Images, video, audio, PDF and 3D previews are downloaded once into `remote-cache/<projectId>/media/` and shown through the existing `file://` paths, leaving the CSP untouched. Open in editor launches `<editor> --remote ssh-remote+<alias>` for VS Code, Cursor and Windsurf and is disabled with the reason for every other editor; Reveal in Explorer is disabled; a move, paste or drop between a local root and a remote one is refused with a toast
+- **App themes and ambience** (`src/renderer/ambience/`): a theme is data (`themes.js`: id, category, scene + scene params, a four-colour palette, glass values, terminal colours, soundscape), the same shape for the ~30 built-ins, the user's `customThemes` and an imported JSON. `ThemeEngine` is driven by settings alone and subscribed to them, so every surface (Theme Studio, the titlebar popover, the palette's zen command, MCP `settings_set`) only writes a key: it applies the derived tokens (`palette.js`, every text step forced to WCAG AA), mounts `AmbientBackground` (one fixed canvas at z-index -1 plus a scrim, below device resolution, capped at 30 fps and 12 fps unfocused, stopped while hidden, one still frame under reduced motion, a scene that throws replaced by a gradient), registers the derived `ambient` xterm theme, plays the soundscape (`AmbientSound.js`, Web Audio generated live, no file) and sets the layout classes. `ambience.css` makes the scene show through by redefining the `--bg-*` tokens as translucent mixes **inside the three panes only** (titlebar, sidebar, content), so page backgrounds turn transparent, cards turn to glass and popovers, menus and modals outside the panes stay opaque; one `backdrop-filter` per pane, never per message. A theme's `render` is `smooth` or `pixel`: the pixel renderer draws the scene at one canvas pixel per tile (`cell` CSS px), scales it up with `image-rendering: pixelated`, and a CSS gradient layer draws the gaps; a pixel-native scene (`neonrain`, with the 5x7 LED font in `scenes/_pixelfont.js`) reads `env.cell` and draws tile by tile, any other scene is simply drawn coarser. A theme's `tagline` shows above an empty conversation (`--theme-tagline`). Scenes (`scenes/*.js`) share one contract (`scenes/_kit.js`): `create(ctx, env) -> { resize, render(time, dt), destroy }`, deterministic, static layers pre-rendered on resize, a full frame at any `time`. Choosing a theme writes its accent to `accentColor` and its terminal colours to `terminalTheme`, both still overridable from their own settings; the settings panel's autosave reads those from its own controls, so `ThemeStudio` moves them to match (`onSettingsDomSync`)
+- **Press feedback and motion:** `src/renderer/ui/pressFeedback.js` gives every clickable control a 240 ms give through one delegated `pointerdown` and the Web Animations API on the individual `scale` property (so it composes with a control's own `transform` and plays through its own `transition`); drag sources get a brightness pulse instead, since the reorder handlers measure rects mid-drag. Screens, settings panels, sessions and menus animate in from `ambience.css`. All of it is off under reduced motion. `uiBorders` ('subtle' by default) fades borders and drops the structural separators between panes; `ambientBrightness` dims the scene with one CSS `brightness()` on the canvas
 - **Security:** `dompurify` for all user-rendered markdown; never inject untrusted HTML into chat/dashboard
 
 ## Testing
 
 ```bash
-npm test                    # Run all 326 unit test files (jsdom environment)
+npm test                    # Run all 332 unit test files (jsdom environment)
 npm run test:watch          # Watch mode
 npm run check:docs          # Verify this file and the READMEs still match the tree
 npm run lint                # ESLint (see below)
@@ -799,7 +815,7 @@ npm run test:e2e            # Playwright smoke test against the real Electron ap
 
 ### Unit tests (Jest)
 
-- **Framework:** Jest with jsdom, 326 test files
+- **Framework:** Jest with jsdom, 332 test files
 - **Setup:** `tests/setup.js` mocks `window.electron_nodeModules`, `window.electron_api`, `requestAnimationFrame`
 - **Pattern:** `**/tests/**/*.test.js`
 - **Directories:**
@@ -1003,7 +1019,7 @@ Files prefixed with `_` are shared helpers, not tool modules — the loader igno
 - **Commits:** `feat(scope): description` in English, imperative mood
 - **IPC pattern:** Service (main) -> IPC handler -> Preload bridge -> Renderer service
 - **Dashboard sections:** `buildXxxHtml()` in `DashboardService.js`
-- **CSS:** `.component-name.state` pattern, CSS variables, 31 modular files in `styles/`. No colour literals outside `base.css` - there is no theme system yet, and every hard-coded hex is one more thing to migrate when there is one
+- **CSS:** `.component-name.state` pattern, CSS variables, 36 modular files in `styles/`. No colour literals outside `base.css` - every hard-coded hex is a colour the theme system cannot reach
 - **i18n:** add keys to all six locales (`en`, `fr`, `es`, `id`, `zh-CN`, `pt-BR`) - `tests/i18n/i18n-coherence.test.js` fails otherwise; use `t('dot.path')`. Main-process error messages stay in English.
 - **State updates:** `state.set()` / `state.setProp()`, subscribe with `state.subscribe()`
 - **File I/O:** atomic writes for user data (temp + rename), `.bak` backup

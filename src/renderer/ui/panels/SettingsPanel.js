@@ -15,6 +15,9 @@ const { BUILTIN_TOOLS } = require('../../utils/toolRegistry');
 const { getProjectsForAccount } = require('../../state/projects.state');
 const { buildAccountUsageHtml } = require('../components/accountUsage');
 const { mountTicketsSettings } = require('../components/ticketsSettings');
+const { ThemeStudio } = require('./ThemeStudio');
+// One studio for the panel's lifetime; mount() resets it on every re-render.
+const themeStudio = new ThemeStudio();
 const { normalizeHandoffThreshold, MIN_HANDOFF_THRESHOLD } = require('../components/chat/contextHandoff');
 const { hibernateDelayMs } = require('../components/chat/idleHibernation');
 const { EFFORT_OPTIONS, SUBAGENT_EFFORT_LEVELS, normalizeSubagentEffort } = require('../../../shared/model-options');
@@ -361,6 +364,17 @@ class SettingsPanel extends BasePanel {
   }
 
   // ── Save feedback helpers ──
+
+  /**
+   * Save on behalf of the user. Only these saves earn the "settings saved"
+   * toast: settings.json is also written by the app on its own while this
+   * screen is open (opening Settings records it as the active tab), and a
+   * "saved" for a change nobody made is noise.
+   */
+  _userSave() {
+    this._userSavePending = true;
+    this._ctx.saveSettings();
+  }
 
   /**
    * Show the deferred "settings saved" toast once every side effect settled.
@@ -779,7 +793,7 @@ class SettingsPanel extends BasePanel {
         const key = input.closest('.agent-color-row').dataset.key;
         const newColors = { ...self._ctx.settingsState.get().agentColors, [key]: input.value };
         self._ctx.settingsState.set({ ...self._ctx.settingsState.get(), agentColors: newColors });
-        self._ctx.saveSettings();
+        self._userSave();
         const dot = input.closest('.agent-color-row').querySelector('.agent-color-dot');
         if (dot) { dot.style.background = input.value; dot.style.borderColor = input.value; }
         delete input.dataset.unset;
@@ -805,7 +819,7 @@ class SettingsPanel extends BasePanel {
       const newColors = { ...self._ctx.settingsState.get().agentColors };
       delete newColors[key];
       self._ctx.settingsState.set({ ...self._ctx.settingsState.get(), agentColors: newColors });
-      self._ctx.saveSettings();
+      self._userSave();
       const dot = row.querySelector('.agent-color-dot');
       if (dot) { dot.style.background = ''; dot.style.borderColor = ''; }
       const input = row.querySelector('.agent-color-input');
@@ -989,6 +1003,10 @@ class SettingsPanel extends BasePanel {
 
     container.innerHTML = `
       <div class="settings-inline-wrapper">
+        <button type="button" class="settings-back" id="settings-back" title="${escapeHtml(t('settings.backHint'))}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+          <span>${escapeHtml(t('settings.back'))}</span>
+        </button>
         <div class="settings-search" role="search">
           <svg class="settings-search-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
           <input type="text" role="searchbox" id="settings-search-input" class="settings-search-input"
@@ -1446,15 +1464,25 @@ class SettingsPanel extends BasePanel {
           <div class="settings-panel ${initialTab === 'claude' ? 'active' : ''}" data-panel="claude">
             <div class="settings-group" data-section="accounts">
               <div class="settings-group-title">${t('settings.accountsGroup') || 'Claude accounts'}</div>
-              <div class="settings-card">
-                <div class="settings-desc" style="padding: 8px 16px;">${t('settings.accountsDesc') || 'Connect each Claude account you use, then pick one per project or switch to another when one hits its usage limit. "Save current account" keeps the account Claude Code is already signed in with.'}</div>
+              <div class="settings-card accounts-card">
+                <div class="accounts-toolbar">
+                  <p class="accounts-intro">${t('settings.accountsDesc') || 'Connect each Claude account you use, then pick one per project or switch to another when one hits its usage limit. "Save current account" keeps the account Claude Code is already signed in with.'}</p>
+                  <div class="accounts-actions">
+                    <button class="accounts-btn accounts-btn--primary" id="btn-account-login">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                      <span>${t('accounts.connectAccount')}</span>
+                    </button>
+                    <button class="accounts-btn" id="btn-account-capture" title="${escapeHtml(t('accounts.captureCurrent') || 'Save current account')}">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+                      <span>${t('accounts.captureCurrent') || 'Save current account'}</span>
+                    </button>
+                    <button class="accounts-btn accounts-btn--icon" id="btn-accounts-usage-refresh" title="${escapeHtml(t('accounts.usageRefresh') || 'Refresh usage')}" aria-label="${escapeHtml(t('accounts.usageRefresh') || 'Refresh usage')}">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                    </button>
+                  </div>
+                </div>
                 <div class="accounts-list" id="claude-accounts-list">
                   <div class="settings-desc" style="padding: 12px 16px;">${t('common.loading') || 'Loading…'}</div>
-                </div>
-                <div style="display: flex; gap: 8px; padding: 8px 16px 16px;">
-                  <button class="btn btn-primary" id="btn-account-login">${t('accounts.connectAccount')}</button>
-                  <button class="btn btn-secondary" id="btn-account-capture">${t('accounts.captureCurrent') || 'Save current account'}</button>
-                  <button class="btn btn-secondary" id="btn-accounts-usage-refresh">${t('accounts.usageRefresh') || 'Refresh usage'}</button>
                 </div>
               </div>
             </div>
@@ -1957,7 +1985,8 @@ class SettingsPanel extends BasePanel {
           </div>
           <!-- Themes Tab -->
           <div class="settings-panel ${initialTab === 'themes' ? 'active' : ''}" data-panel="themes">
-            <div class="settings-group">
+            <div id="theme-studio-root"></div>
+            <div class="settings-group" data-section="terminal-colors">
               <div class="settings-group-title">${t('settings.themesTitle')}</div>
               <div class="settings-desc" style="margin-bottom: 12px; color: var(--text-muted); font-size: 12px;">${t('settings.themesDesc')}</div>
               <div class="theme-grid" id="theme-grid">
@@ -2056,6 +2085,10 @@ class SettingsPanel extends BasePanel {
       </div>
     `;
 
+    container.querySelector('#settings-back')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('ct-settings-back'));
+    });
+
     // SSH hosts: the same profile editor the Open Remote Project dialog uses.
     // It owns its own markup and repaints on profile or status changes.
     try {
@@ -2149,7 +2182,7 @@ class SettingsPanel extends BasePanel {
         const currentPresets = self._ctx.settingsState.get().customPresets || [];
         const updated = [...currentPresets, { name, command, icon }];
         self._ctx.settingsState.set({ ...self._ctx.settingsState.get(), customPresets: updated });
-        self._ctx.saveSettings();
+        self._userSave();
         self.renderSettingsTab('general');
       };
     }
@@ -2160,7 +2193,7 @@ class SettingsPanel extends BasePanel {
         const currentPresets = [...(self._ctx.settingsState.get().customPresets || [])];
         currentPresets.splice(idx, 1);
         self._ctx.settingsState.set({ ...self._ctx.settingsState.get(), customPresets: currentPresets });
-        self._ctx.saveSettings();
+        self._userSave();
         self.renderSettingsTab('general');
       };
     });
@@ -2222,6 +2255,40 @@ class SettingsPanel extends BasePanel {
         if (e.target === customColorInput) return;
         customColorInput.click();
       };
+    }
+
+    // App themes. Picking one rewrites accentColor and terminalTheme, which
+    // this panel's autosave reads back from its own controls, so those
+    // controls are moved to match or the next autosave would undo the pick.
+    const syncThemeDrivenControls = () => {
+      const live = self._ctx.settingsState.get();
+      let matched = false;
+      container.querySelectorAll('.color-swatch').forEach(sw => {
+        const on = sw.dataset.color === live.accentColor;
+        sw.classList.toggle('selected', on);
+        matched = matched || on;
+      });
+      const customSwatch = container.querySelector('.color-swatch-custom');
+      const customInput = document.getElementById('custom-color-input');
+      if (customSwatch) {
+        customSwatch.classList.toggle('selected', !matched);
+        if (!matched) customSwatch.style.background = live.accentColor;
+      }
+      if (customInput && !matched && /^#[0-9a-f]{6}$/i.test(live.accentColor || '')) customInput.value = live.accentColor;
+      container.querySelectorAll('.theme-card').forEach(c => c.classList.toggle('selected', c.dataset.themeId === (live.terminalTheme || 'claude')));
+    };
+    const studioRoot = document.getElementById('theme-studio-root');
+    if (studioRoot) {
+      themeStudio.mount(studioRoot, {
+        settingsState: self._ctx.settingsState,
+        setSetting: (key, value) => {
+          self._ctx.settingsState.setProp(key, value);
+          self._userSave();
+        },
+        showToast: self._ctx.showToast,
+        TERMINAL_THEMES: self._ctx.TERMINAL_THEMES,
+        onSettingsDomSync: syncThemeDrivenControls,
+      });
     }
 
     container.querySelectorAll('.theme-card').forEach(card => {
@@ -2463,6 +2530,8 @@ class SettingsPanel extends BasePanel {
       // The JSON hit the disk, but toggles with side effects (launch at
       // startup, hooks) may still be in flight or may already have failed.
       // Never claim success until they settle.
+      if (!this._userSavePending) return;
+      this._userSavePending = false;
       this._deferredSaveSuccess = true;
       this._flushDeferredSaveToast();
     });
@@ -2706,7 +2775,7 @@ class SettingsPanel extends BasePanel {
         return;
       }
 
-      self._ctx.saveSettings();
+      self._userSave();
 
       // Apply Discord Rich Presence change live (no restart needed)
       try {
@@ -2815,7 +2884,7 @@ class SettingsPanel extends BasePanel {
             const hooksToggleEl = document.getElementById('hooks-enabled-toggle');
             if (hooksToggleEl) hooksToggleEl.checked = settings.hooksEnabled;
             self._ctx.settingsState.set({ ...self._ctx.settingsState.get(), hooksEnabled: settings.hooksEnabled });
-            self._ctx.saveSettings();
+            self._userSave();
             showError(e.message || t('settings.hooks.toggleError'), 5000);
           }
 
@@ -2994,6 +3063,9 @@ class SettingsPanel extends BasePanel {
       listEl.innerHTML = accounts.map(a => {
         const color = sanitizeColor(a.color);
         const bound = getProjectsForAccount(a.id);
+        // The swatch doubles as an avatar: the account's initial on its colour.
+        const initial = escapeHtml((a.name || '?').trim().charAt(0).toUpperCase() || '?');
+        const icon = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
         return `
         <div class="account-row${a.id === defaultId ? ' active' : ''}" data-id="${a.id}">
           <div class="account-row-head">
@@ -3001,18 +3073,16 @@ class SettingsPanel extends BasePanel {
                     data-action="color" data-id="${a.id}" data-color="${color || ''}"
                     ${color ? `style="background:${color}"` : ''}
                     title="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"
-                    aria-label="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"></button>
+                    aria-label="${escapeHtml(t('accounts.colorTitle') || 'Account colour')}"><span class="account-row-initial">${initial}</span></button>
             <div class="account-row-main">
-              <div class="account-row-name">${escapeHtml(a.name)}</div>
+              <div class="account-row-name">${escapeHtml(a.name)}${a.id === defaultId ? `<span class="account-row-status">${escapeHtml(t('accounts.isDefault') || 'Default')}</span>` : ''}</div>
               <div class="account-row-meta">${escapeHtml((a.fingerprint || '').slice(0, 8))}${bound.length ? ` &middot; ${escapeHtml(t('accounts.boundProjects', { count: bound.length }))}` : ''}</div>
             </div>
             <div class="account-row-buttons">
-              ${a.id === defaultId
-                ? `<span class="account-row-status">${escapeHtml(t('accounts.isDefault') || 'Default')}</span>`
-                : `<button class="btn btn-secondary btn-sm" data-action="set-default" data-id="${a.id}">${escapeHtml(t('accounts.makeDefault') || 'Make default')}</button>`}
-              <button class="btn btn-secondary btn-sm" data-action="reconnect" data-id="${a.id}" title="${escapeHtml(t('accounts.reconnectHint'))}">${escapeHtml(t('accounts.reconnect'))}</button>
-              <button class="btn btn-secondary btn-sm" data-action="rename" data-id="${a.id}">${escapeHtml(t('common.rename') || 'Rename')}</button>
-              <button class="btn btn-secondary btn-sm" data-action="remove" data-id="${a.id}">${escapeHtml(t('common.delete') || 'Delete')}</button>
+              ${a.id === defaultId ? '' : `<button class="account-text-btn" data-action="set-default" data-id="${a.id}">${escapeHtml(t('accounts.makeDefault') || 'Make default')}</button>`}
+              <button class="account-icon-btn" data-action="reconnect" data-id="${a.id}" title="${escapeHtml(t('accounts.reconnect'))} · ${escapeHtml(t('accounts.reconnectHint'))}" aria-label="${escapeHtml(t('accounts.reconnect'))}">${icon('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>')}</button>
+              <button class="account-icon-btn" data-action="rename" data-id="${a.id}" title="${escapeHtml(t('common.rename') || 'Rename')}" aria-label="${escapeHtml(t('common.rename') || 'Rename')}">${icon('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>')}</button>
+              <button class="account-icon-btn account-icon-btn--danger" data-action="remove" data-id="${a.id}" title="${escapeHtml(t('common.delete') || 'Delete')}" aria-label="${escapeHtml(t('common.delete') || 'Delete')}">${icon('<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/>')}</button>
             </div>
           </div>
           <div class="account-row-usage" data-usage-for="${a.id}"></div>

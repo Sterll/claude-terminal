@@ -474,7 +474,7 @@
 
 .btn-sm.issues-primary {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--ct-bg);
 }
 
 .btn-sm.issues-primary:hover {

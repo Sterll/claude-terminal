@@ -14,6 +14,7 @@ const workspaceDocSource = require('./workspace-doc.source');
 const knowledgeSource    = require('./knowledge.source');
 const settingsSource     = require('./settings.source');
 const issueSource        = require('./issue.source');
+const vaultSource        = require('./vault.source');
 
 let _bootstrapped = false;
 
@@ -28,6 +29,7 @@ function bootstrap() {
   registry.register(knowledgeSource);
   registry.register(settingsSource);
   registry.register(issueSource);
+  registry.register(vaultSource);
   _bootstrapped = true;
 }
 

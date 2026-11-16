@@ -10,16 +10,16 @@ const { getMainWindow } = require('./MainWindow');
 const activeNotifications = new Map(); // notifId -> { window, height }
 let notifIdCounter = 0;
 
-const WIDTH = 400;
-const BASE_HEIGHT = 100;
-const GAP = 8;
+const WIDTH = 356;
+const BASE_HEIGHT = 68;
+const GAP = 0; // the window's own transparent padding is the gap
 const MARGIN = 16;
 const MAX_NOTIFICATIONS = 5;
 
 // Bounds for the height notification.html measures for itself. The floor is a
 // title with no body and no buttons; the ceiling stops a malformed payload from
 // opening a window the size of the screen.
-const MIN_HEIGHT = 64;
+const MIN_HEIGHT = 56;
 const MAX_HEIGHT = 260;
 
 /**
@@ -29,8 +29,9 @@ const MAX_HEIGHT = 260;
  * laid the card out ('notification-resize' below).
  */
 function calcHeight(buttons) {
-  if (!buttons || buttons.length <= 2) return BASE_HEIGHT;
-  return BASE_HEIGHT + 28; // extra row for 3-4 buttons
+  if (!buttons || buttons.length === 0) return BASE_HEIGHT;
+  if (buttons.length === 1 && buttons[0].action === 'show') return BASE_HEIGHT; // the card is the button
+  return buttons.length <= 2 ? BASE_HEIGHT + 34 : BASE_HEIGHT + 62;
 }
 
 /**

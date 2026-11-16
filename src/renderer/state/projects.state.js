@@ -857,6 +857,21 @@ function setProjectIcon(projectId, icon) {
 }
 
 /**
+ * Set a project's own image (a small data: URL from utils/projectImage), or
+ * null to go back to its icon, emoji or initial.
+ * @param {string} projectId
+ * @param {string|null} image
+ */
+function setProjectImage(projectId, image) {
+  const state = projectsState.get();
+  const projects = state.projects.map(p =>
+    p.id === projectId ? { ...p, image: image || undefined } : p
+  );
+  projectsState.set({ projects });
+  saveProjects();
+}
+
+/**
  * Set folder icon
  * @param {string} folderId
  * @param {string|null} icon - Emoji icon or null to reset
@@ -2032,6 +2047,7 @@ module.exports = {
   setFolderColor,
   setProjectColor,
   setProjectIcon,
+  setProjectImage,
   setFolderIcon,
   toggleFolderCollapse,
   addProject,

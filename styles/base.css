@@ -72,6 +72,15 @@
      with no fallback, so an undeclared token left them inheriting the body's
      sans-serif. Same stack the terminal and the code blocks already use. */
   --font-mono: 'Cascadia Code', 'Consolas', monospace;
+
+  /* Solid theme colours. The ThemeEngine overrides them with the active
+     theme's palette (src/renderer/ambience/palette.js); ambience.css mixes
+     them into the translucent pane tokens, which cannot be defined from
+     themselves. These defaults are the classic palette above. */
+  --ct-bg: #0d0d0d;
+  --ct-surface: #151515;
+  --ct-surface-2: #1a1a1a;
+  --ct-text: #e0e0e0;
 }
 
 body {

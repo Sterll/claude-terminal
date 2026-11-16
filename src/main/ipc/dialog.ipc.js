@@ -421,9 +421,14 @@ function registerDialogHandlers() {
   });
 
   // Folder dialog
-  ipcMain.handle('select-folder', async () => {
+  ipcMain.handle('select-folder', async (event, options) => {
+    // `defaultPath` only decides where the dialog opens; the grant still goes
+    // to whatever the user picks in it.
+    const defaultPath = typeof options?.defaultPath === 'string' && path.isAbsolute(options.defaultPath)
+      ? options.defaultPath : undefined;
     const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory']
+      properties: ['openDirectory', 'createDirectory'],
+      ...(defaultPath ? { defaultPath } : {}),
     });
     if (!result.canceled && result.filePaths[0]) grant(result.filePaths[0], { directory: fs.statSync(result.filePaths[0]).isDirectory() });
     return result.filePaths[0] || null;

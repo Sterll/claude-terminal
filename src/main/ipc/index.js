@@ -38,6 +38,7 @@ const { registerIssueTrackerHandlers } = require('./issue-trackers.ipc');
 const { registerParallelHandlers } = require('./parallel.ipc');
 const { registerWorkspaceHandlers } = require('./workspace.ipc');
 const { registerKnowledgeHandlers } = require('./knowledge.ipc');
+const { registerVaultHandlers } = require('./vault.ipc');
 const { registerArtifactHandlers } = require('./artifacts.ipc');
 const { registerErrorLogHandlers } = require('./errorLog.ipc');
 const { registerCostHandlers } = require('./cost.ipc');
@@ -95,6 +96,7 @@ function registerAllHandlers(mainWindow) {
   registerParallelHandlers(mainWindow);
   registerWorkspaceHandlers();
   registerKnowledgeHandlers();
+  registerVaultHandlers();
   registerArtifactHandlers();
   registerErrorLogHandlers();
   registerCostHandlers();

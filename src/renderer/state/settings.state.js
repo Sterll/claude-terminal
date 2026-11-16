@@ -136,6 +136,28 @@ const defaultSettings = {
   personaInstructions: '', // Custom instructions for Claude persona (optional, appended to system prompt)
   discordRpcEnabled: true, // Discord Rich Presence ("Coding in {project} - Claude Terminal")
   discordRpcShowProject: true, // Include the project name in the Discord presence (off = generic)
+  // Terminal colour scheme (src/renderer/ui/themes/terminal-themes.js), 'ambient' = derived from the app theme.
+  // Declared here so a settings import keeps it: the import only copies keys present in these defaults.
+  terminalTheme: 'claude',
+  reduceMotion: false, // Freeze every animation, including the ambient scene (body.reduce-motion)
+  // ── App theme and ambience (src/renderer/ambience/ThemeEngine.js) ──
+  appTheme: 'classic', // Built-in theme id or a custom theme id; 'classic' = the original look, no scene
+  customThemes: [], // User themes, same shape as the built-ins (themes.js): [{ id, name, scene, sceneParams, palette, glass, terminal, sound }]
+  ambientMotion: true, // Animate the scene; off paints one still frame
+  ambientQuality: 'medium', // Scene render resolution: 'low' (0.5x), 'medium' (0.75x), 'high' (1x device pixels)
+  ambientFps: 30, // Frame cap while the window is focused (12 when unfocused)
+  ambientPauseUnfocused: false, // Stop the scene entirely while the window is unfocused
+  ambientBrightness: 0.7, // Scene brightness under the UI, 0.3..1 (a CSS brightness() on the canvas; the theme's scrim still applies)
+  ambientSoundEnabled: false, // Play the ambient soundscape
+  ambientSoundVolume: 0.5, // 0..1
+  ambientSoundTrack: 'auto', // 'auto' = the theme's soundscape, or a soundscape id (AmbientSound.SOUNDSCAPES)
+  layoutStyle: 'classic', // 'classic' | 'floating' (panes as rounded islands over the scene)
+  layoutMode: 'standard', // 'standard' | 'focus' (one header, sidebar and tab rows hidden, Cmd/Ctrl+K for everything; src/renderer/ui/focusLayout.js)
+  uiFont: 'system', // 'system' | 'rounded' | 'serif' | 'mono'
+  chatWidth: 'comfortable', // 'full' | 'comfortable' (880px, centred, the scene shows on both sides) | 'narrow' (720px)
+  uiRadius: 'normal', // 'sharp' | 'normal' | 'round'
+  uiBorders: 'subtle', // 'normal' | 'subtle' (faint borders, no structural separators) | 'none' (only form fields keep one)
+  zenMode: false, // Hide the sidebar, project bar and titlebar stats: the conversation over the scene
 };
 
 const settingsState = new State({ ...defaultSettings });

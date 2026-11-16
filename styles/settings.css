@@ -3430,7 +3430,7 @@
 
 .btn-sm.tickets-connect {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--ct-bg);
   white-space: nowrap;
 }
 

@@ -84,11 +84,26 @@ module.exports = {
   },
 
   getChipData(item) {
+    const label = `@${item.title.slice(0, 40)}`;
     return {
       type: 'knowledge',
-      label: `@${item.title.slice(0, 40)}`,
-      data: { entryId: item.id, title: item.title, summary: item.summary },
+      label,
+      data: { entryId: item.id, title: item.title, summary: item.summary, chipLabel: label },
     };
+  },
+
+  /**
+   * The entry's text at send time. Without it the chip reached Claude as its
+   * label alone, an empty `[Context: @knowledge]`.
+   */
+  async resolve(data) {
+    const res = await window.electron_api?.knowledge?.get(data.entryId);
+    if (!res?.success || !res.entry) return `Global knowledge entry "${data.title}": [could not be read]`;
+    const e = res.entry;
+    const head = [`Global knowledge entry: ${e.title}`];
+    if (e.category) head.push(`Category: ${e.category}`);
+    if (e.tags?.length) head.push(`Tags: ${e.tags.join(', ')}`);
+    return `${head.join('\n')}\n\n${String(e.content || e.summary || '').slice(0, 20000)}`;
   },
 
   onSelect(item, consumer, api = {}) {

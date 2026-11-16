@@ -1,0 +1,209 @@
+/* new-project.css - the one-screen "New project" dialog
+ * (src/renderer/ui/components/NewProjectModal.js). Builds on the wizard-*
+ * field styles in fivem.css; only the parts that dialog introduced live here. */
+
+.modal:has(.np-form) {
+  width: 640px;
+}
+
+.np-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.np-sources {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+}
+
+.np-source {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.np-source:hover { color: var(--text-primary); background: var(--bg-hover); }
+
+.np-source.selected {
+  background: var(--accent);
+  color: var(--ct-bg);
+  font-weight: 600;
+}
+
+.np-hint {
+  min-height: 18px;
+  margin-top: 6px;
+  font-size: var(--font-xs);
+  line-height: 1.45;
+}
+
+.np-hint code {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.np-hint-ok { color: var(--text-secondary); }
+.np-hint-warning { color: var(--warning); }
+.np-hint-error { color: var(--danger); }
+
+.np-detected {
+  margin-left: 6px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--accent);
+}
+
+.np-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.np-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.np-type:hover { color: var(--text-primary); border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color)); }
+
+.np-type.selected {
+  color: var(--text-primary);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.np-type-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+
+.np-type-icon svg,
+.np-type-icon img { width: 16px; height: 16px; }
+
+.np-row-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.np-colors {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  height: 34px;
+}
+
+.np-color {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--c, transparent);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.np-color.none {
+  background: transparent;
+  border: 2px dashed var(--border-color);
+}
+
+.np-color:hover { transform: scale(1.12); }
+
+.np-color.selected {
+  box-shadow: 0 0 0 2px var(--bg-secondary), 0 0 0 4px var(--accent);
+}
+
+.np-advanced {
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-tertiary) 60%, transparent);
+}
+
+.np-advanced > summary {
+  padding: 9px 12px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.np-advanced > summary:hover { color: var(--text-primary); }
+.np-advanced[open] > summary { border-bottom: 1px solid var(--border-color); }
+.np-advanced-body { padding: 10px 12px 4px; }
+
+.np-actions {
+  align-items: center;
+  margin-top: 8px;
+}
+
+.np-open-after {
+  margin-right: auto;
+  font-size: var(--font-xs);
+}
+
+.np-kbd {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: var(--font-2xs);
+  background: rgba(0, 0, 0, 0.18);
+  opacity: 0.8;
+}
+
+.np-form .github-repo-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.np-form .clone-status {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}
+
+/* A folder dragged from the file manager over the projects list or bar. */
+.np-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
+}
+.wizard-actions { border-top: none; }

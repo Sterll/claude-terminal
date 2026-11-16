@@ -116,6 +116,7 @@ const {
 } = require('./src/renderer');
 
 const registry = require('./src/project-types/registry');
+const ThemeEngine = require('./src/renderer/ambience/ThemeEngine');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
 const WhatsNew = require('./src/renderer/ui/components/WhatsNew');
@@ -671,6 +672,37 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   if (settingsState.get().reduceMotion) {
     document.body.classList.add('reduce-motion');
   }
+  // App theme: tokens, ambient scene, soundscape and layout. Driven by settings
+  // from here on, so it has to start after reduce-motion is on the body.
+  ThemeEngine.init({
+    settingsState,
+    setSetting,
+    applyAccentColor,
+    registerTerminalTheme: (xtermTheme) => { TERMINAL_THEMES.ambient = xtermTheme; },
+    applyTerminalTheme: (id) => TerminalManager.updateAllTerminalsTheme(id),
+  });
+  require('./src/renderer/ui/components/AmbiencePopover').mountAmbiencePopover({
+    anchor: document.getElementById('titlebar-time'),
+    settingsState,
+    setSetting,
+  });
+  // A soft press on every clickable control (src/renderer/ui/pressFeedback.js).
+  require('./src/renderer/ui/pressFeedback').initPressFeedback();
+  // Focus layout (settings.layoutMode): one header instead of four rows.
+  // Mounted after the ambience button, which it moves into its header.
+  require('./src/renderer/ui/focusLayout').createFocusLayout({
+    settingsState,
+    projectsState,
+    openPalette: () => openCommandPalette(),
+    openNewProject: () => openNewProject(),
+    selectProject: (project) => {
+      const index = getProjectIndex(project.id);
+      if (index === -1 || index == null) return;
+      setSelectedProjectFilter(index);
+      selectProjectFromBar(index);
+      ProjectList.render();
+    },
+  });
   // Asked once, after the rest is on screen so the previews sit over the real app
   setTimeout(promptNavigationModeChoice, 1200);
   // Restore notification bell state from persisted settings
@@ -783,6 +815,13 @@ async function _tryCloudAutoConnect() {
 }
 
 // ========== NOTIFICATIONS ==========
+/** The theme's colours for the desktop notification window, which has no stylesheet of ours. */
+function notificationTheme() {
+  const css = getComputedStyle(document.documentElement);
+  const read = (name) => css.getPropertyValue(name).trim();
+  return { surface: read('--ct-surface'), text: read('--ct-text'), textSecondary: read('--text-secondary'), accent: read('--accent') };
+}
+
 // Returns true if a notification was actually shown, false if it was suppressed
 // (notifications disabled, or the window is focused with the terminal that fired
 // on screen, as the active tab or a pane of a split view).
@@ -792,14 +831,16 @@ function showNotification(type, title, body, terminalId, extraOptions) {
   if (document.hasFocus() && TerminalManager.isTerminalShown(terminalId)) return false;
   const { buttons, autoDismiss, meta } = extraOptions || {};
   const defaultButtons = [{ label: t('terminals.notifBtnShow'), action: 'show', style: 'primary' }];
+  // A finished task is news, not a question: it goes sooner than one that asks.
+  const defaultDismiss = (type || 'done') === 'done' ? 5000 : 8000;
   api.notification.show({
     type: type || 'done',
     title,
     body,
     terminalId,
-    autoDismiss: autoDismiss !== undefined ? autoDismiss : 8000,
+    autoDismiss: autoDismiss !== undefined ? autoDismiss : defaultDismiss,
     buttons: buttons || defaultButtons,
-    meta: Object.assign({ notifType: type || 'done' }, meta || {})
+    meta: Object.assign({ notifType: type || 'done', theme: notificationTheme() }, meta || {})
   });
   return true;
 }
@@ -3955,7 +3996,11 @@ document.getElementById('btn-notifications').onclick = () => {
  * showing. Every route into Settings goes through here so the outgoing panel
  * gets its deactivate() — Ctrl+, used to slip past teardown entirely.
  */
+/** The screen Settings was opened from, for its back button and Escape. */
+let _settingsReturnTab = 'claude';
+
 function _switchToSettingsTab(...args) {
+  if (_currentTabId && _currentTabId !== 'settings') _settingsReturnTab = _currentTabId;
   _leaveCurrentTab('settings');
   // Settings builds a tab per type that contributes settings fields, so it is
   // the second surface (with the new-project wizard) that needs every type's
@@ -3966,6 +4011,21 @@ function _switchToSettingsTab(...args) {
 // Components without access to the navigation (the chat's Git tab) ask for a
 // settings sub-tab through this event rather than reaching into renderer.js.
 document.addEventListener('ct-open-settings', (e) => _switchToSettingsTab(e.detail?.tab));
+
+// Leaving Settings: its back button, or Escape when nothing else wants it
+// (a field being typed in, an open modal or menu keep their own Escape).
+function _leaveSettings() {
+  const target = document.querySelector(`.nav-tab[data-tab="${_settingsReturnTab}"]`)
+    || document.querySelector('.nav-tab[data-tab="claude"]');
+  target?.click();
+}
+document.addEventListener('ct-settings-back', _leaveSettings);
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || document.body.dataset.activeTab !== 'settings') return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  if (document.querySelector('.modal-overlay.active, .focus-pop, .amb-pop, .context-menu.active, .settings-dropdown.open')) return;
+  _leaveSettings();
+});
 
 document.getElementById('btn-settings').onclick = () => {
   const currentActive = document.querySelector('.nav-tab[data-tab].active');
@@ -5011,7 +5071,7 @@ async function handleContextAction(action) {
         ProjectList.render();
       }
       break;
-    case 'new-project': document.getElementById('btn-new-project').click(); break;
+    case 'new-project': openNewProject({ folderId: contextTarget.type === 'folder' ? contextTarget.id : null }); break;
     case 'new-remote-project': openRemoteProjectDialog(); break;
   }
 }
@@ -5096,7 +5156,15 @@ async function renameProjectUI(projectId) {
 // ========== SETTINGS TAB (extracted to SettingsPanel module) ==========
 
 document.getElementById('modal-close').onclick = closeModal;
-document.getElementById('modal-overlay').onclick = (e) => { if (e.target.id === 'modal-overlay') closeModal(); };
+// A modal holding a form in progress opts out of closing on an outside click
+// (data-no-overlay-close): one stray click used to lose the whole new-project
+// form, and cancel a clone running behind it. Escape and its own buttons
+// still close it.
+document.getElementById('modal-overlay').onclick = (e) => {
+  if (e.target.id !== 'modal-overlay') return;
+  if (document.querySelector('#modal-body [data-no-overlay-close]')) return;
+  closeModal();
+};
 
 
 function renderDashboardForScope() {
@@ -5276,553 +5344,102 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest('.wizard-account-field')) panel.hidden = true;
 });
 
-document.getElementById('btn-new-project').onclick = async () => {
-  // The wizard draws a card per type and then asks the selected one for its
-  // fields, so this is one of the two places that needs all of them.
-  await registry.ensureAllLoaded();
-
-  const projectTypes = registry.getAll();
-  const categoriesGrouped = registry.getByCategory();
-
-  let typeIndex = 0;
-  const typeColors = { standalone: 'var(--accent)', webapp: '#3b82f6', python: '#3776ab', api: '#a855f7', fivem: 'var(--success)', discord: '#5865F2' };
-  const buildTypeRows = () => categoriesGrouped.map(({ category: cat, types }) => `
-      <div class="wizard-type-category">${t(cat.nameKey)}</div>
-      <div class="wizard-type-grid">
-      ${types.map(tp => {
-        const idx = typeIndex++;
-        const color = typeColors[tp.id] || 'var(--accent)';
-        return `
-        <div class="wizard-type-card${tp.id === 'standalone' ? ' selected' : ''}" data-type="${tp.id}" style="animation-delay:${idx * 60}ms; --type-color: ${color}">
-          <div class="wizard-type-card-icon">${tp.icon}</div>
-          <span class="wizard-type-card-name">${t(tp.nameKey)}</span>
-        </div>`;
-      }).join('')}
-      </div>
-    `).join('');
-
-  showModal(t('newProject.title'), `
-    <form id="form-project" class="wizard-form">
-      <div class="wizard-progress"><div class="wizard-progress-fill" id="wizard-progress-fill"></div></div>
-
-      <div class="wizard-step active" data-step="1">
-        <div class="wizard-type-list">
-          ${buildTypeRows()}
-        </div>
-        <div class="wizard-actions">
-          <button type="button" class="wizard-btn-secondary" id="btn-cancel-wizard">${t('common.cancel')}</button>
-          <button type="button" class="wizard-btn-primary" id="btn-next-step">
-            <span>${t('newProject.next')}</span>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-          </button>
-        </div>
-      </div>
-
-      <div class="wizard-step" data-step="2">
-        <div class="wizard-step2-header">
-          <div class="wizard-type-badge" id="wizard-type-badge"></div>
-          <div class="wizard-source-selector">
-            <button type="button" class="wizard-source-btn selected" data-source="folder">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>
-              <span>${t('newProject.sourceFolder')}</span>
-            </button>
-            <button type="button" class="wizard-source-btn" data-source="create">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-              <span>${t('newProject.sourceCreate')}</span>
-            </button>
-            <button type="button" class="wizard-source-btn" data-source="clone">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z"/></svg>
-              <span>${t('newProject.sourceClone')}</span>
-            </button>
-            <button type="button" class="wizard-source-btn wizard-source-scaffold" data-source="scaffold" style="display: none;">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="13" height="13"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
-              <span>${t('newProject.sourceScaffold')}</span>
-            </button>
-          </div>
-        </div>
-
-        <div class="wizard-fields-group">
-          <div class="wizard-field clone-config" style="display: none;">
-            <label class="wizard-label">${t('newProject.repoUrl')}</label>
-            <div class="clone-input-wrapper">
-              <svg class="clone-input-icon" viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
-              <input type="text" class="wizard-input clone-url-input" id="inp-repo-url" placeholder="${t('newProject.repoSearchPlaceholder')}">
-            </div>
-            <div class="github-status-hint" id="github-status-hint"></div>
-            <div class="github-repo-list" id="github-repo-list" style="display: none;"></div>
-          </div>
-          ${(() => { try { return registry.get('webapp').getTemplateGridHtml ? registry.get('webapp').getTemplateGridHtml(t) : ''; } catch(_) { return ''; } })()}
-          <div class="wizard-field">
-            <label class="wizard-label">${t('newProject.projectName')}</label>
-            <input type="text" class="wizard-input" id="inp-name" placeholder="${t('newProject.projectNamePlaceholder')}" required>
-          </div>
-          <div class="wizard-field">
-            <label class="wizard-label" id="label-path">${t('newProject.projectPath')}</label>
-            <div class="wizard-input-row">
-              <input type="text" class="wizard-input" id="inp-path" placeholder="${t('newProject.projectFolderPlaceholder')}" required>
-              <button type="button" class="wizard-browse-btn" id="btn-browse">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
-              </button>
-            </div>
-            <div class="detection-hint" id="detection-hint"></div>
-          </div>
-          <div class="wizard-field create-git-config" style="display: none;">
-            <label class="wizard-checkbox">
-              <input type="checkbox" id="chk-init-git" checked>
-              <span class="wizard-checkbox-mark"></span>
-              <span>${t('newProject.initGit')}</span>
-            </label>
-          </div>
-          <div class="type-specific-fields">${projectTypes.map(tp => tp.getWizardFields()).filter(Boolean).join('')}</div>
-        </div>
-
-        ${buildWizardAccountField()}
-
-        <div class="wizard-field clone-status" style="display: none;">
-          <div class="clone-progress">
-            <span class="clone-progress-text">${t('newProject.cloning')}</span>
-            <div class="clone-progress-bar"><div class="clone-progress-fill"></div></div>
-          </div>
-        </div>
-        <div class="wizard-actions">
-          <button type="button" class="wizard-btn-secondary" id="btn-prev-step">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
-            <span>${t('newProject.back')}</span>
-          </button>
-          <button type="submit" class="wizard-btn-primary" id="btn-create-project">
-            <span>${t('newProject.create')}</span>
-            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
-          </button>
-        </div>
-      </div>
-    </form>
-  `);
-
-  let selectedType = 'standalone';
-  let selectedSource = 'folder';
-  let selectedTemplate = null;
-  let githubConnected = false;
-
-  // Wizard navigation
-  function goToStep(step) {
-    document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
-    document.querySelector(`.wizard-step[data-step="${step}"]`).classList.add('active');
-    // Update progress bar
-    const fill = document.getElementById('wizard-progress-fill');
-    if (fill) fill.style.width = step === 1 ? '50%' : '100%';
-    if (step === 2) {
-      const tp = registry.get(selectedType);
-      const color = typeColors[selectedType] || 'var(--accent)';
-      const form = document.getElementById('form-project');
-      // Propagate type color to step 2
-      form.style.setProperty('--type-color', color);
-      const badge = document.getElementById('wizard-type-badge');
-      if (tp && badge) {
-        badge.innerHTML = `<span class="wizard-type-badge-icon">${tp.icon}</span><span class="wizard-type-badge-name">${t(tp.nameKey)}</span>`;
+/**
+ * Open the new-project dialog (src/renderer/ui/components/NewProjectModal.js).
+ * `folderId` files the project in a group; `presetPath` starts from a folder
+ * already chosen (a folder dropped on the app).
+ */
+function openNewProject(opts = {}) {
+  const { openNewProjectModal } = require('./src/renderer/ui/components/NewProjectModal');
+  return openNewProjectModal({
+    api, t, registry, showModal, closeModal, showToast, projectsState, settingsState, setSetting,
+    saveProjects, generateProjectId,
+    moveItemToFolder: (...args) => require('./src/renderer').moveItemToFolder(...args),
+    renderProjects: () => ProjectList.render(),
+    checkProjectGitStatus,
+    buildAccountField: buildWizardAccountField,
+    path, fsp,
+    homedir: window.electron_nodeModules?.os?.homedir?.() || '',
+    // A new project is the one the user wants to work in: show it, and start
+    // the conversation the "open after" box asked for.
+    openProject: (project, { startSession }) => {
+      document.querySelector('.nav-tab[data-tab="claude"]')?.click();
+      const index = getProjectIndex(project.id);
+      if (index !== -1 && index != null) {
+        setSelectedProjectFilter(index);
+        selectProjectFromBar(index);
+        ProjectList.render();
       }
-      // Update progress bar color
-      const fill = document.getElementById('wizard-progress-fill');
-      if (fill) fill.style.background = color;
-      // Show/hide scaffold source button based on type
-      const scaffoldBtn = document.querySelector('.wizard-source-scaffold');
-      if (scaffoldBtn) {
-        scaffoldBtn.style.display = selectedType === 'webapp' ? '' : 'none';
-        // Reset to folder if was on scaffold and type changed
-        if (selectedSource === 'scaffold' && selectedType !== 'webapp') {
-          const folderBtn = document.querySelector('.wizard-source-btn[data-source="folder"]');
-          if (folderBtn) folderBtn.click();
-        }
-      }
-      // Show/hide type-specific config fields
-      projectTypes.forEach(handler => {
-        if (handler.onWizardTypeSelected) {
-          handler.onWizardTypeSelected(form, handler.id === selectedType);
-        }
-      });
-      // Bind type-specific events
-      const currentType = registry.get(selectedType);
-      if (currentType.bindWizardEvents) {
-        currentType.bindWizardEvents(form, api);
-      }
-    }
-  }
-
-  document.getElementById('btn-cancel-wizard').onclick = () => closeModal();
-  document.getElementById('btn-next-step').onclick = () => goToStep(2);
-  document.getElementById('btn-prev-step').onclick = () => goToStep(1);
-
-  // Type selection (step 1)
-  document.querySelectorAll('.wizard-type-card').forEach(row => {
-    row.onclick = () => {
-      document.querySelectorAll('.wizard-type-card').forEach(r => r.classList.remove('selected'));
-      row.classList.add('selected');
-      selectedType = row.dataset.type;
-    };
+      if (startSession) createTerminalForProject(project);
+    },
   });
+}
 
-  // Check GitHub auth status and load repos
-  let repoSearchTimeout = null;
-  let reposLoaded = false;
+document.getElementById('btn-new-project').onclick = () => openNewProject();
 
-  async function updateGitHubHint() {
-    const hintEl = document.getElementById('github-status-hint');
-    const repoListEl = document.getElementById('github-repo-list');
-    if (!hintEl) return;
+// "New session" from places that cannot reach TerminalManager (the command
+// palette): the same as Ctrl+T, on the selected project or the first one.
+document.addEventListener('ct-new-session', () => {
+  const { selectedProjectFilter, projects } = projectsState.get();
+  const index = selectedProjectFilter !== null && projects[selectedProjectFilter] ? selectedProjectFilter : (projects.length ? 0 : -1);
+  if (index === -1) { openNewProject(); return; }
+  if (index !== selectedProjectFilter) { setSelectedProjectFilter(index); ProjectList.render(); }
+  document.querySelector('.nav-tab[data-tab="claude"]')?.click();
+  createTerminalForProject(projects[index]);
+});
 
-    try {
-      const result = await api.github.authStatus();
-      githubConnected = result.authenticated;
-      if (result.authenticated) {
-        hintEl.innerHTML = `<span class="hint-success"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> ${t('newProject.githubConnected', { login: result.login })}</span>`;
-        // Auto-load repos
-        if (repoListEl && !reposLoaded) {
-          loadGitHubRepos();
-        }
-      } else {
-        hintEl.innerHTML = `<span class="hint-warning"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg> ${t('newProject.githubPrivateUnavailable')} - <a href="#" id="link-github-settings">${t('settings.githubConnect')}</a></span>`;
-        if (repoListEl) repoListEl.style.display = 'none';
-        document.getElementById('link-github-settings')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          closeModal();
-          _switchToSettingsTab('github');
-        });
-      }
-    } catch (e) {
-      hintEl.innerHTML = '';
-    }
-  }
-
-  function isUrl(text) {
-    return /^(https?:\/\/|git@)/.test(text.trim());
-  }
-
-  function formatRepoDate(dateStr) {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now - d;
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return t('common.today') || 'Today';
-    if (diffDays === 1) return t('common.yesterday') || 'Yesterday';
-    if (diffDays < 30) return `${diffDays}d`;
-    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo`;
-    return `${Math.floor(diffDays / 365)}y`;
-  }
-
-  function renderRepoList(repos) {
-    const repoListEl = document.getElementById('github-repo-list');
-    if (!repoListEl) return;
-
-    if (!repos || repos.length === 0) {
-      repoListEl.innerHTML = `<div class="github-repo-empty">${t('newProject.noReposFound')}</div>`;
-      repoListEl.style.display = 'block';
-      return;
-    }
-
-    repoListEl.innerHTML = repos.map(repo => `
-      <div class="github-repo-item" data-clone-url="${repo.cloneUrl}" data-name="${repo.name}">
-        <div class="github-repo-item-top">
-          <span class="repo-name">${repo.name}</span>
-          <span class="repo-visibility ${repo.private ? 'private' : 'public'}">${repo.private ? t('newProject.repoPrivate') : t('newProject.repoPublic')}</span>
-        </div>
-        <div class="repo-meta">
-          <span class="repo-owner">${repo.owner}</span>
-          ${repo.language ? `<span class="repo-lang">${repo.language}</span>` : ''}
-          <span class="repo-date">${formatRepoDate(repo.updatedAt)}</span>
-        </div>
-      </div>
-    `).join('');
-    repoListEl.style.display = 'block';
-
-    // Bind click handlers
-    repoListEl.querySelectorAll('.github-repo-item').forEach(item => {
-      item.onclick = () => {
-        const cloneUrl = item.dataset.cloneUrl;
-        const repoName = item.dataset.name;
-        const urlInput = document.getElementById('inp-repo-url');
-        const nameInput = document.getElementById('inp-name');
-        if (urlInput) urlInput.value = cloneUrl;
-        if (nameInput && !nameInput.value) nameInput.value = repoName;
-        repoListEl.style.display = 'none';
-      };
-    });
-  }
-
-  async function loadGitHubRepos(query) {
-    const repoListEl = document.getElementById('github-repo-list');
-    if (!repoListEl || !githubConnected) return;
-
-    repoListEl.innerHTML = `<div class="github-repo-loading"><span class="btn-spinner"></span> ${t('newProject.loadingRepos')}</div>`;
-    repoListEl.style.display = 'block';
-
-    try {
-      const result = await api.github.listRepos({ query, perPage: 20 });
-      if (result.success && result.repos) {
-        reposLoaded = true;
-        renderRepoList(result.repos);
-      } else {
-        repoListEl.innerHTML = `<div class="github-repo-empty">${result.error || t('newProject.noReposFound')}</div>`;
-      }
-    } catch (e) {
-      repoListEl.innerHTML = `<div class="github-repo-empty">${e.message}</div>`;
-    }
-  }
-
-  // Source selector (folder vs clone vs scaffold)
-  document.querySelectorAll('.wizard-source-btn').forEach(opt => {
-    opt.onclick = () => {
-      document.querySelectorAll('.wizard-source-btn').forEach(o => o.classList.remove('selected'));
-      opt.classList.add('selected');
-      selectedSource = opt.dataset.source;
-      const isClone = selectedSource === 'clone';
-      const isCreate = selectedSource === 'create';
-      const isScaffold = selectedSource === 'scaffold';
-      document.querySelector('.clone-config').style.display = isClone ? 'block' : 'none';
-      document.querySelector('.create-git-config').style.display = isCreate ? 'block' : 'none';
-      const scaffoldEl = document.querySelector('.scaffold-templates');
-      if (scaffoldEl) scaffoldEl.style.display = isScaffold ? 'block' : 'none';
-      // Clear detection hint when switching sources
-      const detectionHint = document.getElementById('detection-hint');
-      if (detectionHint) detectionHint.innerHTML = '';
-      if (isClone) {
-        document.getElementById('label-path').textContent = t('newProject.destFolder');
-        document.getElementById('inp-path').placeholder = t('newProject.destFolderPlaceholder');
-        updateGitHubHint();
-      } else if (isCreate || isScaffold) {
-        document.getElementById('label-path').textContent = t('newProject.parentFolder');
-        document.getElementById('inp-path').placeholder = t('newProject.parentFolderPlaceholder');
-      } else {
-        document.getElementById('label-path').textContent = t('newProject.projectPath');
-        document.getElementById('inp-path').placeholder = t('newProject.projectFolderPlaceholder');
-      }
-      // Reset template selection when switching away from scaffold
-      if (!isScaffold) selectedTemplate = null;
-    };
-  });
-
-  // Scaffold template selection
-  document.querySelectorAll('.scaffold-card').forEach(card => {
-    card.onclick = () => {
-      document.querySelectorAll('.scaffold-card').forEach(c => c.classList.remove('selected'));
-      card.classList.add('selected');
-      selectedTemplate = card.dataset.template;
-    };
-  });
-
-  // Auto-fill name from repo URL + search repos
-  document.getElementById('inp-repo-url')?.addEventListener('input', (e) => {
-    const value = e.target.value.trim();
-
-    if (isUrl(value)) {
-      // It's a URL - extract repo name and hide repo list
-      if (!document.getElementById('inp-name').value) {
-        const match = value.match(/\/([^\/]+?)(\.git)?$/);
-        if (match) document.getElementById('inp-name').value = match[1];
-      }
-      const repoListEl = document.getElementById('github-repo-list');
-      if (repoListEl) repoListEl.style.display = 'none';
-    } else if (githubConnected) {
-      // It's a search query - debounce and search repos
-      clearTimeout(repoSearchTimeout);
-      repoSearchTimeout = setTimeout(() => {
-        loadGitHubRepos(value || undefined);
-      }, 300);
-    }
-  });
-
-  // Show repo list on focus when input is empty
-  document.getElementById('inp-repo-url')?.addEventListener('focus', () => {
-    const value = document.getElementById('inp-repo-url').value.trim();
-    if (!isUrl(value) && githubConnected) {
-      const repoListEl = document.getElementById('github-repo-list');
-      if (repoListEl && repoListEl.children.length > 0) {
-        repoListEl.style.display = 'block';
-      } else if (!reposLoaded) {
-        loadGitHubRepos();
-      }
-    }
-  });
-
-  document.getElementById('btn-browse').onclick = async () => {
-    const folder = await api.dialog.selectFolder();
-    if (folder) {
-      document.getElementById('inp-path').value = folder;
-      if (!document.getElementById('inp-name').value && selectedSource === 'folder') {
-        document.getElementById('inp-name').value = path.basename(folder);
-      }
-      // Auto-detect framework for webapp type on folder source
-      if (selectedSource === 'folder' && selectedType === 'webapp') {
-        const detectionHint = document.getElementById('detection-hint');
-        if (detectionHint) {
-          try {
-            const pkgPath = path.join(folder, 'package.json');
-            if (await fileExists(pkgPath)) {
-              const pkg = JSON.parse(await fsp.readFile(pkgPath, 'utf8'));
-              const webappType = registry.get('webapp');
-              const detected = webappType.detectFramework ? webappType.detectFramework(pkg) : null;
-              if (detected) {
-                detectionHint.innerHTML = `<span class="detection-badge"><span>${detected.icon}</span> ${t('newProject.detectedFramework', { framework: detected.name + (detected.version ? ' ' + detected.version : '') })}</span>`;
-              } else {
-                detectionHint.innerHTML = '';
-              }
-            } else {
-              detectionHint.innerHTML = '';
-            }
-          } catch (_) {
-            detectionHint.innerHTML = '';
-          }
-        }
-      }
-    }
+// A mention chip asked for from another screen (the Notes screen's "Discuss in
+// chat"): into the conversation on screen, or a new one on the selected
+// project when the active tab is not a chat.
+document.addEventListener('ct-chat-add-mention', async (e) => {
+  const { type, data } = e.detail || {};
+  if (!type) return;
+  const activeChat = () => {
+    const { terminals, activeTerminal } = terminalsState.get();
+    return terminals.get(activeTerminal)?.chatView || null;
   };
+  document.querySelector('.nav-tab[data-tab="claude"]')?.click();
+  const current = activeChat();
+  if (current?.addMention) { current.addMention(type, data); return; }
+  const { selectedProjectFilter, projects } = projectsState.get();
+  const index = selectedProjectFilter !== null && projects[selectedProjectFilter] ? selectedProjectFilter : (projects.length ? 0 : -1);
+  if (index === -1) { showToast({ type: 'info', title: t('vault.needProjectTitle'), message: t('vault.needProject') }); return; }
+  if (index !== selectedProjectFilter) { setSelectedProjectFilter(index); ProjectList.render(); }
+  const before = activeChat();
+  await TerminalManager.createTerminal(projects[index], { mode: 'chat', skipPermissions: settingsState.get().skipPermissions });
+  for (let i = 0; i < 40; i++) {
+    const view = activeChat();
+    if (view && view !== before && view.addMention) { view.addMention(type, data); return; }
+    await new Promise((r) => setTimeout(r, 75));
+  }
+});
 
-  document.getElementById('form-project').onsubmit = async (e) => {
+// Drop a folder from the file manager on the projects list or the project bar
+// to add it. Only external drags carry 'Files'; the list's own reordering
+// drags (DragDrop.js) never do, so the two never meet.
+for (const zone of [document.getElementById('projects-popover'), document.getElementById('project-bar')]) {
+  if (!zone) continue;
+  const isExternal = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+  zone.addEventListener('dragover', (e) => {
+    if (!isExternal(e)) return;
     e.preventDefault();
-    const name = document.getElementById('inp-name').value.trim();
-    let projPath = document.getElementById('inp-path').value.trim();
-    const repoUrl = document.getElementById('inp-repo-url')?.value.trim();
-
-    if (!name || !projPath) return;
-
-    const form = e.currentTarget;
-    if (form.dataset.operationId) { await api.operations.cancel(form.dataset.operationId); return; }
-
-    // Disable submit button to prevent double-click (BUG 5)
-    const submitBtn = document.getElementById('btn-create-project');
-    submitBtn.disabled = true;
-
-    // Track whether we created a new directory (for cleanup on failure)
-    let createdDir = null;
-
-    // If using existing folder, ensure the directory exists
-    if (selectedSource === 'folder') {
-      if (!(await fileExists(projPath))) {
-        try {
-          await fsp.mkdir(projPath, { recursive: true });
-          createdDir = projPath;
-        } catch (err) {
-          showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
-          submitBtn.disabled = false;
-          return;
-        }
-      }
-    }
-
-    // If creating new, create the directory
-    if (selectedSource === 'create') {
-      projPath = path.join(projPath, name);
-      try {
-        if (await fileExists(projPath)) {
-          showToast(t('newProject.folderAlreadyExists'), 'error');
-          submitBtn.disabled = false;
-          return;
-        }
-        await fsp.mkdir(projPath, { recursive: true });
-        createdDir = projPath;
-
-        // Init git repo if checked
-        if (document.getElementById('chk-init-git')?.checked) {
-          try {
-            await api.project.initGit({ projectPath: projPath });
-            await fsp.writeFile(path.join(projPath, '.gitignore'), [
-              'node_modules/',
-              'dist/',
-              'build/',
-              '.env',
-              '.env.local',
-              '*.log',
-              '.DS_Store',
-              'Thumbs.db',
-              ''
-            ].join('\n'));
-          } catch (gitErr) {
-            showToast(t('newProject.folderCreatedGitInitError', { error: gitErr.message }), 'error');
-          }
-        }
-      } catch (err) {
-        showToast(t('newProject.unableToCreateFolder', { error: err.message }), 'error');
-        submitBtn.disabled = false;
-        return;
-      }
-    }
-
-    // Clone/scaffold in a main-process staging directory. Cancel/retry keeps
-    // the form values; failures never remove an existing destination folder.
-    if ((selectedSource === 'clone' && repoUrl) || (selectedSource === 'scaffold' && selectedTemplate)) {
-      projPath = path.join(projPath, name);
-      const operationId = crypto.randomUUID(); form.dataset.operationId = operationId;
-      const blockChanges = event => { if (!submitBtn.contains(event.target)) { event.preventDefault(); event.stopImmediatePropagation(); } };
-      form.addEventListener('click', blockChanges, true);
-      const controls = [...form.querySelectorAll('input, select, textarea, button')].filter(control => control !== submitBtn).map(control => [control, control.disabled]);
-      controls.forEach(([control]) => { control.disabled = true; });
-      submitBtn.disabled = false; submitBtn.type = 'button'; submitBtn.textContent = t('common.cancel');
-      submitBtn.onclick = () => api.operations.cancel(operationId);
-      const status = form.querySelector('.clone-status'); status.style.display = 'block';
-      status.textContent = selectedSource === 'clone' ? t('newProject.cloning') : t('newProject.scaffolding');
-      const unsubscribe = api.operations.onProgress(progress => {
-        if (progress.operationId === operationId && progress.message) status.textContent = progress.message.slice(-500);
-      });
-      try {
-        const result = selectedSource === 'clone'
-          ? await api.git.clone({ operationId, repoUrl, targetPath: projPath })
-          : await api.project.scaffold({ operationId, template: selectedTemplate, targetPath: projPath });
-        if (!result.success) { status.textContent = result.cancelled ? t('newProject.creationCancelled') : result.error; return; }
-        createdDir = projPath;
-        if (selectedSource === 'scaffold') selectedType = 'webapp';
-        if (!form.isConnected || !document.getElementById('modal-overlay').classList.contains('active')) return;
-      } catch (error) { status.textContent = error.message; return; }
-      finally {
-        unsubscribe(); delete form.dataset.operationId; form.removeEventListener('click', blockChanges, true);
-        controls.forEach(([control, disabled]) => { control.disabled = disabled; });
-        submitBtn.type = 'submit'; submitBtn.onclick = null; submitBtn.disabled = false; submitBtn.textContent = t('newProject.create');
-      }
-    }
-
-    // Check for duplicate project path (BUG 2)
-    const normalizedPath = projPath.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase();
-    const existingProject = projectsState.get().projects.find(p =>
-      p.path.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase() === normalizedPath
-    );
-    if (existingProject) {
-      showToast(t('newProject.duplicatePath', { name: existingProject.name }), 'error');
-      submitBtn.disabled = false;
-      return;
-    }
-
-    // Register project — wrapped in try-catch (BUG 1)
-    try {
-      const project = { id: generateProjectId(), name, path: projPath, type: selectedType, folderId: null };
-      // Empty value means "follow the default", which is the absence of a
-      // binding rather than a binding to the default account — otherwise the
-      // project would stop following the default the day it changes.
-      const chosenAccount = document.getElementById('wizard-account')?.value;
-      if (chosenAccount) project.accountId = chosenAccount;
-      // Merge type-specific wizard config
-      const typeHandler = registry.get(selectedType);
-      const typeConfig = typeHandler.getWizardConfig(document.getElementById('form-project'));
-      Object.assign(project, typeConfig);
-
-      // Generate template files if type supports it
-      if (typeHandler.afterProjectCreate) {
-        await typeHandler.afterProjectCreate(project, projPath);
-      }
-
-      const projects = [...projectsState.get().projects, project];
-      const rootOrder = [...projectsState.get().rootOrder, project.id];
-      projectsState.set({ projects, rootOrder });
-      saveProjects();
-      ProjectList.render();
-      closeModal();
-
-      // Detect git status for the new project
-      checkProjectGitStatus(project);
-    } catch (err) {
-      console.error('[NewProject] Failed to register project:', err);
-      showToast(t('newProject.registrationError', { error: err.message }), 'error');
-      submitBtn.disabled = false;
-    }
-  };
-};
+    e.dataTransfer.dropEffect = 'copy';
+    zone.classList.add('np-drop-target');
+  });
+  zone.addEventListener('dragleave', (e) => {
+    if (!zone.contains(e.relatedTarget)) zone.classList.remove('np-drop-target');
+  });
+  zone.addEventListener('drop', (e) => {
+    zone.classList.remove('np-drop-target');
+    if (!isExternal(e)) return;
+    const file = e.dataTransfer.files?.[0];
+    const dropped = file && (file.path || api.getPathForFile?.(file));
+    if (!dropped) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openNewProject({ presetPath: dropped });
+  });
+}
 
 document.getElementById('btn-new-folder').onclick = () => promptCreateFolder(null);
 
@@ -6904,7 +6521,7 @@ api.tray.onOpenNewWorktree(() => {
   if (project) openNewWorktreeModal(project);
 });
 
-api.tray.onOpenQuickPicker(() => {
+function openCommandPalette() {
   const { projects, selectedProjectFilter } = projectsState.get();
   const currentProject = selectedProjectFilter !== null ? projects[selectedProjectFilter] : null;
   openQuickPicker(document.body, {
@@ -6917,7 +6534,23 @@ api.tray.onOpenQuickPicker(() => {
       createTerminalForProject(project);
     },
   });
-});
+}
+
+api.tray.onOpenQuickPicker(openCommandPalette);
+document.addEventListener('ct-open-palette', openCommandPalette);
+
+// In-app command palette: Cmd+K on macOS, Ctrl+K elsewhere. On Windows and
+// Linux Ctrl+K belongs to the shell inside a terminal (kill to end of line),
+// so it is left to xterm there; Cmd never reaches a terminal program.
+window.addEventListener('keydown', (e) => {
+  if (e.key.toLowerCase() !== 'k' || e.shiftKey || e.altKey) return;
+  const mac = document.body.classList.contains('platform-darwin');
+  if (mac ? !(e.metaKey && !e.ctrlKey) : !(e.ctrlKey && !e.metaKey)) return;
+  if (!mac && e.target?.closest?.('.xterm')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  openCommandPalette();
+}, true);
 
 api.tray.onShowSessions(() => {
   const selectedFilter = projectsState.get().selectedProjectFilter;

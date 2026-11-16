@@ -1,0 +1,2049 @@
+/* ambience.css - animated backgrounds, glass surfaces and layout options.
+ *
+ * Loaded last. Everything here is gated on a body class the ThemeEngine sets
+ * (src/renderer/ambience/ThemeEngine.js), so the classic theme renders exactly
+ * as it did before this file existed.
+ *
+ * How the scene shows through without touching the other 32 stylesheets:
+ * inside the app's three panes (titlebar, sidebar, content) the --bg-* tokens
+ * are redefined as translucent mixes of the theme's solid colours (--ct-*).
+ * Every rule that already reads var(--bg-primary) for a page background turns
+ * transparent, every card reading var(--bg-secondary) turns into frosted glass,
+ * and hovers become overlays that work on any background. Popovers, menus and
+ * modals live outside those panes, keep the solid tokens and stay opaque.
+ */
+
+/* ── The scene layer ───────────────────────────────────────────────────── */
+
+#ct-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+  background: var(--ct-bg, var(--bg-primary));
+}
+
+.ct-ambient-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* Brightness is the user's (settings.ambientBrightness), applied on top of
+     the theme's scrim: a cheap GPU filter on one layer, never per element. */
+  filter: blur(var(--scene-blur, 0px)) brightness(var(--scene-brightness, 0.7)) saturate(0.92);
+}
+
+/* Pixel renderer: the canvas holds one pixel per tile and is scaled up
+   without smoothing (sized in whole tiles by AmbientBackground); the grid
+   layer draws the gaps between tiles. No scene blur: it would melt the tiles. */
+#ct-ambient.pixel .ct-ambient-canvas {
+  right: auto;
+  bottom: auto;
+  image-rendering: pixelated;
+  filter: brightness(var(--scene-brightness, 0.7)) saturate(1.05);
+}
+
+.ct-ambient-grid {
+  display: none;
+  position: absolute;
+  inset: 0;
+}
+
+#ct-ambient.pixel .ct-ambient-grid {
+  display: block;
+  background-image:
+    linear-gradient(to right, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.55) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.55) 1px, transparent 1px);
+  background-size: var(--pixel-cell, 6px) var(--pixel-cell, 6px);
+}
+
+.ct-ambient-fade {
+  opacity: 1;
+  transition: opacity 1s ease;
+}
+
+/* Tints the scene towards the theme backdrop; the readability slider. A light
+   vignette keeps the edges calm where the sidebar and the input sit. */
+.ct-ambient-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.35) 100%),
+    rgba(var(--theme-bg-rgb, 0, 0, 0), var(--scrim-alpha, 0.4));
+}
+
+html:has(body.ct-ambient),
+body.ct-ambient {
+  background: transparent;
+}
+
+/* ── Translucent tokens inside the panes ──────────────────────────────── */
+
+body.ct-ambient :is(.titlebar, .sidebar, .content) {
+  --bg-primary: transparent;
+  --bg-secondary: color-mix(in srgb, var(--ct-surface) var(--card-pct, 80%), transparent);
+  --bg-tertiary: color-mix(in srgb, var(--ct-surface-2) var(--card-pct, 80%), transparent);
+  --bg-hover: color-mix(in srgb, var(--ct-text) 8%, transparent);
+  --bg-active: color-mix(in srgb, var(--ct-text) 12%, transparent);
+  --border-color: color-mix(in srgb, var(--ct-text) 11%, transparent);
+  --border-primary: var(--border-color);
+}
+
+/* Chrome: one blur per pane, never per item, so the cost stays flat however
+   long the transcript gets. */
+body.ct-ambient .titlebar,
+body.ct-ambient .sidebar {
+  background: color-mix(in srgb, var(--ct-bg) var(--glass-pct, 62%), transparent);
+  backdrop-filter: blur(var(--glass-blur, 18px)) saturate(1.2);
+}
+
+body.ct-ambient .project-bar,
+body.ct-ambient .terminals-tabs-row {
+  background: color-mix(in srgb, var(--ct-bg) max(6%, calc(var(--glass-pct, 62%) - 18%)), transparent);
+}
+
+/* Screens other than the conversation are dense (tables, forms, graphs): they
+   get a frosted page of their own, more opaque than the chrome. Only the
+   active one is displayed, so this is a single blur at any time. */
+body.ct-ambient .tab-content.active:not(#tab-claude) {
+  background: color-mix(in srgb, var(--ct-bg) var(--page-pct, 72%), transparent);
+  backdrop-filter: blur(var(--glass-blur, 18px));
+}
+
+/* Overlays outside the panes: a soft blur behind modals instead of a flat
+   black sheet, and menus slightly lifted off the scene. */
+body.ct-ambient .modal-overlay.active {
+  backdrop-filter: blur(6px);
+}
+
+/* ── Conversation ─────────────────────────────────────────────────────── */
+
+/* Text sits on a dense card, not on the scene: readability first, the scene
+   shows around and between the messages. */
+body.ct-ambient .chat-msg-assistant {
+  padding: 12px 16px;
+  margin: 4px 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ct-bg) max(78%, calc(var(--glass-pct, 62%) + 16%)), transparent);
+  border: 1px solid color-mix(in srgb, var(--ct-text) 7%, transparent);
+}
+
+body.ct-ambient .chat-tool-card,
+body.ct-ambient .chat-tool-group {
+  background:
+    linear-gradient(135deg, rgba(var(--accent-color-rgb, 99, 102, 241), 0.07), rgba(var(--accent-color-rgb, 99, 102, 241), 0.02)),
+    color-mix(in srgb, var(--ct-bg) 76%, transparent);
+}
+
+body.ct-ambient .chat-thinking,
+body.ct-ambient .chat-subagent-card,
+body.ct-ambient .chat-system-notice {
+  background-color: color-mix(in srgb, var(--ct-bg) 76%, transparent);
+}
+
+body.ct-ambient .chat-msg-user .chat-msg-content {
+  background: color-mix(in srgb, var(--accent) 22%, color-mix(in srgb, var(--ct-surface) 85%, transparent));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+body.ct-ambient .chat-input-wrapper {
+  background: color-mix(in srgb, var(--ct-surface) 82%, transparent);
+  backdrop-filter: blur(var(--glass-blur, 18px)) saturate(1.2);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+body.ct-ambient .chat-side {
+  background: color-mix(in srgb, var(--ct-bg) var(--glass-pct, 62%), transparent);
+  backdrop-filter: blur(var(--glass-blur, 18px));
+}
+
+body.ct-ambient .chat-welcome-text {
+  opacity: 0.85;
+  color: var(--text-secondary);
+}
+
+body.ct-ambient .chat-welcome-logo {
+  opacity: 0.6;
+}
+
+/* Empty states float over the scene: give them a card so they never sit as
+   bare text on a busy background. */
+body.ct-ambient .sessions-empty-state,
+body.ct-ambient .terminals-container > .empty-state:not(:has(.sessions-empty-state)) {
+  align-self: center;
+  height: auto;
+  max-width: 420px;
+  margin: auto;
+  padding: 28px 36px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--ct-bg) var(--glass-pct, 62%), transparent);
+  backdrop-filter: blur(var(--glass-blur, 18px));
+  border: 1px solid color-mix(in srgb, var(--ct-text) 8%, transparent);
+}
+
+/* Terminal tabs: the xterm canvas paints its own (theme-derived) background,
+   so give it rounded corners and a little air instead of a full-bleed slab. */
+body.ct-ambient .terminal-wrapper.active:not(.chat-wrapper) .xterm {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Layout: floating panes ───────────────────────────────────────────── */
+
+body.ct-layout-floating .main-container {
+  padding: 0 10px 10px;
+  gap: 10px;
+}
+
+body.ct-layout-floating .titlebar {
+  border-bottom-color: transparent;
+}
+
+body.ct-layout-floating .sidebar,
+body.ct-layout-floating .content {
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+body.ct-layout-floating.ct-ambient .content {
+  background: color-mix(in srgb, var(--ct-bg) 18%, transparent);
+}
+
+body.ct-layout-floating .main-container {
+  height: calc(100vh - 36px);
+}
+
+/* ── Layout: conversation width ───────────────────────────────────────── */
+
+body.ct-chat-comfortable .chat-messages > *,
+body.ct-chat-comfortable .chat-input-area {
+  width: 100%;
+  max-width: 880px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+body.ct-chat-narrow .chat-messages > *,
+body.ct-chat-narrow .chat-input-area {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ── Layout: fonts ────────────────────────────────────────────────────── */
+
+body.ct-font-rounded {
+  font-family: ui-rounded, 'SF Pro Rounded', 'Nunito', 'Varela Round', system-ui, -apple-system, sans-serif;
+}
+
+body.ct-font-serif {
+  font-family: ui-serif, 'New York', 'Iowan Old Style', 'Charter', Georgia, serif;
+}
+
+body.ct-font-mono {
+  font-family: ui-monospace, 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+/* ── Layout: corner radius ────────────────────────────────────────────── */
+
+body.ct-radius-sharp {
+  --radius: 3px;
+  --radius-sm: 2px;
+}
+
+body.ct-radius-round {
+  --radius: 12px;
+  --radius-sm: 7px;
+}
+
+/* ── Zen mode: just the conversation over the scene ───────────────────── */
+
+body.ct-zen .sidebar,
+body.ct-zen .project-bar,
+body.ct-zen .titlebar-usage,
+body.ct-zen .titlebar-time {
+  display: none !important;
+}
+
+body.ct-zen .terminals-tabs-row {
+  opacity: 0.35;
+  transition: opacity 0.2s ease;
+}
+
+body.ct-zen .terminals-tabs-row:hover {
+  opacity: 1;
+}
+
+/* ── Theme Studio (Settings → Themes) ─────────────────────────────────── */
+
+.ts-intro {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  margin: -2px 0 12px 4px;
+  line-height: 1.5;
+}
+
+.ts-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.ts-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ts-filter {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.ts-filter:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.ts-filter.active {
+  background: var(--accent-dim);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--text-primary);
+}
+
+.ts-toolbar-actions { display: flex; gap: 8px; }
+
+.ts-btn { font-size: var(--font-xs); padding: 6px 12px; }
+
+.ts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 14px;
+}
+
+.ts-empty {
+  grid-column: 1 / -1;
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  border: 1px dashed var(--border-color);
+  border-radius: 12px;
+}
+
+.ts-card {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  outline: none;
+}
+
+.ts-card:hover,
+.ts-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-color));
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.ts-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent), 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.ts-thumb {
+  display: block;
+  width: 100%;
+  aspect-ratio: 264 / 150;
+  height: auto;
+  background: var(--bg-tertiary);
+}
+
+.ts-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-size: var(--font-sm);
+  color: var(--text-primary);
+}
+
+.ts-card-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.ts-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ts-card-sound { color: var(--text-muted); font-size: var(--font-xs); }
+
+.ts-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.ts-card:hover .ts-card-actions,
+.ts-card:focus-within .ts-card-actions { opacity: 1; }
+
+.ts-card-btn {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 18%, transparent);
+  background: color-mix(in srgb, var(--ct-bg) 75%, transparent);
+  backdrop-filter: blur(8px);
+  color: var(--text-primary);
+  font-size: var(--font-2xs);
+  cursor: pointer;
+}
+
+.ts-card-btn:hover { background: var(--accent); border-color: var(--accent); color: var(--ct-bg); }
+.ts-card-btn.danger:hover { background: var(--danger); border-color: var(--danger); }
+
+.ts-card.active::after {
+  content: '✓';
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--ct-bg);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Editor */
+.ts-editor {
+  margin-top: 18px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border-color));
+  background: var(--bg-secondary);
+  padding: 16px 18px 18px;
+}
+
+.ts-editor-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.ts-name {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-md);
+  font-weight: 600;
+}
+
+.ts-name:focus { outline: none; border-color: var(--accent); }
+
+.ts-contrast {
+  font-size: var(--font-2xs);
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 18%, transparent);
+  color: var(--success);
+  white-space: nowrap;
+}
+
+.ts-contrast[data-level="low"] {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.ts-editor-actions { display: flex; gap: 8px; }
+
+.ts-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.ts-editor-grid h4 {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.ts-editor-grid h4:not(:first-child) { margin-top: 16px; }
+
+.ts-scene-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ts-scene-chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-2xs);
+  cursor: pointer;
+}
+
+.ts-scene-chip:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ts-scene-chip.active { background: var(--accent); border-color: var(--accent); color: var(--ct-bg); }
+
+.ts-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px 10px;
+}
+
+.ts-fields-col { grid-template-columns: 1fr; }
+
+.ts-color,
+.ts-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.ts-color span,
+.ts-check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ts-color input[type="color"] {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.ts-color input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+.ts-color input[type="color"]::-webkit-color-swatch { border: none; border-radius: 6px; }
+
+.ts-slider {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  grid-column: 1 / -1;
+}
+
+.ts-slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+.ts-slider output { color: var(--text-muted); font-variant-numeric: tabular-nums; grid-row: 1; grid-column: 2; }
+
+.ts-range { width: 180px; accent-color: var(--accent); }
+
+.ts-select-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.ts-select {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  min-width: 150px;
+}
+
+.ts-select:focus { outline: none; border-color: var(--accent); }
+
+.ts-link {
+  margin-top: 10px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.ts-link:hover { text-decoration: underline; }
+
+.ts-segment {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border-radius: 9px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.ts-segment button {
+  padding: 5px 11px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.ts-segment button:hover { color: var(--text-primary); }
+.ts-segment button.active { background: var(--accent); color: var(--ct-bg); font-weight: 600; }
+
+/* ── Titlebar ambience button and popover ─────────────────────────────── */
+
+.titlebar-ambience-btn {
+  -webkit-app-region: no-drag;
+  width: 30px;
+  height: 26px;
+  margin-right: 6px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.titlebar-ambience-btn svg { width: 17px; height: 17px; }
+.titlebar-ambience-btn:hover,
+.titlebar-ambience-btn[aria-expanded="true"] { background: var(--bg-hover); color: var(--accent); }
+
+.amb-pop {
+  position: fixed;
+  z-index: 10050;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary);
+  animation: amb-pop-in 0.16s ease-out;
+}
+
+@keyframes amb-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+.amb-pop-head {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 2px 8px;
+}
+
+.amb-pop-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 112px;
+  grid-template-rows: repeat(2, auto);
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+
+.amb-pop-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--font-2xs);
+  text-align: left;
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+
+.amb-pop-theme canvas {
+  width: 100%;
+  aspect-ratio: 132 / 75;
+  height: auto;
+  border-radius: 9px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.amb-pop-theme span { padding: 0 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.amb-pop-theme:hover canvas { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 50%, var(--border-color)); }
+.amb-pop-theme.active canvas { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
+.amb-pop-theme.active { color: var(--text-primary); }
+
+.amb-pop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 4px 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.amb-pop-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  cursor: pointer;
+}
+
+.amb-pop-switch input { accent-color: var(--accent); width: 15px; height: 15px; }
+.amb-pop-volume { flex: 1; max-width: 170px; accent-color: var(--accent); }
+
+.amb-pop-more {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.amb-pop-more:hover { border-color: var(--accent); color: var(--accent); }
+
+
+/* ── Cleaner chrome: fewer lines (settings.uiBorders) ─────────────────────
+   'subtle' (default): borders drop to a whisper and the structural
+   separators between panes go away; panes are told apart by their
+   backgrounds. 'none': no borders at all except on form fields, which
+   would otherwise stop reading as fields. */
+
+body.ct-borders-subtle {
+  --border-color: color-mix(in srgb, var(--ct-text) 7%, transparent);
+  --border-primary: var(--border-color);
+}
+
+body.ct-borders-subtle.ct-ambient :is(.titlebar, .sidebar, .content) {
+  --border-color: color-mix(in srgb, var(--ct-text) 6%, transparent);
+  --border-primary: var(--border-color);
+}
+
+body.ct-borders-none,
+body.ct-borders-none.ct-ambient :is(.titlebar, .sidebar, .content) {
+  --border-color: transparent;
+  --border-primary: transparent;
+}
+
+body:is(.ct-borders-subtle, .ct-borders-none) :is(.titlebar, .project-bar, .terminals-tabs-row, .chat-tabbar, .chat-side-head) {
+  border-bottom-color: transparent;
+}
+
+body:is(.ct-borders-subtle, .ct-borders-none) :is(.sidebar, .session-actions) { border-right-color: transparent; }
+body:is(.ct-borders-subtle, .ct-borders-none) :is(.chat-side, .chat-side-rail) { border-left-color: transparent; }
+
+body:is(.ct-borders-subtle, .ct-borders-none) :is(.chat-msg-assistant, .chat-msg-user .chat-msg-content, .settings-card, .ts-card:not(.active):not(:hover)) {
+  border-color: transparent;
+}
+
+body:is(.ct-borders-subtle, .ct-borders-none) :is(.chat-tool-card, .chat-tool-group) {
+  border-top-color: transparent;
+  border-right-color: transparent;
+  border-bottom-color: transparent;
+  border-left-width: 2px;
+}
+
+body.ct-borders-none :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), textarea, select, .chat-input-wrapper, .wizard-input):not(:focus):not(:focus-within) {
+  border-color: color-mix(in srgb, var(--ct-text) 10%, transparent);
+}
+
+/* ── Motion: screens, sessions and menus arrive instead of popping ────────
+   Gated on motion being allowed. base.css already shortens every animation
+   to nothing under prefers-reduced-motion; the .reduce-motion setting is
+   honoured here explicitly. Press feedback on clicks is pressFeedback.js. */
+
+@keyframes ct-screen-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes ct-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ct-menu-in {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+body:not(.reduce-motion) .tab-content.active {
+  animation: ct-screen-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+body:not(.reduce-motion) .settings-panel.active {
+  animation: ct-screen-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Switching sessions: a cross-fade, no movement (a terminal must not slide). */
+body:not(.reduce-motion) .terminal-wrapper.active {
+  animation: ct-fade-in 0.16s ease-out;
+}
+
+body:not(.reduce-motion) :is(.context-menu.active, .context-menu.show, .branch-dropdown.active, .branch-dropdown.show, .actions-dropdown.active, .actions-dropdown.show, .settings-dropdown.open .settings-dropdown-menu) {
+  animation: ct-menu-in 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-origin: top left;
+}
+
+/* Hover and focus changes ease in everywhere they were instant. Zero
+   specificity, so any component that declares its own transition keeps it. */
+:where(body:not(.reduce-motion)) :where(button, a, [role="button"], [role="tab"], [role="option"], .nav-tab, .terminal-tab, .project-tab, .settings-tab, .chat-tab) {
+  transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, box-shadow 0.2s ease, opacity 0.16s ease;
+}
+
+.amb-pop-label { font-size: var(--font-sm); }
+
+/* ── Claude's actions: tool calls as compact activity chips ───────────────
+   The stock card is a full-width bar with a thick accent notch on its left
+   edge. Here a call reads as something Claude *did*: a chip sized to its
+   content, the tool's icon in a tinted square (the tool colour comes from
+   --accent-color, set per tool by applyToolColor), the tool name in that
+   colour, the argument in monospace. No left notch, no outline. Expanded,
+   the chip opens to the full width to show its output. */
+
+body .chat-tool-card,
+body .chat-tool-group-header {
+  width: fit-content;
+  max-width: 100%;
+  gap: 9px;
+  padding: 5px 12px 5px 5px;
+  border: 1px solid transparent;
+  border-left-width: 1px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent);
+}
+
+body.ct-ambient .chat-tool-card,
+body.ct-ambient .chat-tool-group-header {
+  background: color-mix(in srgb, var(--ct-bg) 80%, transparent);
+}
+
+body .chat-tool-card.history { background: color-mix(in srgb, var(--bg-tertiary) 70%, transparent); }
+body.ct-ambient .chat-tool-card.history { background: color-mix(in srgb, var(--ct-bg) 70%, transparent); }
+
+body .chat-tool-card.expandable:hover,
+body .chat-tool-group-header:hover {
+  background: color-mix(in srgb, rgb(var(--accent-color-rgb, 99, 102, 241)) 10%, color-mix(in srgb, var(--ct-bg) 82%, transparent));
+  border-color: transparent;
+}
+
+body .chat-tool-card.expanded {
+  width: 100%;
+  padding-bottom: 10px;
+}
+
+body .chat-tool-card .chat-tool-icon,
+body .chat-tool-group-header .chat-tool-icon {
+  width: 26px;
+  height: 26px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.16);
+  color: var(--accent-color);
+  opacity: 1;
+}
+
+body .chat-tool-card .chat-tool-name,
+body .chat-tool-group-header .chat-tool-name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: color-mix(in srgb, var(--accent-color) 70%, var(--text-primary));
+}
+
+body .chat-tool-name-text { font-family: inherit; }
+
+body .chat-tool-card .chat-tool-detail {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  max-width: 56ch;
+}
+
+body .chat-tool-card .chat-tool-status { width: 18px; height: 18px; }
+
+body .chat-tool-content {
+  border-top: none;
+  margin-top: 4px;
+  padding: 8px 4px 0 40px;
+}
+
+/* Grouped calls (×3): the header is the chip, the items an indented list. */
+body .chat-tool-group.open .chat-tool-group-header { border-radius: 12px; }
+
+body .chat-tool-group-items {
+  border: none;
+  border-radius: 0;
+  margin: 4px 0 0 18px;
+  padding-left: 12px;
+  gap: 3px;
+  box-shadow: inset 2px 0 0 rgba(var(--accent-color-rgb, 99, 102, 241), 0.18);
+}
+
+body .chat-tool-group-items .chat-tool-card { margin: 0; }
+
+body .chat-tool-group-badge {
+  background: rgba(var(--accent-color-rgb, 99, 102, 241), 0.14);
+  border-radius: 6px;
+}
+
+body:is(.ct-borders-subtle, .ct-borders-none) :is(.chat-tool-card, .chat-tool-group) { border-left-width: 1px; }
+
+/* In a centred column the chips keep their own width, aligned on the
+   column's left edge rather than stretched to it. */
+body.ct-chat-comfortable .chat-messages > .chat-tool-card:not(.expanded),
+body.ct-chat-narrow .chat-messages > .chat-tool-card:not(.expanded) {
+  width: fit-content;
+  margin-right: auto;
+}
+
+body.ct-chat-comfortable .chat-messages > .chat-tool-card:not(.expanded) { margin-left: max(0px, calc((100% - 880px) / 2)); max-width: min(880px, 100%); }
+body.ct-chat-narrow .chat-messages > .chat-tool-card:not(.expanded) { margin-left: max(0px, calc((100% - 720px) / 2)); max-width: min(720px, 100%); }
+
+body .chat-tool-group > .chat-tool-group-header { align-self: flex-start; }
+
+/* ── The conversation container, owned end to end ─────────────────────────
+   The transcript never scrolls sideways: a horizontal bar under the
+   messages is noise, and whatever is genuinely wide (a code block, a table,
+   a long log line) scrolls inside its own block. Long unbreakable strings
+   (paths, hashes, URLs) wrap instead of pushing the column wider. */
+
+.chat-messages {
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+
+.chat-messages > * { min-width: 0; }
+
+.chat-msg-content { overflow-wrap: anywhere; }
+
+.chat-msg-content :is(pre, table, .mermaid, .katex-display) {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.chat-msg-content pre code { overflow-wrap: normal; }
+
+/* Scrollbars: thin, no track, no corner square; the thumb is a soft pill
+   that firms up when the pointer is over it. Every component that styles its
+   own scrollbar keeps it (these are type selectors, the lowest specificity). */
+::-webkit-scrollbar { width: 9px; height: 9px; background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ct-text) 14%, transparent);
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ct-text) 28%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.chat-messages::-webkit-scrollbar { width: 9px; }
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ct-text) 12%, transparent);
+  border: 2px solid transparent;
+  border-radius: 9px;
+  background-clip: padding-box;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--ct-text) 26%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+/* Theme tagline above an empty conversation ("rain outside, code inside"). */
+.chat-welcome::before {
+  content: var(--theme-tagline, none);
+  order: -1;
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.ts-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.ts-text input,
+.ts-input {
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+}
+
+.ts-text input:focus,
+.ts-input:focus { outline: none; border-color: var(--accent); }
+
+.ts-render { margin-bottom: 10px; }
+
+/* ── Readability pass: text first, the scene around it ────────────────────
+   Text sits on near-opaque surfaces (the scene shows in the margins and the
+   gaps between blocks, not through the words), and the leftover left rules
+   of the stock styles go: a tinted left edge on a rounded chip read as a
+   stray bracket. */
+
+body.ct-ambient .chat-msg-assistant {
+  background: color-mix(in srgb, var(--ct-bg) 93%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ct-text) 6%, transparent), 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+body.ct-ambient .chat-msg-assistant .chat-msg-content { color: var(--text-primary); }
+
+body.ct-ambient .chat-msg-user .chat-msg-content {
+  background: color-mix(in srgb, var(--accent) 24%, color-mix(in srgb, var(--ct-surface) 94%, transparent));
+  color: var(--text-primary);
+}
+
+body .chat-tool-card,
+body .chat-tool-group-header,
+body .chat-tool-card.history,
+body .chat-tool-card.expandable:hover,
+body .chat-tool-group-header:hover {
+  border-left-color: transparent;
+}
+
+body.ct-ambient .chat-tool-card,
+body.ct-ambient .chat-tool-group-header,
+body.ct-ambient .chat-tool-card.history {
+  background: color-mix(in srgb, var(--ct-bg) 91%, transparent);
+}
+
+body.ct-ambient .chat-tool-card .chat-tool-detail { color: var(--text-primary); opacity: 0.82; }
+
+/* Thinking: a quiet card like the others, without the rule on its left. */
+body .chat-thinking {
+  border-left: none;
+  border-radius: 12px;
+}
+
+body.ct-ambient :is(.chat-thinking, .chat-subagent-card, .chat-system-notice) {
+  background-color: color-mix(in srgb, var(--ct-bg) 90%, transparent);
+}
+
+/* ── Readability, second pass ─────────────────────────────────────────────
+   The calm band behind the conversation lives in the scrim, the one layer
+   over the whole window: no seam under the tab row or the header, the scene
+   dims smoothly towards the middle and keeps its colours on both sides. */
+.ct-ambient-scrim {
+  background:
+    linear-gradient(90deg, transparent 0, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.55) 26%, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.55) 74%, transparent 100%),
+    radial-gradient(ellipse at 50% 45%, transparent 40%, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.35) 100%),
+    rgba(var(--theme-bg-rgb, 0, 0, 0), var(--scrim-alpha, 0.4));
+}
+
+body.ct-ambient .chat-msg-assistant {
+  background: color-mix(in srgb, var(--ct-bg) 97%, var(--ct-text));
+}
+
+body.ct-ambient :is(.chat-tool-card, .chat-tool-group-header, .chat-tool-card.history, .chat-thinking, .chat-subagent-card, .chat-system-notice) {
+  background: color-mix(in srgb, var(--ct-bg) 96%, var(--ct-text));
+}
+
+body.ct-ambient .chat-msg {
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+body.ct-ambient :is(.chat-msg-assistant, .chat-msg-user) .chat-msg-content {
+  color: color-mix(in srgb, var(--text-primary) 88%, #ffffff);
+}
+
+body.ct-ambient .chat-msg-content :is(strong, b) { color: #ffffff; }
+
+/* ── One surface: no frosted panes over the scene ─────────────────────────
+   A blurred header over a crisp scene (or a blurred tab page beside a crisp
+   conversation) split the window into patches. The panes now tint the scene
+   without blurring it, so the scene runs unbroken under the whole UI;
+   readability comes from the scrim and the opaque text blocks. Floating
+   popovers and modals keep their blur: they sit above, not within. */
+body.ct-ambient :is(.titlebar, .sidebar, .tab-content.active, .chat-side, .chat-input-wrapper, .chat-tabbar, .project-bar, .terminals-tabs-row) {
+  backdrop-filter: none;
+}
+
+body.ct-ambient .titlebar {
+  background: linear-gradient(to bottom, rgba(var(--theme-bg-rgb, 0, 0, 0), 0.6), rgba(var(--theme-bg-rgb, 0, 0, 0), 0.3));
+}
+
+body.ct-ambient .tab-content.active:not(#tab-claude) {
+  background: color-mix(in srgb, var(--ct-bg) calc(var(--page-pct, 72%) + 12%), transparent);
+}
+
+body.ct-ambient .chat-input-wrapper {
+  background: color-mix(in srgb, var(--ct-surface) 94%, transparent);
+}
+
+/* ── The session column slides, and its sections fold smoothly ────────────
+   The column is an overlay on the right of the conversation, not a flex
+   item, so opening and closing never re-lay anything out. It slides on a
+   transform; the conversation makes room on a transform too (half the
+   column's width, never more than its own left margin, so text is never
+   pushed off screen), and the input follows it. Only GPU work per frame,
+   whatever the length of the transcript. The collapsed rail fades out under
+   an opening column and back in once it has left. Transitions, not
+   keyframes: a click halfway through reverses from where it is. Sections
+   fold by animating their height to and from `auto` (interpolate-size). */
+.chat-body { position: relative; }
+
+.chat-view .chat-side-rail {
+  display: flex;
+  transition: opacity 0.2s ease 0.12s, visibility 0s linear 0s;
+}
+
+body:not(.chat-side-collapsed) .chat-view .chat-side-rail {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.12s ease, visibility 0s linear 0.12s;
+}
+
+.chat-side,
+body.chat-side-collapsed .chat-side {
+  display: flex;
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  background: var(--ct-bg, var(--bg-primary));
+  box-shadow: -18px 0 44px rgba(0, 0, 0, 0.3);
+  will-change: transform;
+  transition: transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease, visibility 0s linear 0s;
+}
+
+body.ct-ambient .chat-side { background: color-mix(in srgb, var(--ct-bg) 97%, var(--ct-text)); }
+
+body.chat-side-collapsed .chat-side {
+  transform: translateX(calc(100% + 24px));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.22s ease 0.06s, visibility 0s linear 0.3s;
+}
+
+/* The conversation side-steps the open column, on a transform. The step is
+   measured on the chat view itself (a size container), so the transcript and
+   the input bar move by exactly the same amount: half the column, never more
+   than the margin beside the centred column. */
+.chat-view { container-type: inline-size; }
+
+.chat-body > .chat-messages,
+.chat-view > .chat-input-area {
+  transition: transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+body.ct-chat-comfortable:not(.chat-side-collapsed) .chat-view:is(:not(.brief-off), .has-tasks, .has-git, .has-tickets) > :is(.chat-body > .chat-messages, .chat-input-area),
+body.ct-chat-comfortable:not(.chat-side-collapsed) .chat-view:is(:not(.brief-off), .has-tasks, .has-git, .has-tickets) > .chat-body > .chat-messages {
+  transform: translateX(calc(-1 * min(154px, max(0px, (100cqw - 880px) / 2 - 32px))));
+}
+
+body.ct-chat-narrow:not(.chat-side-collapsed) .chat-view:is(:not(.brief-off), .has-tasks, .has-git, .has-tickets) > .chat-input-area,
+body.ct-chat-narrow:not(.chat-side-collapsed) .chat-view:is(:not(.brief-off), .has-tasks, .has-git, .has-tickets) > .chat-body > .chat-messages {
+  transform: translateX(calc(-1 * min(154px, max(0px, (100cqw - 720px) / 2 - 32px))));
+}
+
+/* Full-width conversation: there is no margin to step into, so it narrows
+   (one layout, not animated). */
+body:not(.ct-chat-comfortable):not(.ct-chat-narrow):not(.chat-side-collapsed) .chat-view:is(:not(.brief-off), .has-tasks, .has-git, .has-tickets) .chat-body > .chat-messages {
+  padding-right: calc(20px + 308px + 12px);
+}
+
+body.reduce-motion :is(.chat-side, .chat-side-rail, .chat-body > .chat-messages, .chat-view > .chat-input-area) { transition: none; }
+
+.chat-side { interpolate-size: allow-keywords; }
+
+.chat-side-chevron { transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+body:not(.reduce-motion) .chat-side :is(.chat-brief-body, .chat-side-git-body, .chat-side-tickets-body, .chat-tasks-body) {
+  overflow: hidden;
+  transition: height 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, visibility 0.28s;
+}
+
+body:not(.reduce-motion).chat-side-brief-folded .chat-brief-body,
+body:not(.reduce-motion).chat-side-git-folded .chat-side-git-body,
+body:not(.reduce-motion).chat-side-tickets-folded .chat-side-tickets-body,
+body:not(.reduce-motion).chat-side-tasks-folded .chat-tasks-body {
+  display: revert-layer;
+  height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* ── Settings: a way back, a side menu, no lines ──────────────────────────
+   The screen had no exit of its own (the sidebar is hidden in the focus
+   layout), ten tabs in a row, a coloured bar beside each section and a rule
+   between every row. Now: a back button (and Escape) to the screen it was
+   opened from, the sections as a menu on the left, content in a readable
+   column, rows told apart by spacing and a hover surface instead of rules. */
+.settings-inline-wrapper {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 820px);
+  grid-template-areas: "back search" "nav empty" "nav content";
+  grid-template-rows: auto auto 1fr;
+  column-gap: 36px;
+  justify-content: center;
+  padding: 16px 32px 48px;
+  min-height: 100%;
+  /* A flex item of the scrolling #tab-settings: it must grow with its
+     content, or the grid rows (and the sticky menu with them) end at one
+     screen height while the content runs on. */
+  flex: 0 0 auto;
+}
+
+.settings-back {
+  grid-area: back;
+  align-self: center;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px 0 9px;
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ct-text) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.settings-back svg { width: 16px; height: 16px; }
+.settings-back:hover { background: color-mix(in srgb, var(--ct-text) 12%, transparent); color: var(--text-primary); }
+
+.settings-inline-wrapper > .settings-search {
+  grid-area: search;
+  /* Scrolls away with the page: a pinned bar left rows sliding under it. */
+  position: static;
+  margin: 0 0 20px;
+  padding: 10px 0;
+  border-bottom: none;
+  background: transparent;
+}
+
+.settings-inline-wrapper > .settings-search .settings-search-input {
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ct-text) 7%, transparent);
+}
+
+.settings-inline-wrapper > .settings-search-empty { grid-area: empty; }
+.settings-inline-wrapper > .settings-content { grid-area: content; }
+
+.settings-inline-wrapper > .settings-tabs {
+  grid-area: nav;
+  align-self: start;
+  position: sticky;
+  top: 16px;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border-bottom: none;
+}
+
+.settings-inline-wrapper > .settings-tabs .settings-tab {
+  justify-content: flex-start;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 9px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.settings-inline-wrapper > .settings-tabs .settings-tab:hover { background: color-mix(in srgb, var(--ct-text) 6%, transparent); color: var(--text-primary); }
+
+.settings-inline-wrapper > .settings-tabs .settings-tab.active {
+  background: color-mix(in srgb, var(--ct-text) 11%, transparent);
+  border-bottom-color: transparent;
+  color: var(--text-primary);
+}
+
+/* No coloured bar per section, no rule per row. */
+.settings-group[data-section] { border-left: none; padding-left: 0; }
+
+.settings-card {
+  border: none;
+  border-radius: 14px;
+  padding: 4px;
+  background: color-mix(in srgb, var(--ct-text) 4%, transparent);
+}
+
+body.ct-ambient .settings-card { background: color-mix(in srgb, var(--ct-bg) 70%, var(--ct-text) 4%); }
+
+.settings-card > :is(.settings-row, .settings-toggle-row, .color-picker) { border-top-color: transparent !important; }
+
+.settings-card :is(.settings-row, .settings-toggle-row) { border-radius: 10px; }
+.settings-card :is(.settings-row, .settings-toggle-row):hover { background: color-mix(in srgb, var(--ct-text) 4%, transparent); }
+
+.settings-group-title { margin-bottom: 10px; }
+
+/* Narrow window: the menu goes back above the content, as a scrolling row. */
+@media (max-width: 960px) {
+  .settings-inline-wrapper {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "back" "search" "nav" "empty" "content";
+  }
+  .settings-inline-wrapper > .settings-tabs {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    margin-bottom: 18px;
+  }
+}
+
+/* ── Settings → Claude accounts ───────────────────────────────────────────
+   A short intro and the section's actions on one line at the top, then one
+   quiet row per account: an avatar (the account's initial on its colour,
+   still the colour picker), the name with a small "Default" pill, its id,
+   its usage below. Per-account actions are icons that come forward on hover,
+   named in their tooltips. No outlined "active" box. */
+.accounts-card { padding: 14px; }
+
+.accounts-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 12px;
+}
+
+.accounts-intro {
+  flex: 1;
+  margin: 2px 0 0;
+  font-size: var(--font-xs);
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: 54ch;
+}
+
+.accounts-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.accounts-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ct-text) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.accounts-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.accounts-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ct-text) 12%, transparent); color: var(--text-primary); }
+.accounts-btn:disabled { opacity: 0.45; cursor: default; }
+.accounts-btn--icon { width: 32px; padding: 0; justify-content: center; }
+
+.accounts-btn--primary {
+  background: var(--accent);
+  color: var(--ct-bg);
+  font-weight: 600;
+}
+
+.accounts-btn--primary:hover:not(:disabled) { background: var(--accent-hover); color: var(--ct-bg); }
+
+.accounts-card .accounts-list { display: flex; flex-direction: column; gap: 4px; padding: 0; }
+
+.accounts-card .account-row,
+.accounts-card .account-row.active {
+  padding: 10px 12px;
+  border: none;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ct-text) 4%, transparent);
+  box-shadow: none;
+}
+
+.accounts-card .account-row:hover { background: color-mix(in srgb, var(--ct-text) 7%, transparent); }
+
+.accounts-card .account-row-head { display: flex; align-items: center; gap: 12px; }
+
+.accounts-card .account-row-color {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 30%, var(--ct-surface));
+}
+
+/* No colour chosen: the avatar takes the accent, not a struck-through disc. */
+.accounts-card .account-row-color--none { background: color-mix(in srgb, var(--accent) 30%, var(--ct-surface)); }
+.accounts-card .account-row-color--none::before,
+.accounts-card .account-row-color--none::after { display: none; }
+
+.account-row-initial {
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.accounts-card .account-row-main { flex: 1; min-width: 0; }
+
+.accounts-card .account-row-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.accounts-card .account-row-status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+.accounts-card .account-row-meta {
+  font-family: var(--font-mono);
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.accounts-card .account-row-buttons {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.accounts-card .account-row:hover .account-row-buttons,
+.accounts-card .account-row:focus-within .account-row-buttons { opacity: 1; }
+
+.account-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.account-icon-btn svg { width: 15px; height: 15px; }
+.account-icon-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--ct-text) 10%, transparent); color: var(--text-primary); }
+.account-icon-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
+
+.account-text-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.account-text-btn:hover { background: color-mix(in srgb, var(--ct-text) 10%, transparent); color: var(--text-primary); }
+
+.accounts-card .account-row-usage {
+  margin: 6px 0 0 48px;
+  padding: 0;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+@media (max-width: 1100px) {
+  .accounts-toolbar { flex-direction: column; }
+  .accounts-intro { max-width: none; }
+}
+
+/* ── Toasts: frosted cards that drop in ───────────────────────────────────
+   No accent stripe bent along the left edge: the type reads from the tinted
+   icon, and a thin progress line at the bottom says how long it stays. They
+   arrive from just above with a little spring and leave the same way. The
+   container sits under the header in both layouts. */
+.toast-container { top: 54px; right: 18px; gap: 10px; }
+
+.toast {
+  gap: 12px;
+  padding: 11px 10px 13px 12px;
+  border: 1px solid color-mix(in srgb, var(--ct-text) 9%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--ct-surface) 86%, transparent);
+  backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.2);
+  transform: translateY(-10px) scale(0.96);
+  transition: opacity 0.26s cubic-bezier(0.16, 1, 0.3, 1), transform 0.34s cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+.toast.show { transform: none; }
+
+.toast.hide {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  transition: opacity 0.18s ease, transform 0.2s ease;
+}
+
+.toast::before { display: none; }
+
+.toast .toast-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--toast-accent) 18%, transparent);
+}
+
+.toast .toast-icon svg { width: 15px; height: 15px; }
+
+.toast .toast-title { font-size: var(--font-sm); font-weight: 600; }
+.toast .toast-title:only-child { font-weight: 500; }
+
+.toast .toast-action {
+  border: none;
+  border-radius: 9px;
+  padding: 6px 11px;
+  background: color-mix(in srgb, var(--toast-accent) 16%, transparent);
+  color: var(--text-primary);
+}
+
+.toast .toast-action:hover { background: color-mix(in srgb, var(--toast-accent) 26%, transparent); border-color: transparent; }
+
+.toast .toast-close { border-radius: 8px; opacity: 0.6; }
+.toast:hover .toast-close { opacity: 1; }
+
+.toast .toast-progress {
+  left: 14px;
+  right: 14px;
+  bottom: 5px;
+  height: 2px;
+  border-radius: 2px;
+  opacity: 0.55;
+}
+
+/* ── Modals: one surface, no rules ────────────────────────────────────────
+   Rounder, lifted, header and footer separated by spacing rather than by
+   lines, the close button a soft square. */
+.modal {
+  border: 1px solid color-mix(in srgb, var(--ct-text) 9%, transparent);
+  border-radius: 20px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.modal-header { padding: 18px 22px 6px; border-bottom: none; }
+.modal-header h3, #modal-title { font-size: var(--font-md); font-weight: 650; letter-spacing: -0.01em; }
+.modal-body { padding: 14px 22px 20px; }
+.modal-footer { padding: 4px 22px 18px; border-top: none; background: transparent; }
+
+.modal-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+}
+
+.modal-close:hover { background: color-mix(in srgb, var(--ct-text) 12%, transparent); }
+
+.modal-overlay.active { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(6px); }
+
+/* ── Images in the conversation: whole, and never wider than the column ───
+   Attachments in the composer were cropped to a 64px square (object-fit:
+   cover), so a wide screenshot showed only its middle. They now keep their
+   proportions; images in messages grow up to the column instead of a fixed
+   200px, and anything that would overflow scales down to fit. */
+.chat-image-thumb {
+  width: auto;
+  height: 72px;
+  max-width: 220px;
+  min-width: 48px;
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+}
+
+.chat-image-thumb img {
+  width: auto;
+  max-width: 220px;
+  height: 100%;
+  object-fit: contain;
+}
+
+.chat-msg-images { max-width: 100%; }
+
+.chat-msg-image {
+  max-width: min(100%, 460px);
+  max-height: 340px;
+  height: auto;
+}
+
+.chat-inline-img-wrap { max-width: min(100%, 460px); }
+.chat-inline-img { max-height: 340px; }
+
+.chat-msg-content img { max-width: 100%; height: auto; }
+
+/* ── Standard layout: the project bar and the session tabs ────────────────
+   The active tab was an accent-tinted box with a thick accent underline.
+   Both rows now use the segmented style of the focus layout: soft pill
+   tabs, the active one on a quiet surface, no underline, the close cross
+   only on hover. Status dots and attention rings are unchanged. */
+.terminals-tabs-row,
+.project-bar {
+  align-items: center;
+  border-bottom: none;
+}
+
+.terminals-tabs-row { min-height: 42px; padding: 0 6px; }
+
+#terminals-tabs { align-items: center; gap: 3px; padding: 4px 2px; }
+
+.terminal-tab {
+  height: 30px;
+  padding: 0 8px 0 11px;
+  border-radius: 9px;
+  border-bottom: none !important;
+  color: var(--text-secondary);
+}
+
+.terminal-tab:hover { background: color-mix(in srgb, var(--ct-text) 7%, transparent); color: var(--text-primary); }
+
+.terminal-tab.active {
+  background: color-mix(in srgb, var(--ct-text) 12%, transparent);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.terminal-tab .tab-close { opacity: 0; border-radius: 6px; transition: opacity 0.15s ease; }
+.terminal-tab:hover .tab-close,
+.terminal-tab.active .tab-close { opacity: 0.7; }
+.terminal-tab .tab-close:hover { opacity: 1; background: color-mix(in srgb, var(--ct-text) 12%, transparent); }
+
+.project-tabs { gap: 3px; }
+
+.project-tab {
+  height: 28px;
+  border: none;
+  border-radius: 9px;
+}
+
+.project-tab:hover { background: color-mix(in srgb, var(--ct-text) 7%, transparent); }
+
+.project-tab.active {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ct-text) 12%, transparent);
+  color: var(--text-primary);
+}
+
+.session-actions { border-right: none; }
+.session-action-btn,
+.project-tab-add { border-radius: 8px; }
+
+/* The tab strips' own bottom rule (a 1px line under the pills). */
+#terminals-tabs,
+.terminals-tabs,
+.project-tabs,
+#project-tabs { border-bottom: none; }
+
+/* ── Main menu (standard layout) ──────────────────────────────────────────
+   Compact rows, the active screen on a quiet surface with its icon in the
+   accent: no filled accent block and no notch on the left edge. */
+.sidebar .nav-tab {
+  margin: 1px 8px;
+  padding: 6px 10px;
+  gap: 10px;
+  border-radius: 9px;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.sidebar .nav-tab > svg { width: 16px; height: 16px; opacity: 0.75; }
+.sidebar .nav-tab:hover { background: color-mix(in srgb, var(--ct-text) 6%, transparent); color: var(--text-primary); }
+
+.sidebar .nav-tab.active {
+  background: color-mix(in srgb, var(--ct-text) 10%, transparent);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.sidebar .nav-tab.active::before { display: none; }
+.sidebar .nav-tab.active > svg { color: var(--accent); opacity: 1; }
+
+.sidebar .nav-separator {
+  padding: 16px 18px 5px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.sidebar .nav-separator:first-child { padding-top: 10px; }
+
+/* ── Projects column ──────────────────────────────────────────────────────
+   A list, not a stack of cards: one compact row per project with its glyph
+   (type icon, emoji or initial on its colour), the session counter as a
+   small pill, actions coming forward on hover. The project you are in sits
+   on a quiet surface with its path, time and shortcuts beneath, no accent
+   outline. Folders are light group headers without guide lines. */
+.projects-panel .panel-header {
+  padding: 14px 10px 8px 16px;
+  border-bottom: none;
+}
+
+.projects-panel .panel-header h2 {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.projects-panel .panel-actions { gap: 2px; }
+
+.projects-panel .btn-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.projects-panel .btn-icon svg { width: 16px; height: 16px; }
+.projects-panel .btn-icon:hover { background: color-mix(in srgb, var(--ct-text) 8%, transparent); color: var(--text-primary); }
+.projects-panel #btn-new-project { background: var(--accent-dim); color: var(--accent); }
+.projects-panel #btn-new-project:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+.projects-panel .projects-search {
+  margin: 2px 12px 10px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+}
+
+.projects-panel .projects-search:focus-within { background: color-mix(in srgb, var(--ct-text) 9%, transparent); }
+
+.projects-popover.docked { border-right-color: color-mix(in srgb, var(--ct-text) 5%, transparent); }
+
+.projects-list { padding: 0 8px 14px; }
+
+.project-item,
+body.compact-projects .project-item:not(.active) {
+  position: relative;
+  margin-bottom: 1px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.project-item:hover,
+body.compact-projects .project-item:not(.active):hover {
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+  border-color: transparent;
+}
+
+.project-item.active {
+  padding: 7px 8px 9px;
+  border: none;
+  background: color-mix(in srgb, var(--ct-text) 9%, transparent);
+  box-shadow: none;
+}
+
+.project-item .project-info { margin-bottom: 0; }
+
+.project-item .project-name {
+  gap: 10px;
+  font-size: var(--font-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.project-item:hover .project-name,
+.project-item.active .project-name { color: var(--text-primary); }
+.project-item.active .project-name { font-weight: 600; }
+
+.project-item .color-indicator { display: none; }
+
+.project-glyph {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--pc, var(--accent)) 24%, var(--ct-surface));
+  color: color-mix(in srgb, var(--pc, var(--accent)) 70%, #ffffff);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.project-glyph svg { width: 14px; height: 14px; color: inherit; fill: currentColor; }
+.project-glyph.project-emoji-icon { font-size: 14px; }
+
+.project-item .project-path,
+.project-item .project-time,
+.project-item .project-tags { margin-left: 36px; }
+
+.project-item .project-path {
+  margin-top: 2px;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+}
+
+.project-item .project-time { font-size: var(--font-2xs); }
+
+.project-item .project-actions {
+  gap: 2px;
+  margin: 6px 0 0 36px;
+}
+
+.project-item .project-actions :is(.btn-action-icon, .btn-more-actions) {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.project-item .project-actions :is(.btn-action-icon, .btn-more-actions):hover {
+  background: color-mix(in srgb, var(--ct-text) 10%, transparent);
+  color: var(--text-primary);
+}
+
+.project-item .project-actions .btn-claude { color: var(--accent); }
+
+/* Other rows: their shortcuts come forward on hover, over the counter. */
+body.compact-projects .project-item:not(.active):hover .project-actions {
+  display: flex;
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  margin: 0;
+  transform: translateY(-50%);
+  padding: 2px;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ct-surface) 92%, transparent);
+}
+
+body.compact-projects .project-item:not(.active):hover .terminal-count { visibility: hidden; }
+
+.project-item .terminal-count {
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ct-text) 8%, transparent);
+}
+
+.project-item.path-missing .project-glyph { opacity: 0.5; }
+
+/* Folders: a group header, not a card. */
+.folder-header {
+  gap: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+  border-radius: 9px;
+}
+
+.folder-header:hover { background: color-mix(in srgb, var(--ct-text) 6%, transparent); }
+.folder-header .folder-name { font-size: var(--font-sm); font-weight: 600; color: var(--text-secondary); }
+.folder-header .folder-icon { width: 15px; height: 15px; opacity: 0.85; }
+
+.folder-header .folder-count {
+  height: 18px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--ct-text) 8%, transparent);
+  font-size: 10px;
+}
+
+.folder-children { border-left: none; }
+
+.projects-overview-item { border-radius: 10px; margin: 0 8px 6px; }
+
+/* The empty session state's button: a button, not a block (a generic
+   .empty-state svg rule was blowing its + up to 48px). */
+.sessions-empty-btn {
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 11px;
+  font-size: var(--font-sm);
+  font-weight: 600;
+  color: var(--ct-bg);
+}
+
+.sessions-empty-btn svg { width: 15px !important; height: 15px !important; opacity: 1 !important; margin: 0 !important; }
+
+/* Alignment details of the projects column. */
+.project-item .project-path { padding-left: 0; }
+
+/* A type's run-state dot sits on the glyph's corner rather than pushing the
+   row's name out of line with the others. */
+.project-item .project-name > [class*="status-dot"] {
+  position: absolute;
+  top: 3px;
+  left: 29px;
+  z-index: 1;
+  width: 8px;
+  height: 8px;
+  margin: 0;
+  box-shadow: 0 0 0 2px var(--ct-bg);
+}
+
+.sidebar .nav-tab { margin: 1px 6px; padding: 6px 9px; }
+.sidebar .nav-tab > span { overflow: hidden; text-overflow: ellipsis; }
+
+/* The current project's name above the session tabs (column mode). */
+.filter-project {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--ct-text) 8%, transparent);
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* ── Project images (utils/projectImage.js) ───────────────────────────────── */
+.project-glyph.project-image {
+  padding: 0;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--ct-text) 8%, transparent);
+}
+
+.project-glyph.project-image img,
+.project-tab-image img,
+.focus-project-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project-tab-image {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.focus-project-image {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+.customize-picker-image-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.customize-image-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.customize-image-btn svg { width: 15px; height: 15px; }
+.customize-image-btn:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+.customize-image-btn--ghost { background: color-mix(in srgb, var(--ct-text) 7%, transparent); color: var(--text-secondary); font-weight: 500; }
+.customize-image-btn--ghost:hover { background: color-mix(in srgb, var(--ct-text) 12%, transparent); color: var(--text-primary); }

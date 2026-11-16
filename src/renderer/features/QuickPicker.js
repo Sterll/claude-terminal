@@ -263,9 +263,53 @@ function getBuiltinCommands() {
       label: t('quickPicker.cmd.newTerminal'),
       hint: 'Ctrl+T',
       icon: ICON.terminal,
-      action: () => document.querySelector('.new-terminal-btn, [data-action="new-terminal"]')?.click(),
+      // There is no "new terminal" button to click: the session + is a menu.
+      // renderer.js answers this event with exactly what Ctrl+T does.
+      action: () => document.dispatchEvent(new CustomEvent('ct-new-session')),
     },
+    {
+      id: 'cmd-themes',
+      label: t('quickPicker.cmd.themes'),
+      icon: ICON.settings,
+      action: () => document.dispatchEvent(new CustomEvent('ct-open-settings', { detail: { tab: 'themes' } })),
+    },
+    {
+      id: 'cmd-zen',
+      label: t('quickPicker.cmd.zen'),
+      icon: ICON.settings,
+      action: () => require('../ambience/ThemeEngine').toggleZen(),
+    },
+    {
+      id: 'cmd-layout-focus',
+      label: t('quickPicker.cmd.toggleFocus'),
+      icon: ICON.dashboard,
+      action: () => {
+        const { getSetting, setSetting } = require('../state/settings.state');
+        setSetting('layoutMode', getSetting('layoutMode') === 'focus' ? 'standard' : 'focus');
+      },
+    },
+    // Every screen, so the palette can replace the sidebar (the focus layout
+    // hides it). Read from the nav itself: a pinned, unpinned or reordered tab
+    // shows up here with its translated label, and the click is the nav's own.
+    ...screenCommands(),
   ];
+}
+
+function screenCommands() {
+  if (typeof document === 'undefined') return [];
+  const seen = new Set();
+  return [...document.querySelectorAll('.sidebar .nav-tab[data-tab], #more-tabs-dropdown [data-tab]')]
+    .filter((btn) => !seen.has(btn.dataset.tab) && seen.add(btn.dataset.tab))
+    .map((btn) => {
+      // [drag handle][icon][label]: skip the grip the sidebar puts first.
+      const label = (btn.querySelector(':scope > span[data-i18n], :scope > span:not(.nav-tab-drag-handle)')?.textContent || btn.title || btn.dataset.tab).trim();
+      return {
+        id: `cmd-screen-${btn.dataset.tab}`,
+        label: t('quickPicker.cmd.goTo', { screen: label }),
+        icon: btn.querySelector(':scope > svg')?.outerHTML || ICON.dashboard,
+        action: () => btn.click(),
+      };
+    });
 }
 
 // ── Fuzzy matching ────────────────────────────────────────────────────────
