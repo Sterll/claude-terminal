@@ -11,7 +11,7 @@ const { fileExists, fsp, ensureDirs } = require('./src/renderer/utils/fs-async')
 const { matchesSessionQuery } = require('./src/renderer/utils/sessionSearch');
 const nestedRepos = require('./src/renderer/utils/nestedRepos');
 const { createTerminalTicketsButton } = require('./src/renderer/ui/components/terminal/ticketsButton');
-const { applyNavigationMode, isSidebarNavigation } = require('./src/renderer/ui/navigationMode');
+const { applyNavigationMode, isSidebarNavigation, isProjectsPopoverOpen } = require('./src/renderer/ui/navigationMode');
 
 document.body.classList.add(`platform-${nodeProcess.platform}`);
 
@@ -3433,11 +3433,6 @@ document.addEventListener('navigation-mode-change', (e) => setNavigationMode(e.d
 // Settings only writes the flag; mounting the column is the renderer's, since
 // it is the Files screen's tree that gets moved.
 document.addEventListener('files-dock-change', () => syncFilesDock());
-
-function isProjectsPopoverOpen() {
-  const popover = document.getElementById('projects-popover');
-  return !!popover && popover.style.display !== 'none';
-}
 
 function openProjectsPopover(anchor) {
   const popover = document.getElementById('projects-popover');
