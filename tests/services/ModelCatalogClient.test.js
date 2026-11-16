@@ -181,4 +181,36 @@ describe('per-account models', () => {
 
     expect(mythos(ModelCatalog.modelsFor('team'))).toEqual([]);
   });
+
+  test('a failed answer is asked again on the next call', async () => {
+    const api = {
+      chat: {
+        modelAccess: jest.fn()
+          .mockResolvedValueOnce({ success: false, error: 'offline' })
+          .mockResolvedValueOnce({ success: true, models: ['claude-mythos-5-2'] }),
+      },
+    };
+    await ModelCatalog.loadAccess(api, 'team');
+    expect(mythos(ModelCatalog.modelsFor('team'))).toEqual([]);
+
+    await ModelCatalog.loadAccess(api, 'team');
+
+    expect(api.chat.modelAccess).toHaveBeenCalledTimes(2);
+    expect(mythos(ModelCatalog.modelsFor('team'))).toContain('Mythos 5.2');
+  });
+
+  test('a thrown call is asked again too', async () => {
+    const api = {
+      chat: {
+        modelAccess: jest.fn()
+          .mockRejectedValueOnce(new Error('ipc down'))
+          .mockResolvedValueOnce({ success: true, models: ['claude-mythos-5-2'] }),
+      },
+    };
+    await ModelCatalog.loadAccess(api, 'team');
+    await ModelCatalog.loadAccess(api, 'team');
+
+    expect(api.chat.modelAccess).toHaveBeenCalledTimes(2);
+    expect(mythos(ModelCatalog.modelsFor('team'))).toContain('Mythos 5.2');
+  });
 });

@@ -41,8 +41,9 @@ let watching = false;
 // load in flight is still waiting for (a failed fetch answers with the cache).
 let generation = 0;
 // Per account: the model ids the Models API lists for it, behind the rows the
-// CLI's menu never carries (Mythos). Asked once per account per window; main
-// caches across windows. `ids: null` until known, which adds nothing.
+// CLI's menu never carries (Mythos). A success is kept for the window; a
+// failure is dropped once settled so the next call retries. Main caches across
+// windows. `ids: null` until known, which adds nothing.
 const access = new Map();
 
 /** Adopt an answer shaped like `chat-model-catalog`'s. Ignores empty ones. */
@@ -102,7 +103,8 @@ function allModels() {
 }
 
 /**
- * Ask main, once per account, which models `accountId` may run. Subscribers
+ * Ask main which models `accountId` may run, once per account until it answers
+ * (a failure is asked again on the next call). Subscribers
  * hear about it when the answer adds something, the same way as a pushed
  * catalog.
  *
@@ -125,6 +127,9 @@ function loadAccess(api, accountId) {
     } catch (err) {
       console.warn('[ModelCatalogClient] model access unavailable:', err?.message || err);
     }
+    // Only a success is kept: a failed answer is forgotten once it settles, so
+    // the next menu open asks again (main paces the retries itself).
+    if (entry.ids === null && access.get(key) === entry) access.delete(key);
     return entry.ids;
   })();
   return entry.promise;
