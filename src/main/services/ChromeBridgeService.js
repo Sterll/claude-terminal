@@ -9,7 +9,7 @@
  * ------------------
  * There are three processes, and we own none of the protocol between them:
  *
- *   chat session ──stdio MCP──> `claude --claude-in-chrome-mcp`  (we spawn)
+ *   chat session `claude --chrome`  (in-process Claude in Chrome MCP server)
  *                                        │
  *                                        │ bridge (account-paired)
  *                                        ▼
@@ -19,10 +19,20 @@
  *                                            into each browser's NativeMessagingHosts dir
  *
  * The Agent SDK binary we already ship (`@anthropic-ai/claude-agent-sdk-<plat>-<arch>`)
- * implements BOTH subcommands, so the whole feature needs no extra download and
- * no reimplementation of the wire protocol: we register an MCP server and make
- * sure Chrome can find the native host. The 22 browser tools then appear in the
- * session as `mcp__claude-in-chrome__*`.
+ * implements both ends, so the whole feature needs no extra download and no
+ * reimplementation of the wire protocol: we start the session with `--chrome`
+ * and make sure Chrome can find the native host. The 22 browser tools then
+ * appear in the session as `mcp__claude-in-chrome__*`.
+ *
+ * WHY `--chrome` AND NOT OUR OWN MCP SERVER
+ * -----------------------------------------
+ * The CLI reserves the `claude-in-chrome` server name for its own integration
+ * and drops it from a caller's `mcpServers` ("is a reserved MCP server name and
+ * was not loaded"). We used to register `claude --claude-in-chrome-mcp` under
+ * that name ourselves: the session never started it, so no chat ever had the
+ * browser tools while the appended prompt told the model it could drive Chrome.
+ * Note `--chrome` also rewrites `~/.claude/chrome/chrome-native-host` to exec
+ * the binary that ran it, exactly as a standalone `claude --chrome` does.
  *
  * SHARED IDENTITY WITH CLAUDE CODE — WHY WE DON'T OVERWRITE
  * --------------------------------------------------------
@@ -166,13 +176,6 @@ class ChromeBridgeService {
   getExtensionUrl() { return EXTENSION_URL; }
   getMcpServerName() { return MCP_SERVER_NAME; }
   getSystemPrompt() { return SYSTEM_PROMPT; }
-
-  /** Descriptor for the browser-tool MCP server, or null if we can't serve it. */
-  getMcpServerConfig() {
-    const cli = getSdkCliPath();
-    if (!cli) return null;
-    return { type: 'stdio', command: cli, args: ['--claude-in-chrome-mcp'] };
-  }
 
   // ── Browser & extension detection ─────────────────────────────────────────
 
@@ -514,23 +517,24 @@ class ChromeBridgeService {
    * without it and only needs it once the model actually reaches for the
    * browser, so a slow filesystem must not delay the session's first token.
    *
-   * @returns {{mcpServers: Object, systemPrompt: string}|null}
+   * `extraArgs` is the SDK's passthrough for CLI flags; `{ chrome: null }`
+   * becomes a bare `--chrome` (see "why --chrome" above).
+   *
+   * @returns {{extraArgs: Object, systemPrompt: string}|null}
    */
   getSessionConfig() {
     if (!this.isEnabled() || !this.isSupported()) return null;
     // A detection that has already run and found nothing is a reason not to
-    // wire this up: every session would spawn an MCP server that cannot reach
+    // wire this up: every session would start an MCP server that cannot reach
     // a browser, while the appended prompt tells the model it can drive one —
     // so it calls the tools and burns turns on failures. A detection that has
     // never run does not block the session; it is kicked off instead, and the
     // next session gets the benefit.
     if (this._detection && !this._detection.installed) return null;
     if (!this._detection) this.detectExtension().catch(() => {});
-    const config = this.getMcpServerConfig();
-    if (!config) return null;
     this.ensureNativeHost().catch(() => {});
     return {
-      mcpServers: { [MCP_SERVER_NAME]: config },
+      extraArgs: { chrome: null },
       systemPrompt: SYSTEM_PROMPT
     };
   }

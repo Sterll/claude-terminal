@@ -39,7 +39,7 @@ const SERVICES_DIR = path.resolve(__dirname, '../../src/main/services');
 const SOURCE = fs.readFileSync(path.join(SERVICES_DIR, 'ChatService.js'), 'utf8');
 
 const CHROME = {
-  mcpServers: { 'claude-in-chrome': { type: 'stdio', command: 'C:\\app\\claude.exe', args: ['--claude-in-chrome-mcp'] } },
+  extraArgs: { chrome: null },
   systemPrompt: 'Chrome tools are available.',
 };
 
@@ -193,7 +193,7 @@ describe('local sessions are unchanged', () => {
       enableFileCheckpointing: true,
       forwardSubagentText: true,
       agentProgressSummaries: true,
-      mcpServers: CHROME.mcpServers,
+      extraArgs: CHROME.extraArgs,
     });
     expect(options).not.toHaveProperty('spawnClaudeCodeProcess');
     expect(mocks['./AccountManager'].accountEnv).toHaveBeenCalledWith(null);
@@ -263,7 +263,7 @@ describe('remote sessions', () => {
   test('no Claude in Chrome server, no account overlay, no catalog ingestion', async () => {
     const { query, mocks } = await startRemote();
     const { options } = query.mock.calls[0][0];
-    expect(options).not.toHaveProperty('mcpServers');
+    expect(options).not.toHaveProperty('extraArgs');
     expect(options.systemPrompt).toEqual({ type: 'preset', preset: 'claude_code' });
     expect(mocks['./ChromeBridgeService'].getSessionConfig).not.toHaveBeenCalled();
     expect(mocks['./AccountManager'].accountEnv).not.toHaveBeenCalled();
