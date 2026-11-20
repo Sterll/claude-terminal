@@ -69,7 +69,7 @@ test('a plain folder of markdown works too', async () => {
 });
 
 test('the scan skips dot folders, excluded paths, other files and symlinks', async () => {
-  fs.symlinkSync(outside, path.join(root, 'linked'));
+  fs.symlinkSync(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
   const index = new store.VaultIndex(root);
   await index.refresh();
   expect([...index.notes.keys()].sort()).toEqual(['Home.md', 'Ideas.md', 'Projects/Alpha.md', 'Templates/Daily.md']);
@@ -109,7 +109,7 @@ test('a note with its links resolved and its backlinks', async () => {
 });
 
 test('nothing outside the vault can be read', async () => {
-  fs.symlinkSync(outside, path.join(root, 'linked'));
+  fs.symlinkSync(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
   const index = new store.VaultIndex(root);
   await index.refresh();
   for (const p of ['../' + path.basename(outside) + '/secret', '/etc/hosts', '.obsidian/app.json', 'linked/secret', '.trash/old']) {
