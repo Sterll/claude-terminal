@@ -686,6 +686,16 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     settingsState,
     setSetting,
   });
+  // The pixel Claude companion (settings.companionEnabled).
+  try {
+    require('./src/renderer/ui/companion/ClaudeCompanion').initCompanion({
+      settingsState,
+      setSetting,
+      focusTerminal: (terminalId) => focusTerminalTab(terminalId),
+    });
+  } catch (e) {
+    console.error('[Companion] failed to start:', e);
+  }
   // A soft press on every clickable control (src/renderer/ui/pressFeedback.js).
   require('./src/renderer/ui/pressFeedback').initPressFeedback();
   // Focus layout (settings.layoutMode): one header instead of four rows.
@@ -868,16 +878,24 @@ api.notification.onClicked(({ terminalId, answerText }) => {
     }
 
     // No answer (action: show) — bring window to front and switch to terminal
-    document.querySelector('[data-tab="claude"]')?.click();
-    const termData = terminalsState.get().terminals.get(terminalId);
-    if (termData && termData.projectIndex != null) {
-      setSelectedProjectFilter(termData.projectIndex);
-      ProjectList.render();
-      TerminalManager.filterByProject(termData.projectIndex);
-    }
-    TerminalManager.setActiveTerminal(terminalId);
+    focusTerminalTab(terminalId);
   }
 });
+
+/**
+ * Show a terminal tab wherever it is: the Claude screen, its project's filter,
+ * then the tab itself. Used by notification clicks and the companion.
+ */
+function focusTerminalTab(terminalId) {
+  document.querySelector('[data-tab="claude"]')?.click();
+  const termData = terminalsState.get().terminals.get(terminalId);
+  if (termData && termData.projectIndex != null) {
+    setSelectedProjectFilter(termData.projectIndex);
+    ProjectList.render();
+    TerminalManager.filterByProject(termData.projectIndex);
+  }
+  TerminalManager.setActiveTerminal(terminalId);
+}
 
 
 // ========== GIT STATUS ==========

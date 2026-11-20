@@ -158,6 +158,7 @@ const defaultSettings = {
   uiRadius: 'normal', // 'sharp' | 'normal' | 'round'
   uiBorders: 'subtle', // 'normal' | 'subtle' (faint borders, no structural separators) | 'none' (only form fields keep one)
   zenMode: false, // Hide the sidebar, project bar and titlebar stats: the conversation over the scene
+  companionEnabled: true, // The pixel Claude along the bottom of the window (src/renderer/ui/companion/ClaudeCompanion.js)
 };
 
 const settingsState = new State({ ...defaultSettings });

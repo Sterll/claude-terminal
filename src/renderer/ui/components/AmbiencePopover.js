@@ -78,6 +78,9 @@ function mountAmbiencePopover({ anchor, settingsState, setSetting }) {
         <label class="amb-pop-switch"><input type="checkbox" data-key="ambientMotion" ${s.ambientMotion !== false ? 'checked' : ''}><span>${t('ambience.quickMotion')}</span></label>
         <label class="amb-pop-switch"><input type="checkbox" data-key="zenMode" ${s.zenMode ? 'checked' : ''}><span>${t('ambience.quickZen')}</span></label>
       </div>
+      <div class="amb-pop-row">
+        <label class="amb-pop-switch"><input type="checkbox" data-key="companionEnabled" ${s.companionEnabled !== false ? 'checked' : ''}><span>${t('companion.toggle')}</span></label>
+      </div>
       <button type="button" class="amb-pop-more">${t('ambience.quickMore')} →</button>`;
 
     // Thumbnails: paint the active one first, then the rest a few per frame.

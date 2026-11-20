@@ -1,0 +1,433 @@
+/* ========== CLAUDE COMPANION ==========
+   The pixel Claude that lives along the bottom of the window
+   (src/renderer/ui/companion/). Only the sprite's hit box and its props take
+   the pointer, so the rest of its box never blocks the UI under it.
+   Above the panes, below menus and modals (z-index 1000+).
+   The pixel art carries its own colours (sprite.js); the literals here are
+   the speech bubble's paper and ink, which belong to the character too. */
+
+.ct-companion {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 70px;
+  height: 70px;
+  z-index: 900;
+  pointer-events: none;
+  will-change: transform;
+  image-rendering: pixelated;
+  --ctc-paper: #fff7ed;
+  --ctc-ink: #451a03;
+}
+
+.ct-companion .ctc-hit {
+  position: absolute;
+  inset: 4px 6px 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+.ct-companion .ctc-hit:focus-visible {
+  outline: 2px solid var(--accent, #d97706);
+  outline-offset: 3px;
+}
+.ct-companion.ctc-held .ctc-hit { cursor: grabbing; }
+
+.ct-companion .ctc-tilt,
+.ct-companion .ctc-squash,
+.ct-companion .ctc-bob,
+.ct-companion .ctc-pose,
+.ct-companion .ctc-sprite {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 100%;
+}
+/* The sprite's viewBox has room above the head for hats: it overflows upwards. */
+.ct-companion .ctc-sprite svg {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: block;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.22));
+}
+
+/* Floor shadow, kept on the floor by JS while airborne */
+.ct-companion .ctc-shadow {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -3px;
+  height: 6px;
+  border-radius: 50%;
+  background: #000;
+  opacity: 0.35;
+  transform-origin: 50% 50%;
+}
+
+/* Idle: a slow breath. Busy (a turn running): a quicker, eager bounce. */
+.ct-companion .ctc-bob { animation: ctc-idle 3.2s ease-in-out infinite; }
+.ct-companion.ctc-busy .ctc-bob { animation: ctc-busy 0.9s steps(2, end) infinite; }
+.ct-companion.ctc-held .ctc-bob,
+.ct-companion.ctc-sleeping .ctc-bob,
+.ct-companion.ctc-routine .ctc-bob { animation: none; }
+@keyframes ctc-idle {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.03, 0.97); }
+}
+@keyframes ctc-busy {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* Asleep: slow, deep breaths, sunk a little */
+.ct-companion.ctc-sleeping .ctc-squash { animation: ctc-sleep 4.5s ease-in-out infinite; }
+@keyframes ctc-sleep {
+  0%, 100% { transform: scale(1.04, 0.94); }
+  50% { transform: scale(1.08, 0.9); }
+}
+
+/* Held: dangling from the grab point */
+.ct-companion.ctc-held .ctc-squash { animation: ctc-dangle 0.5s ease-in-out infinite alternate; transform-origin: 50% 0; }
+@keyframes ctc-dangle {
+  from { transform: rotate(-6deg) scale(0.96, 1.06); }
+  to { transform: rotate(6deg) scale(0.96, 1.06); }
+}
+
+/* Walking: little hops, feet alternate. Running: the same, faster. */
+.ct-companion.ctc-walking .ctc-bob { animation: ctc-walk 0.36s steps(2, end) infinite; }
+.ct-companion.ctc-running .ctc-bob { animation-duration: 0.2s; }
+@keyframes ctc-walk {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.ct-companion.ctc-walking .ctc-foot-l { animation: ctc-foot 0.36s steps(1, end) infinite; }
+.ct-companion.ctc-walking .ctc-foot-r { animation: ctc-foot 0.36s steps(1, end) infinite reverse; }
+@keyframes ctc-foot {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-1px); }
+}
+
+/* Eating: a little nod per bite */
+.ct-companion.ctc-eating .ctc-bob { animation: ctc-nom 0.36s ease-in-out infinite; }
+@keyframes ctc-nom {
+  0%, 100% { transform: rotate(0) translateY(0); }
+  50% { transform: rotate(4deg) translateY(1px); }
+}
+
+/* Blink: the open eyes hide for a beat every few seconds */
+.ct-companion .ctc-eyes-blink { opacity: 0; animation: ctc-blink-show 5.2s steps(1, end) infinite; }
+.ct-companion .ctc-eyes-open { animation: ctc-blink-hide 5.2s steps(1, end) infinite; }
+@keyframes ctc-blink-hide { 0%, 95% { opacity: 1; } 96%, 98% { opacity: 0; } 99% { opacity: 1; } }
+@keyframes ctc-blink-show { 0%, 95% { opacity: 0; } 96%, 98% { opacity: 1; } 99% { opacity: 0; } }
+
+/* ── Routines ── */
+.ct-companion .ctc-halo {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 150px;
+  height: 150px;
+  margin-left: -75px;
+  margin-bottom: -40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(253, 186, 116, 0.45) 0%, rgba(217, 119, 6, 0.18) 45%, transparent 70%);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.8s ease, transform var(--ctc-step-ms, 4000ms) ease-in-out;
+  pointer-events: none;
+}
+
+/* Breathing: swell on the way in, hold, shrink on the way out */
+.ct-companion.ctc-routine-breathe .ctc-halo { opacity: 0.7; }
+.ct-companion.ctc-routine-breathe.ctc-breath-in .ctc-halo { opacity: 1; transform: scale(1.25); }
+.ct-companion.ctc-routine-breathe .ctc-pose { transition: transform var(--ctc-step-ms, 4000ms) ease-in-out; }
+.ct-companion.ctc-routine-breathe.ctc-breath-in .ctc-pose { transform: scale(1.28); }
+
+/* Stretching: reach up, lean left, lean right, roll the shoulders */
+.ct-companion.ctc-routine-stretch .ctc-pose { transition: transform 1.2s cubic-bezier(0.34, 1.3, 0.64, 1); }
+.ct-companion.ctc-st-up .ctc-pose { transform: scale(0.88, 1.24); }
+.ct-companion.ctc-st-left .ctc-pose { transform: rotate(-15deg) scale(0.96, 1.08); }
+.ct-companion.ctc-st-right .ctc-pose { transform: rotate(15deg) scale(0.96, 1.08); }
+.ct-companion.ctc-st-roll .ctc-pose { animation: ctc-roll 1.8s ease-in-out infinite; }
+@keyframes ctc-roll {
+  0%, 100% { transform: rotate(0) scale(1, 1); }
+  25% { transform: rotate(-5deg) scale(1.04, 0.97); }
+  50% { transform: rotate(0) scale(0.97, 1.05); }
+  75% { transform: rotate(5deg) scale(1.04, 0.97); }
+}
+
+/* ── Speech bubble ── */
+.ct-companion .ctc-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 28px);
+  max-width: 230px;
+  width: max-content;
+  padding: 7px 11px;
+  border-radius: 10px;
+  background: var(--ctc-paper);
+  color: var(--ctc-ink);
+  font: 600 12.5px/1.35 var(--font-ui, system-ui, sans-serif);
+  box-shadow: 0 0 0 2px var(--ctc-ink), 0 4px 14px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  white-space: pre-wrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 6px) scale(0.92);
+  transform-origin: 50% 100%;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.ct-companion .ctc-bubble::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 8px;
+  height: 8px;
+  margin: -3px 0 0 -4px;
+  background: var(--ctc-paper);
+  box-shadow: 2px 2px 0 0 var(--ctc-ink);
+  transform: rotate(45deg);
+}
+.ct-companion .ctc-bubble.show { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.ct-companion.ctc-routine .ctc-bubble { bottom: calc(100% + 48px); }
+
+/* ── Session indicator: thinking dots, or "!" when Claude waits on the user ── */
+.ct-companion .ctc-indicator {
+  position: absolute;
+  right: -12px;
+  top: -16px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 26px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--ctc-paper);
+  box-shadow: 0 0 0 2px var(--ctc-ink);
+  color: var(--ctc-ink);
+  font: 800 14px/1 var(--font-ui, system-ui, sans-serif);
+  pointer-events: none;
+}
+.ct-companion .ctc-indicator[data-kind='working'],
+.ct-companion .ctc-indicator[data-kind='waiting'] { display: flex; }
+.ct-companion .ctc-indicator[data-kind='waiting'] {
+  background: #fde047;
+  animation: ctc-alert 0.7s ease-in-out infinite alternate;
+}
+.ct-companion .ctc-indicator span {
+  width: 4px;
+  height: 4px;
+  background: var(--ctc-ink);
+  animation: ctc-dot 1.2s ease-in-out infinite;
+}
+.ct-companion .ctc-indicator span:nth-child(2) { animation-delay: 0.2s; }
+.ct-companion .ctc-indicator span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ctc-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-3px); opacity: 1; } }
+@keyframes ctc-alert { from { transform: translateY(0) rotate(-6deg); } to { transform: translateY(-3px) rotate(6deg); } }
+.ct-companion.ctc-held .ctc-indicator,
+.ct-companion.ctc-sleeping .ctc-indicator { display: none; }
+
+/* ── Focus timer: a pill with a progress ring ── */
+.ct-companion .ctc-timer {
+  position: absolute;
+  left: -16px;
+  top: -16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px 0 3px;
+  border-radius: 10px;
+  background: var(--ctc-paper);
+  box-shadow: 0 0 0 2px var(--ctc-ink);
+  color: var(--ctc-ink);
+  font: 700 11px/1 var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  --ctc-timer-color: #ef4444;
+}
+.ct-companion .ctc-timer[hidden] { display: none; }
+.ct-companion .ctc-timer[data-phase='break'] { --ctc-timer-color: #22c55e; }
+.ct-companion .ctc-timer::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: conic-gradient(var(--ctc-timer-color) calc(var(--p, 0) * 360deg), rgba(69, 26, 3, 0.15) 0);
+  -webkit-mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+  mask: radial-gradient(circle, transparent 3px, #000 3.5px);
+}
+.ct-companion.ctc-held .ctc-timer { opacity: 0.5; }
+
+/* ── Particles: hearts, sparkles, crumbs, Zzz ── */
+.ctc-fx {
+  position: fixed;
+  inset: 0;
+  z-index: 901;
+  pointer-events: none;
+  overflow: hidden;
+}
+.ctc-particle {
+  position: absolute;
+  transform: translate(-50%, 0);
+  image-rendering: pixelated;
+}
+.ctc-particle svg { display: block; }
+.ctc-heart { animation: ctc-float 1.3s ease-out forwards; }
+.ctc-spark { animation: ctc-spark 0.9s ease-out forwards; }
+.ctc-crumb { animation: ctc-crumb 0.6s cubic-bezier(0.2, 0.6, 0.4, 1) forwards; }
+.ctc-zzz {
+  color: #fde68a;
+  font: 800 15px/1 var(--font-mono, ui-monospace, monospace);
+  text-shadow: 0 1px 0 #451a03;
+  animation: ctc-float 2.4s ease-out forwards;
+}
+@keyframes ctc-float {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.6); }
+  15% { opacity: 1; transform: translate(-50%, -10px) scale(1); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--drift, 0px)), -70px) scale(0.9); }
+}
+@keyframes ctc-spark {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.4) rotate(0deg); }
+  30% { opacity: 1; transform: translate(-50%, -20px) scale(1.1) rotate(45deg); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--drift, 0px)), -55px) scale(0.6) rotate(90deg); }
+}
+@keyframes ctc-crumb {
+  0% { opacity: 1; transform: translate(-50%, 0); }
+  40% { transform: translate(calc(-50% + var(--drift, 0px) * 0.6), -12px); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--drift, 0px)), 22px); }
+}
+
+/* ── Props: ball and cookie ── */
+.ctc-prop {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 899;
+  cursor: grab;
+  touch-action: none;
+  image-rendering: pixelated;
+  will-change: transform;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.3));
+}
+.ctc-prop:active { cursor: grabbing; }
+.ctc-prop svg { display: block; transform-origin: 50% 100%; }
+.ctc-cookie.ctc-eaten svg { animation: ctc-eaten 1.45s steps(4, end) forwards; }
+@keyframes ctc-eaten {
+  from { transform: scale(1); opacity: 1; }
+  to { transform: scale(0.15); opacity: 0.4; }
+}
+
+/* ── Right-click menu ── */
+.ctc-menu {
+  position: fixed;
+  z-index: 10060;
+  width: 236px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  animation: ctc-menu-in 0.14s ease-out;
+}
+@keyframes ctc-menu-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } }
+.ctc-menu-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 8px;
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  color: var(--text-secondary, #aaa);
+  font-size: 12px;
+}
+.ctc-menu-head svg { width: 14px; height: 12px; flex: none; image-rendering: pixelated; }
+.ctc-menu-section {
+  padding: 8px 10px 3px;
+  color: var(--text-muted, #888);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.ctc-menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border-color, rgba(255, 255, 255, 0.08));
+}
+.ctc-menu button[data-action] {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary, #eee);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.ctc-menu button[data-action]:hover:not(:disabled),
+.ctc-menu button[data-action]:focus-visible {
+  background: var(--accent-dim, rgba(217, 119, 6, 0.15));
+  outline: none;
+}
+.ctc-menu button[data-action]:disabled { opacity: 0.45; cursor: default; }
+.ctc-menu button[data-action='hide'] { color: var(--text-secondary, #aaa); }
+.ctc-menu .ctc-check { color: var(--accent, #d97706); font-weight: 800; }
+
+.ctc-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 10px 6px;
+}
+.ctc-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  background: var(--sw, #d97706);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.2);
+  cursor: pointer;
+}
+.ctc-swatch:hover { transform: translateY(-1px); }
+.ctc-swatch.active,
+.ctc-swatch:focus-visible { border-color: var(--text-primary, #eee); outline: none; }
+
+.ctc-hats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 2px 8px 4px;
+}
+.ctc-hat {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 46px;
+  padding: 2px 0 4px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: var(--bg-tertiary, rgba(255, 255, 255, 0.04));
+  cursor: pointer;
+  image-rendering: pixelated;
+}
+.ctc-hat svg { display: block; }
+.ctc-hat:hover { background: var(--accent-dim, rgba(217, 119, 6, 0.15)); }
+.ctc-hat.active,
+.ctc-hat:focus-visible { border-color: var(--accent, #d97706); outline: none; }
