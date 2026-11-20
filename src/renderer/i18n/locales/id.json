@@ -5539,5 +5539,15 @@
     "settingsShort": "Pengaturan",
     "projectKicker": "Proyek",
     "sessionKicker": "Sesi"
+  },
+  "vault": {
+    "mentionLabel": "Catatan vault",
+    "briefSave": "Simpan ke catatan harian",
+    "briefSaveHint": "Tambahkan ringkasan ini ke catatan harian hari ini di vault Anda",
+    "briefSaved": "Ringkasan ditambahkan ke catatan harian",
+    "openNote": "Buka catatan",
+    "briefSaveFailed": "Tidak dapat menyimpan ringkasan",
+    "needProjectTitle": "Tidak ada proyek",
+    "needProject": "Tambahkan proyek terlebih dahulu untuk mengutip catatan dalam percakapan."
   }
 }

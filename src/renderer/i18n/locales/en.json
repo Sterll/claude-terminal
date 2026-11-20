@@ -5539,5 +5539,15 @@
     "settingsShort": "Settings",
     "projectKicker": "Project",
     "sessionKicker": "Session"
+  },
+  "vault": {
+    "mentionLabel": "Vault notes",
+    "briefSave": "Save to daily note",
+    "briefSaveHint": "Append this brief to today's daily note in your vault",
+    "briefSaved": "Brief added to your daily note",
+    "openNote": "Open note",
+    "briefSaveFailed": "Could not save the brief",
+    "needProjectTitle": "No project",
+    "needProject": "Add a project first to cite a note in a conversation."
   }
 }

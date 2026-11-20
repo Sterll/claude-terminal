@@ -5539,5 +5539,15 @@
     "settingsShort": "Ajustes",
     "projectKicker": "Proyecto",
     "sessionKicker": "Sesión"
+  },
+  "vault": {
+    "mentionLabel": "Notas del vault",
+    "briefSave": "Guardar en la nota diaria",
+    "briefSaveHint": "Añade este resumen a la nota diaria de hoy en tu vault",
+    "briefSaved": "Resumen añadido a la nota diaria",
+    "openNote": "Abrir nota",
+    "briefSaveFailed": "No se pudo guardar el resumen",
+    "needProjectTitle": "Ningún proyecto",
+    "needProject": "Añade primero un proyecto para citar una nota en una conversación."
   }
 }

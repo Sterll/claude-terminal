@@ -5539,5 +5539,15 @@
     "settingsShort": "Réglages",
     "projectKicker": "Projet",
     "sessionKicker": "Session"
+  },
+  "vault": {
+    "mentionLabel": "Notes du coffre",
+    "briefSave": "Ajouter à la note du jour",
+    "briefSaveHint": "Ajoute ce résumé à la note du jour de votre coffre",
+    "briefSaved": "Résumé ajouté à la note du jour",
+    "openNote": "Ouvrir la note",
+    "briefSaveFailed": "Impossible d'enregistrer le résumé",
+    "needProjectTitle": "Aucun projet",
+    "needProject": "Ajoutez d'abord un projet pour citer une note dans une conversation."
   }
 }

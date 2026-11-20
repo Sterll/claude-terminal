@@ -5539,5 +5539,15 @@
     "settingsShort": "设置",
     "projectKicker": "项目",
     "sessionKicker": "会话"
+  },
+  "vault": {
+    "mentionLabel": "笔记库",
+    "briefSave": "保存到每日笔记",
+    "briefSaveHint": "将此摘要追加到笔记库中今天的每日笔记",
+    "briefSaved": "摘要已添加到每日笔记",
+    "openNote": "打开笔记",
+    "briefSaveFailed": "无法保存摘要",
+    "needProjectTitle": "没有项目",
+    "needProject": "请先添加一个项目，才能在对话中引用笔记。"
   }
 }
