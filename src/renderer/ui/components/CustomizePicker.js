@@ -205,6 +205,14 @@ function createPickerHtml(itemType, item) {
 
         <!-- Icons panel -->
         <div class="customize-picker-panel" data-panel="icons">
+          ${itemType === 'project' ? `
+          <div class="customize-picker-image-row">
+            <button type="button" class="customize-image-btn" data-image-action="pick">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              <span>${t('customize.imagePick')}</span>
+            </button>
+            ${item?.image ? `<button type="button" class="customize-image-btn customize-image-btn--ghost" data-image-action="clear">${t('customize.imageRemove')}</button>` : ''}
+          </div>` : ''}
           <div class="customize-picker-icon-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
@@ -384,6 +392,21 @@ class CustomizePicker extends BaseComponent {
         customColorInput.click();
       };
     }
+
+    picker.querySelectorAll('[data-image-action]').forEach(btn => {
+      btn.onclick = async () => {
+        const action = btn.dataset.imageAction;
+        if (action === 'clear') {
+          callbacks.onImageChange?.(itemId, null);
+          this.hide();
+          return;
+        }
+        // The file dialog is modal: close the popover first so it is not left
+        // floating over a dialog that may take a while.
+        this.hide();
+        await callbacks.onImagePick?.(itemId);
+      };
+    });
 
     picker.querySelectorAll('.customize-icon-btn').forEach(btn => {
       btn.onclick = () => {

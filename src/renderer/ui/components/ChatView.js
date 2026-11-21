@@ -662,6 +662,7 @@ class ChatView extends BaseComponent {
     // A cloud session's transcript is not on this machine to read.
     getSessionId: () => (project.isCloud ? null : sdkSessionId || (resumeSessionId && !forkSession ? resumeSessionId : null)),
     getProjectPath: () => project.path,
+    getProjectName: () => project.name || '',
     // Read collapsed too: the strip's dot says when the brief is behind.
     isOnScreen: () => briefEnabled() && sideOnScreen(),
     onChange: ({ behind }) => sidePanel.setBriefBehind(behind),
@@ -2774,7 +2775,9 @@ class ChatView extends BaseComponent {
     const availableMentions = project.isCloud
       ? MENTION_TYPES.filter(m => !LOCAL_ONLY_MENTIONS.includes(m.type))
       : !localMentionsOk ? MENTION_TYPES.filter(m => !REMOTE_EXCLUDED_MENTIONS.includes(m.type)) : MENTION_TYPES;
-    const filtered = availableMentions.filter(m => m.type.includes(query));
+    // On the keyword as typed too: `@doc` is the workspaceDoc source, and the
+    // query is lowercased while `ParallelTask` is not.
+    const filtered = availableMentions.filter(m => m.type.toLowerCase().includes(query) || String(m.label || '').toLowerCase().startsWith('@' + query));
     if (filtered.length === 0) {
       hideMentionDropdown();
       return;
@@ -9847,6 +9850,13 @@ class ChatView extends BaseComponent {
     focus() {
       inputEl?.focus({ preventScroll: true });
       if (!userHasScrolled) scrollToBottom();
+    },
+    /** Add a mention chip from outside the composer (the Notes screen's "Discuss in chat"). */
+    addMention(type, data) {
+      if (destroyed) return false;
+      addMentionChip(type, data);
+      inputEl?.focus({ preventScroll: true });
+      return true;
     },
     /**
      * @param {{ background?: boolean }} [opts] - `background`: sent by an agent

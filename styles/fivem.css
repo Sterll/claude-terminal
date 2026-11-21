@@ -1963,7 +1963,7 @@
 }
 
 .manifest-tab.active {
-  color: var(--bg-primary);
+  color: var(--ct-bg);
   background: var(--accent);
   box-shadow: 0 1px 8px rgba(var(--accent-rgb), 0.35);
 }

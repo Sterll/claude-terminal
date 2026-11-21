@@ -100,11 +100,22 @@ module.exports = {
   },
 
   getChipData(item) {
+    const label = `@${item.title.slice(0, 40)}`;
     return {
       type: 'workspaceDoc',
-      label: `@${item.title.slice(0, 40)}`,
-      data: { docId: item.id, title: item.title, workspaceId: item.workspaceId },
+      label,
+      data: { docId: item.id, title: item.title, workspaceId: item.workspaceId, chipLabel: label },
     };
+  },
+
+  /**
+   * The document's text at send time. Without it the chip reached Claude as
+   * its label alone.
+   */
+  async resolve(data) {
+    const res = await window.electron_api?.workspace?.readDoc({ workspaceId: data.workspaceId, docId: data.docId });
+    if (!res?.success || res.content == null) return `Workspace document "${data.title}": [could not be read]`;
+    return `Workspace document: ${res.doc?.title || data.title}\n\n${String(res.content).slice(0, 20000)}`;
   },
 
   onSelect(item, consumer, api = {}) {

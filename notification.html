@@ -5,84 +5,107 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline'; navigate-to 'none'">
   <title>Notification</title>
   <style>
-    /* Mirrors the in-app toast (styles/modals.css) so a desktop notification and
-       an in-app one read as the same object. This window cannot import the app's
-       stylesheet — it is a standalone BrowserWindow — so the handful of tokens it
-       needs are restated here and nowhere else in this file. */
+    /* Mirrors the in-app toast (styles/ambience.css): a frosted card on the
+       theme's own surface, no stripe, the type colour only on the icon. This
+       window cannot import the app's stylesheet - it is a standalone
+       BrowserWindow - so the tokens it needs are restated here, and the theme's
+       surface, text and accent come in with the payload (meta.theme). */
+    @property --p {
+      syntax: '<number>';
+      inherits: true;
+      initial-value: 1;
+    }
+
     :root {
-      --bg: #1a1a1a;
-      --border: #2d2d2d;
-      --text-primary: #e0e0e0;
+      --surface: #1a1a1a;
+      --text-primary: #e8e8e8;
       --text-secondary: #a7a7a7;
-      --text-muted: #858585;
-      --hover: #252525;
       --accent: #d97706;
       --type-accent: var(--accent);
-      --radius: 8px;
-      --radius-sm: 4px;
+      --pad: 8px;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    html, body { background: transparent; }
+
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: transparent;
+      font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
       overflow: hidden;
       -webkit-app-region: no-drag;
-      padding: 2px;
+      padding: var(--pad);
+      -webkit-font-smoothing: antialiased;
     }
 
-    /* Same shape as .toast: [icon] [content] [close], only the content flexes */
     .notification {
       position: relative;
       display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      /* The window is sized to the card, not the card to the window: the script
-         measures the laid-out content and asks main to resize (see fitToContent).
-         min-height is what covers the frame before that lands, and a resize that
-         never does — the card fills the window rather than floating in it. */
-      height: auto;
-      min-height: calc(100vh - 4px);
-      padding: 12px 12px 12px 16px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 28px rgba(0, 0, 0, 0.45);
+      align-items: center;
+      gap: 11px;
+      /* The window is sized to the card (fitToContent below); min-height only
+         covers the frame before that lands. */
+      min-height: calc(100vh - 2 * var(--pad));
+      padding: 10px 10px 10px 11px;
+      background: color-mix(in srgb, var(--surface) 94%, transparent);
+      border: 1px solid color-mix(in srgb, var(--text-primary) 9%, transparent);
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38), inset 0 1px 0 color-mix(in srgb, var(--text-primary) 5%, transparent);
       overflow: hidden;
+      opacity: 0;
+      transform: translateX(28px);
+      transition: opacity 0.22s ease, transform 0.34s cubic-bezier(0.2, 1.2, 0.3, 1), background-color 0.15s;
+    }
+    .notification.shown { opacity: 1; transform: none; }
+    .notification.leaving {
+      opacity: 0;
+      transform: translateX(28px);
+      transition: opacity 0.18s ease, transform 0.2s ease-in;
     }
 
-    /* Type accent stripe, inset from the corners like the in-app toast */
-    .notification::before {
-      content: '';
-      position: absolute;
-      left: 0;
-      top: 10px;
-      bottom: 10px;
-      width: 3px;
-      border-radius: 0 3px 3px 0;
-      background: var(--type-accent);
-    }
+    /* A notification with nothing to choose is one click: the whole card opens it. */
+    .notification.has-actions { align-items: flex-start; }
+    .notification.clickable { cursor: pointer; }
+    .notification.clickable:hover { background: color-mix(in srgb, var(--surface) 88%, var(--text-primary) 6%); }
 
     .notification.type-question { --type-accent: #a855f7; }
-    /* Permission prompts stay on the user's accent — they are the app asking, not a status */
     .notification.type-permission { --type-accent: var(--accent); }
     .notification.type-plan { --type-accent: #3b82f6; }
     .notification.type-info { --type-accent: #3b82f6; }
     .notification.type-done { --type-accent: #22c55e; }
 
+    /* The icon disc doubles as the countdown: a ring that empties until the
+       card goes, paused while the pointer is on it. */
     .notif-icon {
-      width: 22px;
-      height: 22px;
+      position: relative;
+      width: 30px;
+      height: 30px;
       flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       border-radius: 50%;
       color: var(--type-accent);
-      background: color-mix(in srgb, var(--type-accent) 16%, transparent);
+      background: color-mix(in srgb, var(--type-accent) 15%, transparent);
     }
-    .notif-icon svg { width: 13px; height: 13px; }
+    .notif-icon svg { width: 14px; height: 14px; position: relative; }
+    .notif-icon::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(color-mix(in srgb, var(--type-accent) 75%, transparent) calc(var(--p) * 1turn), transparent 0);
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 1.5px));
+      opacity: 0;
+    }
+    .notification.timed .notif-icon::before {
+      opacity: 1;
+      animation: countdown var(--dismiss-time, 5000ms) linear forwards;
+    }
+    .notification.timed:hover .notif-icon::before { animation-play-state: paused; }
+
+    @keyframes countdown {
+      from { --p: 1; }
+      to { --p: 0; }
+    }
 
     .notif-content {
       flex: 1 1 auto;
@@ -93,24 +116,30 @@
       font-size: 13px;
       font-weight: 600;
       color: var(--text-primary);
-      line-height: 1.35;
-      letter-spacing: -0.01em;
+      line-height: 1.3;
+      letter-spacing: -0.005em;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     .notif-body {
-      margin-top: 2px;
-      font-size: 11.5px;
-      color: var(--text-muted);
-      line-height: 1.4;
+      margin-top: 1px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.35;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .notif-body:empty { display: none; }
+    /* A question or a permission needs its text: two lines there. */
+    .notification.has-actions .notif-body {
+      white-space: normal;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
-      overflow: hidden;
     }
-    .notif-body:empty { display: none; }
 
     .notif-actions {
       display: flex;
@@ -118,93 +147,73 @@
       gap: 6px;
       margin-top: 8px;
     }
+    .notif-actions:empty { display: none; }
 
     .btn {
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      font-size: 11px;
+      padding: 5px 11px;
+      border: none;
+      border-radius: 8px;
+      font-size: 11.5px;
       font-weight: 600;
       font-family: inherit;
       cursor: pointer;
-      transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+      transition: background-color 0.15s, color 0.15s, filter 0.15s, transform 0.12s;
       white-space: nowrap;
       max-width: 160px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .btn:active { opacity: 0.75; }
+    .btn:active { transform: scale(0.96); }
 
     .btn-primary {
       background: var(--type-accent);
-      border-color: var(--type-accent);
       color: #0a0a0a;
     }
     .btn-primary:hover { filter: brightness(1.1); }
 
     .btn-secondary {
-      background: var(--hover);
-      color: var(--text-secondary);
+      background: color-mix(in srgb, var(--text-primary) 9%, transparent);
+      color: var(--text-primary);
     }
-    .btn-secondary:hover { background: #2f2f2f; color: var(--text-primary); }
+    .btn-secondary:hover { background: color-mix(in srgb, var(--text-primary) 15%, transparent); }
 
     .btn-danger {
-      background: transparent;
-      color: #ef4444;
-      border-color: #3d1515;
+      background: color-mix(in srgb, #ef4444 14%, transparent);
+      color: #f87171;
     }
-    .btn-danger:hover { background: #1f0a0a; }
+    .btn-danger:hover { background: color-mix(in srgb, #ef4444 22%, transparent); }
 
     .btn-ghost {
       background: transparent;
-      color: var(--text-muted);
-      border-color: transparent;
+      color: var(--text-secondary);
       font-weight: 500;
     }
-    .btn-ghost:hover { color: var(--text-secondary); border-color: var(--border); }
+    .btn-ghost:hover { color: var(--text-primary); }
 
-    /* Same 22px hit target as the in-app toast close, and always visible: a
-       control that only appears on hover is a control the user has to hunt for. */
+    /* Visible at rest, quieter than the content: a control that only appears on
+       hover is one the user has to hunt for. */
     .notif-close {
       flex-shrink: 0;
+      align-self: flex-start;
       width: 22px;
       height: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      place-items: center;
       padding: 0;
       border: none;
-      border-radius: var(--radius-sm);
+      border-radius: 7px;
       background: transparent;
-      color: var(--text-muted);
+      color: color-mix(in srgb, var(--text-secondary) 70%, transparent);
       cursor: pointer;
-      z-index: 2;
       transition: background-color 0.15s, color 0.15s;
     }
-    .notif-close svg { width: 13px; height: 13px; }
-    .notif-close:hover { color: var(--text-primary); background: var(--hover); }
+    .notification:not(.has-actions) .notif-close { align-self: center; }
+    .notif-close svg { width: 12px; height: 12px; }
+    .notif-close:hover { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 10%, transparent); }
     .notif-close:focus-visible { outline: 2px solid var(--type-accent); outline-offset: 1px; }
 
-    .notif-progress {
-      position: absolute;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      overflow: hidden;
-    }
-
-    .notif-progress-bar {
-      height: 100%;
-      background: var(--type-accent);
-      opacity: 0.35;
-      transform-origin: left center;
-      animation: progress-shrink var(--dismiss-time, 8000ms) linear forwards;
-    }
-
-    @keyframes progress-shrink {
-      from { transform: scaleX(1); }
-      to { transform: scaleX(0); }
+    @media (prefers-reduced-motion: reduce) {
+      .notification, .notification.leaving { transition: opacity 0.15s; transform: none; }
     }
   </style>
 </head>
@@ -243,6 +252,14 @@
     if (accentColor) {
       document.documentElement.style.setProperty('--accent', accentColor);
     }
+    // The theme's own colours, so the card sits in the same palette as the app.
+    // Only plain hex reaches a style property.
+    var HEX = /^#[0-9a-f]{3,8}$/i;
+    var themeColors = (meta && meta.theme) || {};
+    [['surface', '--surface'], ['text', '--text-primary'], ['textSecondary', '--text-secondary'], ['accent', '--accent']].forEach(function(pair) {
+      var v = themeColors[pair[0]];
+      if (typeof v === 'string' && HEX.test(v.trim())) document.documentElement.style.setProperty(pair[1], v.trim());
+    });
     const lang = (window.notifAPI && notifAPI.readSettingsLanguage)
       ? (notifAPI.readSettingsLanguage() || 'en')
       : 'en';
@@ -268,47 +285,75 @@
     document.getElementById('notif-icon').innerHTML = NOTIF_ICONS[notifType];
     document.getElementById('notification').classList.add('type-' + notifType);
 
-    // Render buttons
+    var cardEl = document.getElementById('notification');
+
+    // Render buttons. A lone "show" button is not a choice: the whole card is
+    // the click, and no button row makes the card taller for nothing.
     var actionsDiv = document.getElementById('notif-actions');
     var btnList = (buttons && buttons.length > 0)
       ? buttons
       : [{ label: 'Show', action: 'show', style: 'primary' }];
 
-    btnList.forEach(function(btn) {
-      var el = document.createElement('button');
-      el.className = 'btn btn-' + (btn.style || 'primary');
-      el.textContent = btn.label;
-      el.addEventListener('click', function() {
-        if (window.notifAPI && notifAPI.send) {
-          notifAPI.send('notification-action', {
-            action: btn.action,
-            terminalId: terminalId,
-            value: btn.value || null,
-            requestId: (meta && meta.requestId) || null
-          });
-        }
-        dismiss();
+    function sendAction(btn) {
+      if (window.notifAPI && notifAPI.send) {
+        notifAPI.send('notification-action', {
+          action: btn.action,
+          terminalId: terminalId,
+          value: btn.value || null,
+          requestId: (meta && meta.requestId) || null
+        });
+      }
+      dismiss();
+    }
+
+    if (btnList.length === 1 && btnList[0].action === 'show') {
+      cardEl.classList.add('clickable');
+      cardEl.title = btnList[0].label || '';
+      cardEl.addEventListener('click', function(e) {
+        if (e.target.closest('#closeBtn')) return;
+        sendAction(btnList[0]);
       });
-      actionsDiv.appendChild(el);
-    });
+    } else {
+      cardEl.classList.add('has-actions');
+      btnList.forEach(function(btn) {
+        var el = document.createElement('button');
+        el.className = 'btn btn-' + (btn.style || 'primary');
+        el.textContent = btn.label;
+        el.addEventListener('click', function() { sendAction(btn); });
+        actionsDiv.appendChild(el);
+      });
+    }
 
     // Close button
-    document.getElementById('closeBtn').addEventListener('click', function() { dismiss(); });
+    document.getElementById('closeBtn').addEventListener('click', function(e) { e.stopPropagation(); dismiss(); });
 
     // Escape key
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') dismiss();
     });
 
-    // Auto-dismiss with progress bar (autoDismiss: 0 = no auto-dismiss)
+    // Auto-dismiss (autoDismiss: 0 = stays until the user acts). The ring on the
+    // icon shows the time left; the pointer on the card holds it.
     var autoDismissTimer = null;
-    if (autoDismiss && autoDismiss > 0) {
-      var notifEl = document.getElementById('notification');
-      var progressEl = document.createElement('div');
-      progressEl.className = 'notif-progress';
-      progressEl.innerHTML = '<div class="notif-progress-bar" style="--dismiss-time: ' + autoDismiss + 'ms"></div>';
-      notifEl.appendChild(progressEl);
-      autoDismissTimer = setTimeout(function() { dismiss(); }, autoDismiss);
+    var remaining = autoDismiss && autoDismiss > 0 ? autoDismiss : 0;
+    var startedAt = 0;
+    function arm() {
+      startedAt = Date.now();
+      autoDismissTimer = setTimeout(function() { dismiss(); }, remaining);
+    }
+    if (remaining) {
+      cardEl.style.setProperty('--dismiss-time', remaining + 'ms');
+      cardEl.classList.add('timed');
+      arm();
+      cardEl.addEventListener('mouseenter', function() {
+        if (!autoDismissTimer) return;
+        clearTimeout(autoDismissTimer);
+        autoDismissTimer = null;
+        remaining = Math.max(400, remaining - (Date.now() - startedAt));
+      });
+      cardEl.addEventListener('mouseleave', function() {
+        if (!autoDismissTimer && !dismissed) arm();
+      });
     }
 
     // The window is created at an estimated height - main cannot know how many
@@ -321,11 +366,16 @@
       // min-height ties the card to the current window height, so measuring with
       // it on reports back whatever the window already is and never shrinks.
       el.style.minHeight = '0';
-      var needed = Math.ceil(el.getBoundingClientRect().height) + 4; // body padding
+      var pad = parseFloat(getComputedStyle(document.body).paddingTop) || 0;
+      var needed = Math.ceil(el.getBoundingClientRect().height + pad * 2);
       el.style.minHeight = '';
       notifAPI.send('notification-resize', { notifId: notifId, height: needed });
     }
-    requestAnimationFrame(fitToContent);
+    requestAnimationFrame(function() {
+      fitToContent();
+      // In on the next frame, once the window has its size.
+      requestAnimationFrame(function() { cardEl.classList.add('shown'); });
+    });
 
     // Dismiss
     var dismissed = false;
@@ -333,7 +383,15 @@
       if (dismissed) return;
       dismissed = true;
       if (autoDismissTimer) clearTimeout(autoDismissTimer);
-      if (window.notifAPI && notifAPI.send) notifAPI.send('notification-dismiss', { notifId: notifId });
+      var send = function() {
+        if (window.notifAPI && notifAPI.send) notifAPI.send('notification-dismiss', { notifId: notifId });
+      };
+      // Out first, then closed; the timeout covers a transition that never ends.
+      cardEl.classList.add('leaving');
+      var sent = false;
+      var once = function() { if (sent) return; sent = true; send(); };
+      cardEl.addEventListener('transitionend', once);
+      setTimeout(once, 260);
     }
   </script>
 </body>

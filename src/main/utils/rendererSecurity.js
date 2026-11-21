@@ -67,6 +67,17 @@ function grant(file, { write = true, directory = true } = {}) {
   const root = canonical(file);
   if (!grants.some(item => item.root === root && item.write === write && item.directory === directory)) grants.push({ root, write, directory });
 }
+/**
+ * Whether `dir` may be granted as the projects folder at boot: an absolute
+ * path that is neither a filesystem root nor the home folder itself.
+ */
+function isGrantableProjectsRoot(dir, home = os.homedir()) {
+  if (typeof dir !== 'string' || !path.isAbsolute(dir) || dir.includes('\0')) return false;
+  const resolved = path.resolve(dir);
+  if (resolved === path.parse(resolved).root) return false;
+  const norm = (p) => (process.platform === 'win32' ? p.toLowerCase() : p).replace(/[\\/]+$/, '');
+  return norm(resolved) !== norm(path.resolve(home));
+}
 function permitted(file, write = false) {
   if (typeof file !== 'string' || !path.isAbsolute(file) || file.includes('\0')) return false;
   try {
@@ -81,7 +92,9 @@ function permitted(file, write = false) {
     // remote-hosts.json is main-process only: its `sshBinary` names the program
     // spawned for every SSH connection, so a renderer able to write it would
     // choose what runs here. The data directory grant must not reach it.
-    const blocked = ['.ssh', '.aws', '.gnupg', '.claude/.credentials.json', '.claude-terminal/remote-hosts.json'].map(name => path.join(home, name));
+    // vault.json says which folder the notes tools may read; only main writes
+    // it, from a folder dialog, so a renderer cannot point them elsewhere.
+    const blocked = ['.ssh', '.aws', '.gnupg', '.claude/.credentials.json', '.claude-terminal/remote-hosts.json', '.claude-terminal/vault.json'].map(name => path.join(home, name));
     if (write) {
       blocked.push(...['.bashrc', '.bash_profile', '.zshrc', '.zshenv', '.profile', '.claude.json'].map(name => path.join(home, name)));
       if (process.platform === 'win32' && process.env.APPDATA) blocked.push(path.join(process.env.APPDATA, 'Microsoft/Windows/Start Menu/Programs/Startup'));
@@ -157,6 +170,14 @@ function install(ipcMain) {
     const projects = JSON.parse(fs.readFileSync(path.join(data, 'projects.json'), 'utf8'));
     for (const file of projectGrantPaths(projects)) grant(file);
   } catch { /* New installations have no projects yet. */ }
+  // The folder new projects are created in, picked once through the folder
+  // dialog. Same footing as the project paths above (a renderer-written file
+  // naming a folder to grant) and under the same blocklist; never the home
+  // folder itself nor a filesystem root, which would grant everything.
+  try {
+    const root = JSON.parse(fs.readFileSync(path.join(data, 'settings.json'), 'utf8')).projectsRootDir;
+    if (isGrantableProjectsRoot(root, home)) grant(root);
+  } catch { /* No settings yet, or no projects folder chosen. */ }
   require('./rendererFiles').install(ipcMain, permitted);
   ipcMain.on('fs-authorize', (event, file, write) => { event.returnValue = permitted(file, !!write); });
   ipcMain.on('window-read-data', (event, kind) => {
@@ -165,4 +186,4 @@ function install(ipcMain) {
     catch { event.returnValue = null; }
   });
 }
-module.exports = { install, guardWindow, isTrusted, allowMainDocument, allowMicrophone, grant, permitted, projectGrantPaths };
+module.exports = { install, guardWindow, isTrusted, allowMainDocument, allowMicrophone, grant, permitted, projectGrantPaths, isGrantableProjectsRoot };

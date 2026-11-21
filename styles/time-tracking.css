@@ -439,7 +439,7 @@
 }
 
 .tt-period-btn.active {
-  color: var(--bg-primary);
+  color: var(--ct-bg);
   background: var(--accent);
   font-weight: 600;
 }

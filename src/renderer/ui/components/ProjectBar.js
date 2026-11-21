@@ -15,6 +15,7 @@
  */
 
 const { BaseComponent } = require('../../core/BaseComponent');
+const { isSafeImage } = require('../../utils/projectImage');
 const {
   projectsState,
   terminalsState,
@@ -163,9 +164,11 @@ class ProjectBar extends BaseComponent {
       ? `<span class="project-tab-color" style="background:${color}"></span>`
       : '';
 
-    const icon = project.icon
-      ? `<span class="project-tab-emoji">${escapeHtml(project.icon)}</span>`
-      : `<span class="project-tab-emoji project-tab-emoji--default">${FOLDER_ICON}</span>`;
+    const icon = isSafeImage(project.image)
+      ? `<span class="project-tab-emoji project-tab-image"><img src="${project.image}" alt="" draggable="false"></span>`
+      : project.icon
+        ? `<span class="project-tab-emoji">${escapeHtml(project.icon)}</span>`
+        : `<span class="project-tab-emoji project-tab-emoji--default">${FOLDER_ICON}</span>`;
 
     // A project can belong to several workspaces; the badge shows the first, and
     // the tooltip names them all.

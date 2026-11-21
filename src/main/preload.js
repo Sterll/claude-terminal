@@ -242,7 +242,7 @@ contextBridge.exposeInMainWorld('electron_api', {
 
   // ==================== DIALOG & SYSTEM ====================
   dialog: {
-    selectFolder: () => ipcRenderer.invoke('select-folder'),
+    selectFolder: (options) => ipcRenderer.invoke('select-folder', options),
     selectFile: (params) => ipcRenderer.invoke('select-file', params),
     saveFileDialog: (params) => ipcRenderer.invoke('save-file-dialog', params),
     openInExplorer: (path) => ipcRenderer.send('open-in-explorer', path),
@@ -401,6 +401,20 @@ contextBridge.exposeInMainWorld('electron_api', {
   },
 
   // ==================== KNOWLEDGE (global memory) ====================
+  vault: {
+    status: (opts) => ipcRenderer.invoke('vault-status', opts || {}),
+    known: () => ipcRenderer.invoke('vault-known'),
+    connect: (knownId) => ipcRenderer.invoke('vault-connect', knownId ? { knownId } : {}),
+    disconnect: () => ipcRenderer.invoke('vault-disconnect'),
+    setOptions: (opts) => ipcRenderer.invoke('vault-set-options', opts),
+    search: (query, opts) => ipcRenderer.invoke('vault-search', { query, ...(opts || {}) }),
+    read: (path) => ipcRenderer.invoke('vault-read', { path }),
+    resolve: (target, from) => ipcRenderer.invoke('vault-resolve', { target, from }),
+    appendDaily: (text, heading) => ipcRenderer.invoke('vault-append-daily', { text, heading }),
+    createNote: (params) => ipcRenderer.invoke('vault-create-note', params),
+    openInObsidian: (path) => ipcRenderer.invoke('vault-open-in-obsidian', { path }),
+    reveal: () => ipcRenderer.invoke('vault-reveal'),
+  },
   knowledge: {
     list: () => ipcRenderer.invoke('knowledge-list'),
     get: (ref) => ipcRenderer.invoke('knowledge-get', { ref }),

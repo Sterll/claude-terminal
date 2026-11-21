@@ -189,23 +189,20 @@ function wireNotificationConsumer() {
 }
 
 /**
- * Build a rich notification body from session context.
- * Shows tool count, unique tool names, and session duration.
+ * Build a one-line notification body from session context: tool count and
+ * session duration. The tool names stay in the conversation; on a card one
+ * line wide they only pushed the duration out of sight.
  */
 function buildNotificationBody(ctx, t) {
   if (ctx.toolCount > 0) {
-    const uniqueNames = [...ctx.toolNames];
-    const displayed = uniqueNames.slice(0, 3).join(', ');
-    const extra = uniqueNames.length > 3 ? ` +${uniqueNames.length - 3}` : '';
     let body = t('terminals.notifToolsDone', { count: ctx.toolCount });
-    body += ` (${displayed}${extra})`;
     // Append duration if session lasted more than a few seconds
     if (ctx.startTime) {
       const secs = Math.round((Date.now() - ctx.startTime) / 1000);
       if (secs >= 5) {
         const mins = Math.floor(secs / 60);
         const s = secs % 60;
-        body += mins > 0 ? ` • ${mins}m${s > 0 ? s + 's' : ''}` : ` • ${s}s`;
+        body += mins > 0 ? ` · ${mins}m${s > 0 ? s + 's' : ''}` : ` · ${s}s`;
       }
     }
     return body;

@@ -22,6 +22,7 @@ const {
   setFolderColor,
   setProjectColor,
   setProjectIcon,
+  setProjectImage,
   setFolderIcon,
   updateProject,
   getProjectTimes,
@@ -57,6 +58,7 @@ const { QUICK_ACTION_ICONS } = require('./QuickActions');
 const registry = require('../../../project-types/registry');
 const menuIcons = require('../icons/menuIcons');
 const { getWorkspacesForProject } = require('../../state/workspace.state');
+const { pickProjectImage, isSafeImage, avatarColor } = require('../../utils/projectImage');
 const { isSidebarNavigation } = require('../navigationMode');
 const ModelCatalog = require('../../services/ModelCatalogClient');
 const { matchModel } = require('../../../shared/model-options');
@@ -749,14 +751,23 @@ class ProjectList extends BaseComponent {
     const gitBranch = this._gitRepoStatus.get(project.id)?.branch || null;
 
     // Build project icon HTML
+    // Every project gets a glyph in a tinted square: its type's icon, its
+    // emoji, or else its initial. The tint is the project's colour, or one
+    // picked from its name, so a list of projects is not a column of
+    // identical folders.
     let projectIconHtml;
     const typeIcon = typeHandler.getProjectIcon(typeCtx);
-    if (typeIcon) {
-      projectIconHtml = `${statusIndicator}${typeIcon}`;
+    const glyphColor = safeProjectColor || avatarColor(project.name);
+    void iconColorStyle;
+    if (isSafeImage(project.image)) {
+      projectIconHtml = `${statusIndicator}<span class="project-glyph project-image"><img src="${project.image}" alt="" draggable="false"></span>`;
+    } else if (typeIcon) {
+      projectIconHtml = `${statusIndicator}<span class="project-glyph" style="--pc:${glyphColor}">${typeIcon}</span>`;
     } else if (projectIcon) {
-      projectIconHtml = `<span class="project-emoji-icon">${escapeHtml(projectIcon)}</span>`;
+      projectIconHtml = `<span class="project-glyph project-emoji-icon" style="--pc:${glyphColor}">${escapeHtml(projectIcon)}</span>`;
     } else {
-      projectIconHtml = `<svg viewBox="0 0 24 24" fill="currentColor" ${iconColorStyle}><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/></svg>`;
+      const initial = escapeHtml((project.name || '?').trim().charAt(0).toUpperCase() || '?');
+      projectIconHtml = `<span class="project-glyph project-avatar" style="--pc:${glyphColor}">${initial}</span>`;
     }
 
     // Build tooltip lines for compact hover
@@ -1288,6 +1299,17 @@ class ProjectList extends BaseComponent {
         CustomizePicker.show(btn, 'project', projectId, project, {
           onColorChange: (id, color) => { setProjectColor(id, color); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
           onIconChange: (id, icon) => { setProjectIcon(id, icon); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
+          onImageChange: (id, image) => { setProjectImage(id, image); if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects(); },
+          onImagePick: async (id) => {
+            try {
+              const image = await pickProjectImage({ api: window.electron_api, fsp: window.electron_nodeModules.fs.promises });
+              if (!image) return;
+              setProjectImage(id, image);
+              if (self._callbacks.onRenderProjects) self._callbacks.onRenderProjects();
+            } catch (err) {
+              require('./Toast').showError(t('customize.imageError', { error: err.message }), 5000);
+            }
+          },
           onClose: () => {}
         });
       }

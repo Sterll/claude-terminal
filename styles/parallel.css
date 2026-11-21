@@ -1342,7 +1342,7 @@
 }
 .parallel-merge-btn-pr:hover:not(:disabled) {
   background: var(--accent);
-  color: var(--bg-primary);
+  color: var(--ct-bg);
 }
 .parallel-merge-btn-pr-done {
   background: rgba(34,197,94,0.08);

@@ -22,6 +22,37 @@ const { escapeHtml } = require('../../../utils');
 const { formatRelativeTimeIntl } = require('../../../utils/format');
 
 const FRESH_MS = 10_000;
+const VAULT_STATUS_MS = 30_000;
+
+// Whether a notes vault is connected, shared by every tab's brief: the
+// "Today's note" button only shows when there is somewhere to save to.
+let vaultStatus = { at: 0, connected: false, pending: null };
+function vaultConnected(api) {
+  if (!api?.vault) return Promise.resolve(false);
+  if (Date.now() - vaultStatus.at < VAULT_STATUS_MS) return Promise.resolve(vaultStatus.connected);
+  if (!vaultStatus.pending) {
+    vaultStatus.pending = api.vault.status()
+      .then((res) => !!(res?.success && res.status?.connected && !res.status.missing))
+      .catch(() => false)
+      .then((connected) => { vaultStatus = { at: Date.now(), connected, pending: null }; return connected; });
+  }
+  return vaultStatus.pending;
+}
+
+/**
+ * The brief as a daily-note entry: one collapsed Obsidian callout, so a day
+ * of sessions stays a list of titles until one is opened.
+ */
+function briefAsDailyEntry(brief, { projectName, time }) {
+  const quote = (line) => `> ${line}`;
+  const lines = [quote(`[!abstract]- ${time} · ${projectName || 'Claude Terminal'}${brief.about ? ` · ${brief.about.split(/[.!?\n]/)[0].slice(0, 80)}` : ''}`)];
+  const section = (title, body) => { lines.push(quote(''), quote(`**${title}**`), ...body.map(quote)); };
+  if (brief.about) section(t('chat.brief.about'), [brief.about]);
+  if (brief.status) section(t('chat.brief.status'), [brief.status]);
+  if (brief.decisions?.length) section(t('chat.brief.decisions'), brief.decisions.map((d) => `- ${d}`));
+  if (brief.notes?.length) section(t('chat.brief.notes'), brief.notes.map((n) => `- ${n}`));
+  return lines.join('\n');
+}
 
 /** Escaped text, with the model's `code` spans drawn like the transcript's. */
 function inlineHtml(text) {
@@ -42,10 +73,11 @@ function listHtml(items) {
  * @param {HTMLElement} deps.bodyEl - where the brief is drawn
  * @param {() => string|null} deps.getSessionId - the CLI session id, null before the first turn
  * @param {() => string} deps.getProjectPath
+ * @param {() => string} [deps.getProjectName] - heads the entry saved to the daily note
  * @param {() => boolean} [deps.isOnScreen] - nothing is read while it is not. Always, when left out
  * @param {(state: {behind: boolean}) => void} [deps.onChange] - for the collapsed strip's dot
  */
-function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScreen = () => true, onChange = () => {} }) {
+function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, getProjectName = () => '', isOnScreen = () => true, onChange = () => {} }) {
   // idle | loading | empty | generating | ready | error
   let phase = 'idle';
   let data = null; // last answer from main, for `data.sessionId`
@@ -90,6 +122,7 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
           ? `<span class="chat-brief-new">${escapeHtml(data.newMessages > 0 ? t('chat.brief.newMessages', { count: data.newMessagesAtLeast ? `${data.newMessages}+` : data.newMessages }) : '')}</span>`
           : `<span class="chat-brief-current">${escapeHtml(t('chat.brief.upToDate'))}</span>`}
         <button class="chat-brief-update" ${updating || !behind ? 'disabled' : ''}>${escapeHtml(updating ? t('chat.brief.updating') : t('chat.brief.update'))}</button>
+        <button class="chat-brief-vault" hidden title="${escapeHtml(t('vault.briefSaveHint'))}">${escapeHtml(t('vault.briefSave'))}</button>
       </div>`);
     return parts.join('');
   }
@@ -106,6 +139,10 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
         </div>`;
     } else if (data?.brief && (phase === 'ready' || phase === 'generating' || phase === 'error')) {
       bodyEl.innerHTML = briefHtml();
+      vaultConnected(api).then((connected) => {
+        const btn = bodyEl.querySelector('.chat-brief-vault');
+        if (btn && connected) btn.hidden = false;
+      });
     } else if (phase === 'generating' || phase === 'loading') {
       const label = phase === 'generating' ? t('chat.brief.generating') : '';
       bodyEl.innerHTML = `<div class="chat-brief-loading"><span class="chat-brief-spinner" aria-hidden="true"></span>${escapeHtml(label)}</div>`;
@@ -181,7 +218,33 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
     if (res?.success) bodyEl.scrollTop = 0;
   }
 
+  async function saveToDailyNote(btn) {
+    if (!data?.brief) return;
+    const Toast = require('../Toast');
+    const time = new Date().toLocaleTimeString(getCurrentLanguage(), { hour: '2-digit', minute: '2-digit' });
+    btn.disabled = true;
+    try {
+      const res = await api.vault.appendDaily(briefAsDailyEntry(data.brief, { projectName: getProjectName(), time }));
+      if (!res?.success) throw new Error(res?.error || 'failed');
+      Toast.showToast({
+        type: 'success',
+        title: t('vault.briefSaved'),
+        message: res.path,
+        action: t('vault.openNote'),
+        onAction: () => require('../../../services/mention-sources/_navigate').openTab('notes').then(() => {
+          window.dispatchEvent(new CustomEvent('ct-vault-open', { detail: { path: res.path } }));
+        }),
+      });
+    } catch (err) {
+      Toast.showToast({ type: 'error', title: t('vault.briefSaveFailed'), message: err.message });
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
   const onClick = (e) => {
+    const vaultBtn = e.target.closest('.chat-brief-vault');
+    if (vaultBtn) { saveToDailyNote(vaultBtn); return; }
     if (e.target.closest('.chat-brief-reload')) refreshStatus();
     else if (e.target.closest('.chat-brief-generate, .chat-brief-update')) generate();
   };
@@ -210,4 +273,4 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, isOnScr
   };
 }
 
-module.exports = { createSessionBrief, inlineHtml };
+module.exports = { createSessionBrief, inlineHtml, briefAsDailyEntry, _resetVaultStatus: () => { vaultStatus = { at: 0, connected: false, pending: null }; } };

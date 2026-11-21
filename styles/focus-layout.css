@@ -1,0 +1,670 @@
+/* focus-layout.css - the Focus layout (src/renderer/ui/focusLayout.js):
+ * one header in the titlebar, the sidebar and the tab rows hidden.
+ * Everything is gated on body.ct-layout-focus; the header is hidden otherwise. */
+
+.focus-bar { display: none; }
+
+body.ct-layout-focus .titlebar {
+  height: 44px;
+  gap: 10px;
+}
+
+body.ct-layout-focus .main-container { height: calc(100vh - 44px); }
+
+body.ct-layout-focus .titlebar-drag { flex: 0 0 auto; }
+body.ct-layout-focus .titlebar-title,
+body.ct-layout-focus .titlebar-icon { display: none; }
+
+body.ct-layout-focus .focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 2px;
+  /* The gaps between the controls still move the window. */
+  -webkit-app-region: drag;
+}
+
+body.ct-layout-focus .focus-bar button,
+body.ct-layout-focus .focus-bar kbd,
+body.ct-layout-focus .focus-tools > * { -webkit-app-region: no-drag; }
+
+.focus-left,
+.focus-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.focus-right { margin-left: auto; gap: 6px; }
+
+.focus-tools {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* The project/session chips: the two things the user switches most. */
+.focus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 240px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+#focus-session-btn { font-weight: 500; color: var(--text-secondary); }
+
+.focus-chip:hover,
+.focus-chip[aria-expanded="true"] {
+  background: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.focus-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.focus-caret { width: 10px; height: 10px; flex-shrink: 0; opacity: 0.6; }
+
+.focus-slash { color: var(--text-muted); font-size: var(--font-md); margin: 0 -2px; }
+
+.focus-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent);
+}
+
+.focus-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-muted);
+}
+
+.focus-status[data-status="ready"],
+.focus-status[data-status="idle"] { background: var(--success); }
+.focus-status[data-status="working"],
+.focus-status[data-status="loading"] { background: var(--accent); animation: pulse 1.6s ease-in-out infinite; }
+.focus-status[data-status="input"] { background: var(--info); box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 30%, transparent); }
+.focus-status[data-status="error"] { background: var(--danger); }
+.focus-status[data-status=""] { display: none; }
+
+/* Another session is waiting on the user: said on the chip, since its tab is hidden. */
+#focus-session-btn.has-attention::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin-left: -2px;
+  border-radius: 50%;
+  background: var(--info);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--info) 30%, transparent);
+}
+
+.focus-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.focus-icon-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+.focus-icon-btn:hover,
+.focus-icon-btn[aria-expanded="true"] { background: var(--bg-hover); color: var(--text-primary); }
+
+/* The ⌘K field: looks like a search box, opens the palette. */
+.focus-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 220px;
+  height: 30px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-tertiary) 70%, transparent);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.focus-search svg { width: 14px; height: 14px; flex-shrink: 0; }
+.focus-search span { flex: 1; text-align: left; }
+.focus-search:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--border-color)); color: var(--text-secondary); }
+
+.focus-search kbd {
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--border-color);
+  font-family: inherit;
+  font-size: var(--font-2xs);
+  color: var(--text-secondary);
+}
+
+.focus-ambience-slot { display: contents; }
+.focus-ambience-slot .titlebar-ambience-btn { margin-right: 0; height: 30px; }
+
+/* The git tools row, moved here: compact, icon-first. */
+body.ct-layout-focus .focus-tools .terminals-filter { display: flex !important; gap: 4px; }
+body.ct-layout-focus .focus-tools .filter-project { display: none; }
+
+/* Hidden in this layout: the sidebar, the project bar, the session row, the
+   docked projects column. Their behaviour is reached from the header. */
+body.ct-layout-focus .sidebar,
+body.ct-layout-focus .project-bar,
+body.ct-layout-focus .terminals-tabs-row,
+body.ct-layout-focus #btn-show-projects,
+body.ct-layout-focus .projects-popover.docked {
+  display: none !important;
+}
+
+/* The chat's own tabs: a compact, centered segmented control in a slot of its
+   own above the conversation. It used to float over the messages, where it
+   read as part of the transcript; now the transcript starts below it and
+   nothing scrolls underneath. Flat, navigation-looking: only the active tab
+   gets a quiet surface, never a filled accent button. */
+body.ct-layout-focus .chat-tabbar:not([hidden]) {
+  align-self: center;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  margin: 8px auto 6px;
+  padding: 3px;
+  gap: 2px;
+  border: none;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ct-bg) 55%, transparent);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+body.ct-layout-focus .chat-tabbar .chat-tab {
+  padding: 4px 12px;
+  border-bottom: none;
+  border-radius: 7px;
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+body.ct-layout-focus .chat-tabbar .chat-tab:hover { color: var(--text-primary); }
+
+body.ct-layout-focus .chat-tabbar .chat-tab.active {
+  background: color-mix(in srgb, var(--ct-text) 10%, transparent);
+  color: var(--text-primary);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+body.ct-layout-focus .chat-tabbar .chat-tab-badge {
+  background: color-mix(in srgb, var(--ct-text) 8%, transparent);
+}
+
+/* ── Popovers ───────────────────────────────────────────────────────────── */
+
+.focus-pop {
+  position: fixed;
+  z-index: 10050;
+  width: 360px;
+  max-width: calc(100vw - 16px);
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  background: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+  backdrop-filter: blur(20px) saturate(1.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary);
+  animation: amb-pop-in 0.14s ease-out;
+}
+
+.focus-filter {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+}
+
+.focus-filter:focus { outline: none; border-color: var(--accent); }
+
+.focus-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.focus-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-item[hidden] { display: none; }
+.focus-item:hover,
+.focus-item.kb { background: var(--bg-hover); }
+.focus-item.current { background: var(--accent-dim); }
+
+.focus-item-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.focus-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-item-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  direction: rtl;
+  text-align: left;
+}
+
+.focus-item-tag {
+  font-size: var(--font-2xs);
+  color: var(--text-muted);
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+}
+
+.focus-item-close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.focus-item-close svg { width: 10px; height: 10px; }
+.focus-item:hover .focus-item-close { opacity: 1; }
+.focus-item-close:hover { background: var(--bg-active); color: var(--text-primary); }
+
+.focus-empty { padding: 14px 10px; color: var(--text-muted); font-size: var(--font-sm); text-align: center; }
+
+.focus-pop-footer {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-color);
+}
+
+.focus-pop-footer-col { flex-direction: column; }
+
+.focus-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-footer-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.focus-footer-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.focus-pop-screens { width: 460px; padding: 10px; overflow-y: auto; }
+.focus-screens-group + .focus-screens-group { margin-top: 10px; }
+
+.focus-screens-title {
+  margin: 0 4px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.focus-screens-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.focus-screen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.focus-screen svg { width: 15px; height: 15px; flex-shrink: 0; }
+.focus-screen span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-screen:hover { background: var(--bg-hover); color: var(--text-primary); }
+.focus-screen.current { border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: var(--accent-dim); color: var(--text-primary); }
+
+.focus-pop-stats { width: auto; min-width: 300px; }
+
+.focus-stats-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 4px;
+}
+
+.focus-stats-body .titlebar-usage,
+.focus-stats-body .titlebar-time {
+  margin: 0;
+  justify-content: flex-start;
+}
+
+/* ── A quieter header: controls without boxes ─────────────────────────────
+   The git tools came with their own borders and fills, which turned the
+   header into a row of boxes. Here they are plain icons (labels in the
+   tooltip), the branch keeps its name, and only hover gives a surface. */
+body.ct-layout-focus .focus-tools :is(.filter-git-btn, .filter-btn-changes, .filter-branch-btn, .filter-actions-btn) {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  border: none !important;
+  border-radius: 8px;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-secondary);
+}
+
+body.ct-layout-focus .focus-tools :is(.filter-git-btn, .filter-btn-changes, .filter-branch-btn, .filter-actions-btn):hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary);
+}
+
+body.ct-layout-focus .focus-tools :is(.filter-git-group, .filter-git-actions) {
+  gap: 2px;
+  border: none;
+  background: none;
+}
+
+body.ct-layout-focus .focus-tools :is(.actions-arrow, .branch-arrow) {
+  display: none;
+}
+
+body.ct-layout-focus .focus-tools .changes-count {
+  margin-left: 2px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+body.ct-layout-focus .focus-search {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+}
+
+body.ct-layout-focus .focus-search:hover { border-color: transparent; background: color-mix(in srgb, var(--ct-text) 10%, transparent); }
+body.ct-layout-focus .focus-search kbd { border: none; background: color-mix(in srgb, var(--ct-text) 8%, transparent); }
+
+/* The chat's tab row: no plate behind it either. */
+body.ct-layout-focus .chat-tabbar:not([hidden]) { background: transparent; }
+
+/* ── Running tasks: a pill in the header, a popover on click ───────────── */
+.focus-tasks {
+  display: none;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 11px 0 9px;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.focus-tasks.has-tasks { display: inline-flex; }
+.focus-tasks:hover { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+
+.focus-tasks-spinner {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+
+.focus-pop-tasks { width: 380px; }
+
+.focus-task {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border-radius: 8px;
+}
+
+.focus-task + .focus-task { margin-top: 1px; }
+.focus-task:hover { background: var(--bg-hover); }
+
+.focus-task-icon { display: grid; place-items: center; font-size: 12px; }
+.focus-task-icon.running .focus-tasks-spinner { width: 12px; height: 12px; }
+.focus-task-icon.completed { color: var(--success); }
+.focus-task-icon.failed { color: var(--danger); }
+.focus-task-icon.stopped { color: var(--text-muted); }
+
+.focus-task-main { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.focus-task-title { font-size: var(--font-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-task-sub { font-size: var(--font-2xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.focus-task-time { font-size: var(--font-2xs); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+.focus-tasks-section {
+  margin: 6px 9px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* ── Zones you can tell apart, with words on them ─────────────────────────
+   Each family of controls sits in a softly tinted capsule (where you are,
+   the repository, the app), with a short caption beside each icon. No
+   borders: the capsules are told apart by their fill and the gap between
+   them. Below 1360px the captions fold away and the icons remain. */
+.focus-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 2px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+}
+
+.focus-group:empty { display: none; }
+
+body.ct-layout-focus .focus-tools .terminals-filter { gap: 2px; }
+
+.focus-label,
+body.ct-layout-focus :is(#filter-btn-pull, #filter-btn-push, .titlebar-ambience-btn)[data-focus-label]::after {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: inherit;
+  white-space: nowrap;
+}
+
+body.ct-layout-focus :is(#filter-btn-pull, #filter-btn-push, .titlebar-ambience-btn)[data-focus-label]::after {
+  content: attr(data-focus-label);
+  margin-left: 6px;
+}
+
+body.ct-layout-focus .focus-tools :is(.filter-git-btn, .filter-btn-changes, .filter-branch-btn, .filter-actions-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+}
+
+body.ct-layout-focus .focus-ambience-slot .titlebar-ambience-btn {
+  width: auto;
+  padding: 0 8px;
+}
+
+.focus-group .focus-icon-btn,
+.focus-group .focus-chip { height: 30px; }
+
+.focus-group .focus-icon-btn:hover,
+.focus-group .focus-chip:hover,
+body.ct-layout-focus .focus-group :is(.filter-git-btn, .filter-btn-changes, .filter-branch-btn, .filter-actions-btn):hover {
+  background: color-mix(in srgb, var(--ct-text) 10%, transparent) !important;
+}
+
+.focus-group .focus-chip { border-color: transparent; }
+
+@media (max-width: 1180px) {
+  .focus-label,
+  body.ct-layout-focus .focus-tools .filter-btn-changes > span[data-i18n],
+  body.ct-layout-focus .focus-tools :is(#filter-btn-actions, #filter-btn-prompts) > span { display: none; }
+  body.ct-layout-focus :is(#filter-btn-pull, #filter-btn-push, .titlebar-ambience-btn)[data-focus-label]::after { content: none; }
+}
+
+/* The chat's tabs: a clear segmented control again, one cell per tab. */
+body.ct-layout-focus .chat-tabbar:not([hidden]) {
+  background: color-mix(in srgb, var(--ct-text) 6%, transparent);
+  padding: 3px;
+  gap: 2px;
+  border-radius: 11px;
+}
+
+body.ct-layout-focus .chat-tabbar .chat-tab { padding: 5px 13px; border-radius: 8px; }
+body.ct-layout-focus .chat-tabbar .chat-tab:hover { background: color-mix(in srgb, var(--ct-text) 8%, transparent); }
+
+body.ct-layout-focus .chat-tabbar .chat-tab.active {
+  background: color-mix(in srgb, var(--ct-text) 14%, transparent);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+/* The git group never squeezes (it clipped its first icon); the search field
+   is the elastic part of the header. */
+body.ct-layout-focus .focus-tools { flex-shrink: 0; overflow: visible; }
+body.ct-layout-focus .focus-search { width: auto; flex: 1 1 220px; min-width: 120px; max-width: 260px; }
+body.ct-layout-focus .focus-right { flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
+body.ct-layout-focus .focus-ambience-slot .titlebar-ambience-btn { display: inline-flex; align-items: center; gap: 0; }
+
+/* No repository, no actions: the git capsule would be an empty pill. */
+/* Invisible but still laid out, so its content can be measured again when a
+   control inside it comes back (display:none would measure 0 for ever). */
+body.ct-layout-focus .focus-tools.is-empty {
+  padding: 0;
+  margin-left: -12px;
+  background: transparent;
+}
+
+/* Project and session: two capsules side by side instead of one joined by a
+   slash, each chip with a small caption saying what it switches. */
+body.ct-layout-focus .focus-left { gap: 8px; }
+.focus-slash { display: none; }
+
+.focus-chip-kicker {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.focus-divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 2px;
+  background: color-mix(in srgb, var(--ct-text) 14%, transparent);
+}
+
+/* Room, in order of what goes first: the search box shrinks to its icon and
+   shortcut, "New" keeps its +, then the captions fold, then the labels. */
+#focus-new-session .focus-label { display: none; }
+
+@media (max-width: 1640px) {
+  body.ct-layout-focus .focus-search { flex: 0 0 auto; width: auto; min-width: 0; padding: 0 8px; }
+  body.ct-layout-focus .focus-search > span { display: none; }
+}
+
+@media (max-width: 1280px) {
+  .focus-chip-kicker { display: none; }
+}
+
+/* Project glyphs in the header and its project menu: the image, or the
+   initial on the project's colour, the same as in the projects column. */
+.focus-project-glyph { display: inline-flex; }
+.focus-project-glyph:empty { display: none; }
+
+.focus-project-avatar {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pc, var(--accent)) 26%, var(--ct-surface));
+  color: color-mix(in srgb, var(--pc, var(--accent)) 70%, #ffffff);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.focus-project-glyph .focus-project-image,
+.focus-project-glyph .focus-project-avatar { width: 18px; height: 18px; border-radius: 5px; }
