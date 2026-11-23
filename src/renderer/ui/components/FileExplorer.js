@@ -885,6 +885,21 @@ class FileExplorer extends BaseComponent {
     this._updateSelectionVisuals();
   }
 
+  /**
+   * Select one file and scroll it into view. Used when a file is opened from
+   * outside the tree (a path clicked in a terminal).
+   * @param {string} filePath
+   */
+  selectFile(filePath) {
+    this._selectedFiles.clear();
+    this._selectedFiles.add(filePath);
+    this._lastSelectedFile = filePath;
+    this._updateSelectionVisuals();
+    const treeEl = document.getElementById('file-explorer-tree');
+    const node = treeEl && [...treeEl.querySelectorAll('.fe-node[data-path]')].find(n => n.dataset.path === filePath);
+    node?.scrollIntoView?.({ block: 'center' });
+  }
+
   _updateSelectionVisuals() {
     const treeEl = document.getElementById('file-explorer-tree');
     if (!treeEl) return;
@@ -2299,6 +2314,7 @@ module.exports = {
   setSessionOverlay: (overlay) => _getInstance().setSessionOverlay(overlay),
   setExtraRoots: (paths) => _getInstance().setExtraRoots(paths),
   revealPaths: (paths) => _getInstance().revealPaths(paths),
+  selectFile: (filePath) => _getInstance().selectFile(filePath),
   toggleDotfiles: () => _getInstance().toggleDotfiles(),
   init: () => _getInstance().init(),
   resetDomBindings: () => _getInstance().resetDomBindings(),

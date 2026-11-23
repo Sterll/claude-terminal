@@ -311,6 +311,26 @@ async function openFile(filePath) {
   });
 }
 
+/**
+ * Open a file reached from outside the tree — a path clicked in a terminal.
+ * Shows it in the viewer and, when it lives under the project, expands the
+ * tree down to it and selects it so the reader can see where it is.
+ * @param {string} filePath - absolute path
+ */
+async function revealFile(filePath) {
+  if (!filePath) return;
+  await openFile(filePath);
+  if (_mode === 'dock' || !_project) return;
+  const root = _project.path;
+  const sepIdx = root.length;
+  const inside = filePath.startsWith(root) && (filePath[sepIdx] === '/' || filePath[sepIdx] === '\\');
+  if (!inside) return;
+  try {
+    await FileExplorer.revealPaths([filePath]);
+    FileExplorer.selectFile?.(filePath);
+  } catch { /* the viewer already shows the file; the tree is a bonus */ }
+}
+
 // ── Mount / lifecycle ────────────────────────────────────────────────────────
 
 // Two actions need the host in both modes; the docked column adds a third,
@@ -581,6 +601,7 @@ module.exports = {
   onDeactivate,
   cleanup,
   openFile,
+  revealFile,
   selectSession,
   getSessionChange,
 };

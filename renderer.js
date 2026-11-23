@@ -120,6 +120,7 @@ const ThemeEngine = require('./src/renderer/ambience/ThemeEngine');
 const { mergeTranslations } = require('./src/renderer/i18n');
 const ModalComponent = require('./src/renderer/ui/components/Modal');
 const WhatsNew = require('./src/renderer/ui/components/WhatsNew');
+const { createFileLinkHistory } = require('./src/renderer/features/FileLinkHistory');
 const { MemoryEditor, GitChangesPanel, ShortcutsManager, SettingsPanel, SkillsAgentsPanel, PluginsPanel, MarketplacePanel, McpPanel, CloudPanel, ConnectivityPanel, WorkspacePanel, ErrorLogPanel, FilesPanel, ArtifactsPanel, CostPanel } = require('./src/renderer/ui/panels');
 // Not re-exported by the panels index: ConnectivityPanel embeds it as a sub-tab,
 // but its polling lifecycle is driven from the tab registry below.
@@ -3673,7 +3674,8 @@ TerminalManager.setCallbacks({
   onSwitchTerminal: switchTerminal,
   onSwitchProject: switchProject,
   onMoveSession: _showMoveSessionModal,
-  onActiveTerminalChange: handleActiveTerminalChange
+  onActiveTerminalChange: handleActiveTerminalChange,
+  onOpenFile: (filePath, { project } = {}) => openFileInFilesScreen(filePath, project)
 });
 
 // Listen for Ctrl+Arrow forwarded from main process (bypasses Windows Snap)
@@ -3843,6 +3845,57 @@ function openProjectFiles(project) {
   document.querySelector('.nav-tab[data-tab="files"]')?.click();
 }
 
+// Back / forward between a terminal and the file one of its paths opened.
+const fileLinkHistory = createFileLinkHistory({
+  getActiveTab: () => document.body.dataset.activeTab,
+  getActiveTerminalId: () => terminalsState.get().activeTerminal,
+  showTerminal: (terminalId) => {
+    document.querySelector('.nav-tab[data-tab="claude"]')?.click();
+    const termData = terminalId != null ? terminalsState.get().terminals.get(terminalId) : null;
+    // The terminal may have been closed meanwhile: landing on Claude is still
+    // the step back the reader asked for.
+    if (!termData) return;
+    if (termData.projectIndex != null && projectsState.get().selectedProjectFilter !== termData.projectIndex) {
+      setSelectedProjectFilter(termData.projectIndex);
+      ProjectList.render();
+      TerminalManager.filterByProject(termData.projectIndex);
+    }
+    TerminalManager.setActiveTerminal(terminalId);
+  },
+  showFile: (filePath, project) => openFileInFilesScreen(filePath, project, { fromHistory: true }),
+});
+fileLinkHistory.attach(document);
+
+/**
+ * Show one file in the Files screen. Reached by clicking a path printed in a
+ * terminal: switches to the tab's project if needed, opens the screen, then
+ * opens the file in its viewer and reveals it in the tree.
+ * @param {string} filePath - absolute path
+ * @param {Object} [project] - the project of the terminal the path came from
+ */
+async function openFileInFilesScreen(filePath, project, { fromHistory = false } = {}) {
+  if (!filePath) return;
+  // Leaving a terminal for a file is a step the reader can undo with Alt+Left
+  // or the mouse's back button; replaying it from history must not re-record.
+  if (!fromHistory && document.body.dataset.activeTab === 'claude') {
+    fileLinkHistory.recordJump(filePath, project || null);
+  }
+  const target = project || getCurrentProjectFromBar();
+  if (target) {
+    openProjectFiles(target);
+  } else {
+    document.querySelector('.nav-tab[data-tab="files"]')?.click();
+  }
+  // The tab's activate hook mounts the screen; give it a frame to lay out.
+  await new Promise(resolve => requestAnimationFrame(resolve));
+  if (!document.getElementById('files-viewer')) {
+    // No project to mount the screen against: fall back to a file tab.
+    TerminalManager.openFileTab(filePath, target);
+    return;
+  }
+  await FilesPanel.revealFile(filePath);
+}
+
 // Wire "+" new terminal button
 // ========== SESSION ADD MENU ==========
 // The single + next to the session tabs: new Claude session, plain terminal, or
@@ -3981,26 +4034,22 @@ function showCloseDialog() {
 
   showModal(t('closeDialog.title'), content);
 
-  // Add event handlers
-  document.getElementById('close-minimize').onclick = () => {
-    const remember = document.getElementById('close-remember').checked;
-    if (remember) {
-      settingsState.setProp('closeAction', 'minimize');
-      saveSettings();
-    }
+  // "Remember my choice" has to reach disk before the window goes away.
+  // saveSettings() is debounced by 500 ms, and quitting kills the renderer
+  // inside that window, so a remembered "quit" was never written and the
+  // dialog came back on the next close.
+  const choose = async (action) => {
+    const remember = document.getElementById('close-remember')?.checked;
     closeModal();
-    api.window.close();
-  };
-
-  document.getElementById('close-quit').onclick = () => {
-    const remember = document.getElementById('close-remember').checked;
     if (remember) {
-      settingsState.setProp('closeAction', 'quit');
-      saveSettings();
+      settingsState.setProp('closeAction', action);
+      try { await saveSettingsImmediate(); } catch { /* close anyway */ }
     }
-    closeModal();
-    api.app.quit();
+    if (action === 'quit') api.app.quit();
+    else api.window.close();
   };
+  document.getElementById('close-minimize').onclick = () => choose('minimize');
+  document.getElementById('close-quit').onclick = () => choose('quit');
 }
 
 document.getElementById('btn-notifications').onclick = () => {
