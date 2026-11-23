@@ -62,6 +62,7 @@ const { showConfirm } = require('./Modal');
 const ContextPromptService = require('../../services/ContextPromptService');
 const { registerOsc52Handler } = require('./terminal/osc52');
 const { attachProgramStatus, attentionOf, attentionSource } = require('./terminal/programStatus');
+const { registerFileLinks } = require('./terminal/fileLinks');
 const {
   detectCompletionSignal,
   parseClaudeTitle,
@@ -1902,6 +1903,25 @@ class TerminalManager extends BaseComponent {
   }
 
   /**
+   * Make file paths printed in a terminal clickable. A click opens the file in
+   * the Files screen; relative paths resolve against the tab's cwd.
+   * @param {import('@xterm/xterm').Terminal} terminal
+   * @param {number|string} id - key of the tab in terminalsState
+   * @param {Object} project
+   */
+  _registerFileLinks(terminal, id, project) {
+    try {
+      registerFileLinks(terminal, {
+        getCwd: () => getTerminal(id)?.cwd || project?.path || null,
+        onOpen: (filePath, info) => this._callbacks.onOpenFile?.(filePath, { project, ...info }),
+        onOpenUrl: (url) => this._api.dialog.openExternal(url),
+      });
+    } catch (err) {
+      console.warn('File links unavailable for this terminal:', err);
+    }
+  }
+
+  /**
    * Resolve the lazily-loaded emulator, or degrade.
    *
    * A load that fails leaves nothing able to draw a terminal, so the caller has
@@ -2108,6 +2128,7 @@ class TerminalManager extends BaseComponent {
     terminal.open(wrapper);
     attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     registerOsc52Handler(terminal);
+    this._registerFileLinks(terminal, id, project);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -3643,6 +3664,7 @@ class TerminalManager extends BaseComponent {
     terminal.open(wrapper);
     attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     registerOsc52Handler(terminal);
+    this._registerFileLinks(terminal, id, project);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -3810,6 +3832,7 @@ class TerminalManager extends BaseComponent {
     terminal.open(wrapper);
     attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
     registerOsc52Handler(terminal);
+    this._registerFileLinks(terminal, id, project);
     setTimeout(() => {
       const fitContainer = wrapper.closest('.terminal-wrapper') || wrapper;
       if (fitContainer.offsetWidth > 0 && fitContainer.offsetHeight > 0) {
@@ -4801,6 +4824,7 @@ class TerminalManager extends BaseComponent {
       terminal.open(wrapper);
       attachWebglAddon(terminal, { enabled: getSetting('terminalWebglRenderer') !== false });
       registerOsc52Handler(terminal);
+      this._registerFileLinks(terminal, id, project);
 
       updateTerminal(id, {
         mode: 'terminal',
