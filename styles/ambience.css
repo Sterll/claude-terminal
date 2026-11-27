@@ -1255,11 +1255,12 @@ body:not(.reduce-motion).chat-side-tasks-folded .chat-tasks-body {
    column, rows told apart by spacing and a hover surface instead of rules. */
 .settings-inline-wrapper {
   display: grid;
-  grid-template-columns: 196px minmax(0, 820px);
+  /* The content takes the width the window gives it, like the conversation. */
+  grid-template-columns: 196px minmax(0, 1fr);
   grid-template-areas: "back search" "nav empty" "nav content";
   grid-template-rows: auto auto 1fr;
   column-gap: 36px;
-  justify-content: center;
+  justify-content: stretch;
   padding: 16px 32px 48px;
   min-height: 100%;
   /* A flex item of the scrolling #tab-settings: it must grow with its
