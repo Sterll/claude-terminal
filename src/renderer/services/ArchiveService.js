@@ -6,6 +6,7 @@
 
 const { BaseService } = require('../core/BaseService');
 const { timeTrackingDir, archivesDir, timeTrackingFile } = require('../utils/paths');
+const { isMissingFile } = require('../utils/fsErrors');
 
 const MONTH_NAMES = [
   'january', 'february', 'march', 'april', 'may', 'june',
@@ -232,7 +233,7 @@ class ArchiveService extends BaseService {
       if (!content || !content.trim()) return null;
       return _normalizeArchive(JSON.parse(content));
     } catch (error) {
-      if (error.code !== 'ENOENT') {
+      if (!isMissingFile(error)) {
         console.warn('[ArchiveService] Failed to read archive:', filePath, error.message);
       }
       return null;

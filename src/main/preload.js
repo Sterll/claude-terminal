@@ -6,9 +6,17 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 // Only Electron is available in this sandbox. All I/O stays behind guarded IPC.
 const bootstrap = ipcRenderer.sendSync('renderer-bootstrap');
+// contextBridge copies a thrown Error with its message and stack only: a
+// custom property such as `code` never reaches the renderer. The code is
+// therefore also written at the head of the message, the way Node words its
+// own fs errors ("ENOENT: no such file..."), and the renderer reads it back
+// with `errorCode()` from src/renderer/utils/fsErrors.js.
 function unwrap(reply) {
-  if (!reply?.ok) throw Object.assign(new Error(reply?.error?.message || 'Access denied'), { code: reply?.error?.code });
-  return reply.value;
+  if (reply?.ok) return reply.value;
+  const code = reply?.error?.code;
+  let message = reply?.error?.message || 'Access denied';
+  if (typeof code === 'string' && code && !message.startsWith(code + ':')) message = code + ': ' + message;
+  throw Object.assign(new Error(message), { code });
 }
 function restore(method, value, args) {
   const entry = item => ({ ...item, isDirectory: () => item.directory, isFile: () => item.file });

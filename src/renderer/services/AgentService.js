@@ -8,6 +8,7 @@ const { parseFrontmatter } = require('../utils/frontmatter');
 const { skillsAgentsState } = require('../state');
 const { t } = require('../i18n');
 const { agentsDir } = require('../utils/paths');
+const { isMissingFile } = require('../utils/fsErrors');
 
 class AgentService extends BaseService {
   constructor(api, container) {
@@ -53,7 +54,7 @@ class AgentService extends BaseService {
         } catch { /* Can't stat */ }
       }
     } catch (e) {
-      if (e.code !== 'ENOENT') console.error('Error loading agents:', e);
+      if (!isMissingFile(e)) console.error('Error loading agents:', e);
     }
 
     skillsAgentsState.setProp('agents', agents);

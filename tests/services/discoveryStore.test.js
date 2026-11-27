@@ -28,6 +28,16 @@ describe('discovery store', () => {
     expect(store.get()).toMatchObject({ lastShownAt: 0, rules: {}, used: {} });
   });
 
+  // What the preload bridge actually hands the renderer: contextBridge keeps
+  // an Error's message and drops `code`. Seen in the wild as "store unreadable,
+  // suggestions are off" on every first launch.
+  test('an absent file reported through the preload bridge (no code) is a fresh store', async () => {
+    const bridged = () => { throw new Error("ENOENT: no such file or directory, open '/home/x/.claude-terminal/discovery.json'"); };
+    const { store } = makeStore({ read: bridged });
+    expect(await store.load()).toEqual({ ok: true, fresh: true });
+    expect(store.isUsable()).toBe(true);
+  });
+
   test('a saved file is read back', async () => {
     const saved = { version: 1, lastShownAt: 42, rules: { a: { dismissed: true } }, used: { 'tab:x': 1 } };
     const { store } = makeStore({ read: () => JSON.stringify(saved) });

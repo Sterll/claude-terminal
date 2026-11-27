@@ -15,6 +15,8 @@
  * dismissed, acted, alreadyUses, data } }, used: { [usageKey]: firstSeenTs } }
  */
 
+const { isMissingFile } = require('../../utils/fsErrors');
+
 const STORE_VERSION = 1;
 const SAVE_DEBOUNCE_MS = 1000;
 
@@ -24,7 +26,7 @@ function emptyState() {
 
 /**
  * @param {Object} deps
- * @param {(file: string) => Promise<string>} deps.readFile   rejects with code ENOENT when absent
+ * @param {(file: string) => Promise<string>} deps.readFile   rejects with ENOENT when absent (as `code`, or at the head of the message when it came through the preload bridge)
  * @param {(file: string, data: object) => Promise<void>} deps.writeJSON  atomic
  * @param {string} deps.file
  * @param {number} [deps.debounceMs]
@@ -42,7 +44,7 @@ function createDiscoveryStore({ readFile, writeJSON, file, debounceMs = SAVE_DEB
     try {
       raw = await readFile(file);
     } catch (err) {
-      if (err && err.code === 'ENOENT') {
+      if (isMissingFile(err)) {
         state = emptyState();
         loaded = true;
         return { ok: true, fresh: true };

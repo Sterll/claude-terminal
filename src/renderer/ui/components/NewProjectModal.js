@@ -33,6 +33,7 @@ const {
   folderNameFor, detectProjectType, validateDraft, nameFromRepoUrl, REPO_URL,
 } = require('../../utils/newProject');
 const { escapeHtml } = require('../../utils/dom');
+const { errorCode } = require('../../utils/fsErrors');
 
 const COLORS = ['', '#f87171', '#fb923c', '#facc15', '#4ade80', '#2dd4bf', '#60a5fa', '#a78bfa', '#f472b6'];
 
@@ -56,8 +57,8 @@ async function probePath(fsp, p) {
     const st = await fsp.stat(p);
     return st.isDirectory() ? 'dir' : 'file';
   } catch (e) {
-    if (e?.code === 'ENOENT') return 'missing';
-    if (e?.code === 'EACCES' || /access denied/i.test(e?.message || '')) return 'denied';
+    if (errorCode(e) === 'ENOENT') return 'missing';
+    if (errorCode(e) === 'EACCES' || /access denied/i.test(e?.message || '')) return 'denied';
     return 'unknown';
   }
 }

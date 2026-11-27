@@ -7,6 +7,7 @@
 
 const { fs, path } = window.electron_nodeModules;
 const { isCliFailureText } = require('../../shared/cli-failure-text');
+const { isMissingFile } = require('../utils/fsErrors');
 
 // Debounce timer for saves
 let saveTimer = null;
@@ -103,7 +104,7 @@ async function loadSessionData() {
 
     return data;
   } catch (e) {
-    if (e.code !== 'ENOENT') {
+    if (!isMissingFile(e)) {
       console.error('[TerminalSessionService] Error loading session data:', e);
     }
     return null;
@@ -251,7 +252,7 @@ async function clearProjectSessions(projectId) {
       await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8');
     }
   } catch (e) {
-    if (e.code !== 'ENOENT') {
+    if (!isMissingFile(e)) {
       console.error('[TerminalSessionService] Error clearing project sessions:', e);
     }
   }
@@ -265,7 +266,7 @@ async function clearAllSessions() {
     const filePath = getSessionFilePath();
     await fs.promises.unlink(filePath);
   } catch (e) {
-    if (e.code !== 'ENOENT') {
+    if (!isMissingFile(e)) {
       console.error('[TerminalSessionService] Error clearing all sessions:', e);
     }
   }

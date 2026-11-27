@@ -5,6 +5,7 @@
 
 const { BaseService } = require('../core/BaseService');
 const { contextPacksFile, promptTemplatesFile } = require('../utils/paths');
+const { isMissingFile } = require('../utils/fsErrors');
 const projectFs = require('../utils/projectFs');
 const remotePath = require('../../shared/remote-path');
 
@@ -278,7 +279,7 @@ class ContextPromptService extends BaseService {
       if (!raw.trim()) return null;
       return JSON.parse(raw);
     } catch (e) {
-      if (e.code !== 'ENOENT' && !String(e).includes('ENOENT')) console.error(`Error reading ${filePath}:`, e);
+      if (!isMissingFile(e)) console.error(`Error reading ${filePath}:`, e);
       return null;
     }
   }
