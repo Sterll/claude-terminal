@@ -27,8 +27,12 @@ const snapshot = Object.fromEntries(RESTORED_KEYS.map((key) => [key, process.env
 function shellEnv(extra) {
   const env = { ...process.env };
   for (const key of RESTORED_KEYS) {
-    if (snapshot[key] === undefined) delete env[key];
-    else env[key] = snapshot[key];
+    // Windows names are case-insensitive and process.env answers to any
+    // spelling, but its copy is a plain object: drop every spelling of the key.
+    for (const name of Object.keys(env)) {
+      if (name.toLowerCase() === key.toLowerCase()) delete env[name];
+    }
+    if (snapshot[key] !== undefined) env[key] = snapshot[key];
   }
   return extra ? Object.assign(env, extra) : env;
 }

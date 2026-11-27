@@ -39,7 +39,25 @@ describe('inheritedEnv.shellEnv', () => {
     const { shellEnv } = loadWith(undefined);
     const env = shellEnv({ CT_EXTRA: 'x' });
     expect(env.CT_EXTRA).toBe('x');
-    expect(env.PATH).toBe(process.env.PATH);
+    // A plain copy keeps the real spelling of each name: `Path` on a Windows
+    // runner, which process.env.PATH finds and env.PATH does not.
+    const pathKey = Object.keys(env).find((name) => name.toUpperCase() === 'PATH');
+    expect(pathKey).toBeDefined();
+    expect(env[pathKey]).toBe(process.env.PATH);
+  });
+
+  test('drops the variable under any spelling of its name', () => {
+    const { shellEnv } = loadWith(undefined);
+    const original = process.env;
+    // process.env on Windows answers to any case; a plain object stands in for
+    // a copy that kept another spelling.
+    process.env = { ...original, nodefaultcurrentdirectoryinexepath: '1' };
+    try {
+      const env = shellEnv();
+      expect(Object.keys(env).some((name) => name.toLowerCase() === KEY.toLowerCase())).toBe(false);
+    } finally {
+      process.env = original;
+    }
   });
 
   test('never mutates process.env', () => {
