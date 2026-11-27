@@ -1759,10 +1759,12 @@ body.ct-ambient .settings-card { background: color-mix(in srgb, var(--ct-bg) 70%
 .sidebar .nav-tab.active::before { display: none; }
 .sidebar .nav-tab.active > svg { color: var(--accent); opacity: 1; }
 
+/* Group headings in sentence case, as in the chat's side column and Settings. */
 .sidebar .nav-separator {
   padding: 16px 18px 5px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--font-xs);
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 
