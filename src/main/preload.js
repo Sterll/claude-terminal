@@ -55,12 +55,33 @@ contextBridge.exposeInMainWorld('electron_nodeModules', {
   __dirname: bootstrap.appRoot
 });
 
-// Helper to create safe IPC listener that returns unsubscribe function
+// Helper to create safe IPC listener that returns unsubscribe function.
+//
+// One ipcRenderer listener per channel, fanned out here to every subscriber.
+// Each chat tab subscribes to the same handful of channels (chat-message,
+// chat-task-update, issue-links-changed...), so attaching one ipcRenderer
+// listener per subscriber tripped Node's MaxListenersExceededWarning as soon
+// as eleven chat tabs were open, without anything leaking. A throwing
+// subscriber is logged and no longer keeps the ones after it from running.
+const channelSubscribers = new Map();
 function createListener(channel) {
   return (callback) => {
-    const subscription = (event, ...args) => callback(...args);
-    ipcRenderer.on(channel, subscription);
-    return () => ipcRenderer.removeListener(channel, subscription);
+    let subscribers = channelSubscribers.get(channel);
+    if (!subscribers) {
+      subscribers = new Set();
+      channelSubscribers.set(channel, subscribers);
+      ipcRenderer.on(channel, (event, ...args) => {
+        for (const deliver of [...subscribers]) {
+          if (!subscribers.has(deliver)) continue;
+          try { deliver(...args); } catch (error) { console.error(`[preload] ${channel} listener failed:`, error); }
+        }
+      });
+    }
+    // A fresh wrapper per subscription, so the same callback subscribed twice
+    // is delivered twice and unsubscribing one leaves the other, as before.
+    const deliver = (...args) => callback(...args);
+    subscribers.add(deliver);
+    return () => { subscribers.delete(deliver); };
   };
 }
 
