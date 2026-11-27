@@ -170,7 +170,7 @@ const defaultSettings = {
   layoutStyle: 'classic', // 'classic' | 'floating' (panes as rounded islands over the scene)
   layoutMode: 'standard', // 'standard' | 'focus' (one header, sidebar and tab rows hidden, Cmd/Ctrl+K for everything; src/renderer/ui/focusLayout.js)
   uiFont: 'system', // 'system' | 'rounded' | 'serif' | 'mono'
-  chatWidth: 'comfortable', // 'full' | 'comfortable' (880px, centred, the scene shows on both sides) | 'narrow' (720px)
+  chatWidth: 'full', // 'full' (edge to edge) | 'comfortable' (880px, centred, the scene shows on both sides) | 'narrow' (720px)
   uiRadius: 'normal', // 'sharp' | 'normal' | 'round'
   uiBorders: 'subtle', // 'normal' | 'subtle' (faint borders, no structural separators) | 'none' (only form fields keep one)
   zenMode: false, // Hide the sidebar, project bar and titlebar stats: the conversation over the scene
