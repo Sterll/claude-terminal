@@ -154,7 +154,8 @@
     "closeOthersTitle": "关闭其他 {count} 个项目？",
     "closeOthersMessage": "它们的标签页将被关闭，并结束 {count} 个正在运行的会话。",
     "closeOthersMessageEmpty": "它们的标签页将被关闭。项目本身不会被删除。",
-    "moreActions": "更多操作"
+    "moreActions": "更多操作",
+    "openExternalTerminal": "在外部终端中打开"
   },
   "terminals": {
     "noTerminals": "该项目没有终端",
@@ -1309,7 +1310,36 @@
     "backupMigrationResult": "上次检查已保护 {count} 个备份。",
     "backupRecovered": "备份已恢复到所选文件。",
     "back": "返回",
-    "backHint": "返回上一个界面（Esc）"
+    "backHint": "返回上一个界面（Esc）",
+    "shell": {
+      "title": "Shell 与外部终端",
+      "shell": "终端标签页的 Shell",
+      "shellDesc": "新的 Shell 标签页运行的程序。Claude 标签页和远程项目保持各自的设置。",
+      "default": "默认（{name}）",
+      "missing": "{name}（本机未找到）",
+      "custom": "自定义...",
+      "customPath": "程序",
+      "browse": "浏览",
+      "customArgs": "参数",
+      "programs": "程序",
+      "external": "外部终端",
+      "externalDesc": "通过项目菜单或文件资源管理器中文件夹上的“在外部终端中打开”启动。",
+      "profile": "Windows Terminal 配置文件",
+      "profilePlaceholder": "默认配置文件",
+      "customCommand": "命令",
+      "customCommandHint": "{path} 会被替换为文件夹。不写时，终端在该文件夹中启动。",
+      "test": "在我的主文件夹中试试",
+      "testOk": "终端已打开。",
+      "testFailed": "无法打开终端。",
+      "errors": {
+        "notAFolder": "本机上不存在此文件夹。",
+        "noCustomCommand": "尚未设置自定义终端命令。请在 设置、常规、外部终端 中设置。",
+        "notFound": "本机未找到 {name}。请在 设置、常规 中选择其他终端。",
+        "noneFound": "本机未找到任何终端应用。请在 设置、常规 中设置自定义命令。",
+        "unsafePath": "在 Windows 上，包含 \" 或 % 的路径无法在外部终端中打开。",
+        "launchFailed": "{name} 未能启动。"
+      }
+    }
   },
   "ui": {
     "notifications": "通知",
@@ -5123,7 +5153,8 @@
       "projectMcpConfig": "远程项目的项目级 MCP 服务器保存在主机上的设置中，不会在此列出。",
       "databaseDetect": "数据库检测会读取项目的本地文件，因此远程项目不可用。请手动添加连接。",
       "mcpProjectTools": "claude-terminal MCP 服务器读取本地磁盘，因此无法读取远程项目的文件。",
-      "costReport": "费用读取自本机的对话记录。远程项目的会话记录保存在其主机上，因此此处不显示其费用。"
+      "costReport": "费用读取自本机的对话记录。远程项目的会话记录保存在其主机上，因此此处不显示其费用。",
+      "openExternalTerminal": "远程项目没有可打开终端的本地文件夹。请改为打开终端标签页：它在主机上运行。"
     },
     "menu": {
       "section": "远程主机：{host}",

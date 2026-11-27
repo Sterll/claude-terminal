@@ -1604,6 +1604,14 @@ class FileExplorer extends BaseComponent {
       onClick: () => this._api.dialog.openInExplorer(isDirectory ? filePath : this._path.dirname(filePath))
     });
 
+    items.push({
+      label: t('projects.openExternalTerminal'),
+      icon: '<svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zM6 10l1.4-1.4L11.8 13l-4.4 4.4L6 16l3-3-3-3zm6 6h6v-2h-6v2z"/></svg>',
+      // A terminal application started here has no remote folder to open in.
+      ...(isRemoteNode ? { disabled: true, title: t('ssh.disabled.openExternalTerminal') } : {}),
+      onClick: () => require('../../utils/externalTerminal').openExternalTerminal(isDirectory ? filePath : this._path.dirname(filePath))
+    });
+
     items.push({ separator: true });
 
     items.push({

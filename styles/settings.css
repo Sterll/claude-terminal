@@ -3487,3 +3487,54 @@
   font-size: var(--font-sm);
   color: var(--text-muted);
 }
+
+/* Settings, General: shell and external terminal (terminalShellSettings.js) */
+.terminal-shell-settings .settings-select {
+  width: 260px;
+}
+
+.terminal-shell-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.terminal-shell-sub[hidden] {
+  display: none;
+}
+
+.terminal-shell-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+}
+
+.terminal-shell-inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.terminal-shell-input {
+  width: 100%;
+  font-family: var(--font-mono);
+}
+
+.terminal-shell-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 18px 14px;
+}
+
+.terminal-shell-status {
+  font-size: var(--font-xs);
+  color: var(--success);
+}
+
+.terminal-shell-status.error {
+  color: var(--danger);
+}

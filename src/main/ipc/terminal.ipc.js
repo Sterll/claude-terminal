@@ -8,6 +8,22 @@ const AccountManager = require('../services/AccountManager');
 const terminalService = require('../services/TerminalService');
 const { sendFeaturePing } = require('../services/TelemetryService');
 const { isRemotePath } = require('../../shared/remote-path');
+const terminalShells = require('../utils/terminalShells');
+
+/**
+ * The terminal settings, read here rather than taken from the renderer, so no
+ * IPC argument ever names the program a PTY or an external terminal runs.
+ * An unreadable file only means the defaults: nothing is written from it.
+ */
+function readTerminalSettings() {
+  try {
+    const { settingsFile } = require('../utils/paths');
+    const fs = require('fs');
+    return JSON.parse(fs.readFileSync(settingsFile, 'utf8')) || {};
+  } catch (_) {
+    return {};
+  }
+}
 
 /**
  * Resolve what a remote (SSH) project's terminal needs, in main, from paths
@@ -70,7 +86,11 @@ function registerTerminalHandlers() {
       // Resolved here rather than inside create(), which stays synchronous:
       // reading an account's store can hit the Keychain.
       const accountEnv = await AccountManager.accountEnv(accountId || null);
-      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv, claudeCommand });
+      // The shell picked in Settings, for plain shell tabs. Claude tabs keep
+      // the default: on POSIX they type the claude command line into it. Only
+      // passed when one is picked, so the default call is the one it always was.
+      const shell = runClaude ? null : terminalShells.resolveShell(readTerminalSettings());
+      return terminalService.create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv, claudeCommand, ...(shell ? { shell } : {}) });
     } catch (error) {
       console.error('[Terminal IPC] Create error:', error);
       return { success: false, error: error.message };
@@ -90,6 +110,41 @@ function registerTerminalHandlers() {
       return terminalService.respawn(id, { remote, resumeSessionId: resumeSessionId || null });
     } catch (error) {
       console.error('[Terminal IPC] Respawn error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // What Settings can offer: the shells and terminal applications installed
+  // here, and Windows Terminal's profiles. Labels and ids only, no launch.
+  ipcMain.handle('terminal-shell-options', async () => {
+    try {
+      return {
+        platform: process.platform,
+        shells: terminalShells.detectShells().map(({ id, label, file }) => ({ id, label, file })),
+        defaultShell: terminalShells.defaultShellLabel(),
+        externalTerminals: terminalShells.detectExternalTerminals(),
+        defaultExternalTerminal: terminalShells.defaultExternalTerminalId(),
+        terminalProfiles: terminalShells.listWindowsTerminalProfiles(),
+      };
+    } catch (error) {
+      console.error('[Terminal IPC] Shell options error:', error);
+      return { platform: process.platform, shells: [], externalTerminals: [], terminalProfiles: [], error: error.message };
+    }
+  });
+
+  // Open the terminal application chosen in Settings on a local folder. The
+  // renderer names the folder, never the program.
+  ipcMain.handle('terminal-open-external', async (event, { path: dir } = {}) => {
+    try {
+      if (isRemotePath(dir)) {
+        const { refusal } = require('../../shared/remote-capabilities');
+        const r = refusal('openExternalTerminal');
+        return { success: false, error: r.message, code: r.code, reasonKey: r.reasonKey };
+      }
+      sendFeaturePing('terminal:external');
+      return await terminalShells.openExternalTerminal(dir, readTerminalSettings());
+    } catch (error) {
+      console.error('[Terminal IPC] Open external error:', error);
       return { success: false, error: error.message };
     }
   });
@@ -115,4 +170,4 @@ function registerTerminalHandlers() {
   });
 }
 
-module.exports = { registerTerminalHandlers, resolveRemoteTerminal };
+module.exports = { registerTerminalHandlers, resolveRemoteTerminal, readTerminalSettings };

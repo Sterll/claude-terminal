@@ -1114,6 +1114,7 @@ class SettingsPanel extends BasePanel {
                 </div>
               </div>
             </div>
+            <div class="settings-group" data-section="shell" id="terminal-shell-settings-root"></div>
             <div class="settings-group" data-section="behavior">
               <div class="settings-group-title">${t('settings.system')}</div>
               <div class="settings-card">
@@ -2414,6 +2415,15 @@ class SettingsPanel extends BasePanel {
     const ticketsRoot = document.getElementById('tickets-settings-root');
     if (ticketsRoot) {
       mountTicketsSettings(ticketsRoot, { api: self.api }).catch((e) => console.error('[Settings] Tickets tab:', e));
+    }
+
+    // Shell and external terminal: the lists come from main (what is installed
+    // here), so the card fills in once they arrive. It saves its own fields.
+    const shellRoot = document.getElementById('terminal-shell-settings-root');
+    if (shellRoot) {
+      require('../components/terminalShellSettings')
+        .mountTerminalShellSettings(shellRoot, { api: self.api })
+        .catch((e) => console.error('[Settings] Shell settings:', e));
     }
 
     // GitHub Enterprise settings

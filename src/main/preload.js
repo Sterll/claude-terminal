@@ -97,6 +97,10 @@ contextBridge.exposeInMainWorld('electron_api', {
     kill: (params) => ipcRenderer.send('terminal-kill', params),
     // Remote (SSH) tabs only: reopen one whose connection dropped, by its id.
     respawn: (params) => ipcRenderer.invoke('terminal-respawn', params),
+    // Settings: the shells and terminal applications installed here.
+    shellOptions: () => ipcRenderer.invoke('terminal-shell-options'),
+    // The terminal application chosen in Settings, on a local folder.
+    openExternal: (params) => ipcRenderer.invoke('terminal-open-external', params),
     onData: createListener('terminal-data'),
     onExit: createListener('terminal-exit'),
     // A remote tab's ssh exited 255: the connection was lost, the tab stays.

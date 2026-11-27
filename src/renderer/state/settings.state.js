@@ -24,6 +24,17 @@ const defaultSettings = {
   // atlas faults behind #207 (ghost characters, caret a column off). There is
   // no way to detect those, so this stays a user decision.
   terminalWebglRenderer: true,
+  // The shell a plain shell tab runs (issue #255). '' = PowerShell on Windows,
+  // $SHELL elsewhere; else an id from main's terminalShells.detectShells(), or
+  // 'custom' with the two fields below. Read in main, never sent over IPC.
+  terminalShell: '',
+  terminalShellCustomPath: '',
+  terminalShellCustomArgs: '',
+  // The terminal application "Open in external terminal" starts. '' = this
+  // platform's usual one; 'custom' runs the command below, {path} = the folder.
+  externalTerminal: '',
+  externalTerminalProfile: '', // Windows Terminal profile name (-p)
+  externalTerminalCustomCommand: '',
   notificationsEnabled: true,
   closeAction: 'ask', // 'ask', 'minimize', 'quit'
   shortcuts: {}, // Custom keyboard shortcuts overrides

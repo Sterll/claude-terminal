@@ -66,6 +66,10 @@ const CAPABILITIES = Object.freeze({
   // canOpenInEditor(), which lets those through (REMOTE_EDITORS).
   openInExplorer: row('ssh.disabled.openInExplorer',
     'A remote project has no local folder to show'),
+  // A terminal application started here would open on a local folder; a
+  // remote project's shell is a remote terminal tab.
+  openExternalTerminal: row('ssh.disabled.openExternalTerminal',
+    'A remote project has no local folder to open a terminal in. Open a terminal tab, which runs on the host'),
   openInEditor: row('ssh.disabled.openInEditor',
     'Only VS Code, Cursor and Windsurf can open a remote project, through their Remote-SSH extension'),
   // Moving or copying between a local tree and a remote one would be a file

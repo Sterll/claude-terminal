@@ -154,7 +154,8 @@
     "closeOthersTitle": "Tutup {count} proyek lainnya?",
     "closeOthersMessage": "Tab mereka akan ditutup dan {count} sesi yang berjalan akan diakhiri.",
     "closeOthersMessageEmpty": "Tab mereka akan ditutup. Proyeknya sendiri tidak dihapus.",
-    "moreActions": "Aksi lainnya"
+    "moreActions": "Aksi lainnya",
+    "openExternalTerminal": "Buka di terminal eksternal"
   },
   "terminals": {
     "noTerminals": "Tidak ada terminal untuk proyek ini",
@@ -1309,7 +1310,36 @@
     "backupMigrationResult": "{count} cadangan diamankan pada pemeriksaan terakhir.",
     "backupRecovered": "Cadangan dipulihkan ke berkas yang dipilih.",
     "back": "Kembali",
-    "backHint": "Kembali ke layar sebelumnya (Esc)"
+    "backHint": "Kembali ke layar sebelumnya (Esc)",
+    "shell": {
+      "title": "Shell dan terminal eksternal",
+      "shell": "Shell untuk tab terminal",
+      "shellDesc": "Yang dijalankan tab shell baru. Tab Claude dan proyek jarak jauh tetap memakai miliknya sendiri.",
+      "default": "Bawaan ({name})",
+      "missing": "{name} (tidak ditemukan di mesin ini)",
+      "custom": "Kustom...",
+      "customPath": "Program",
+      "browse": "Telusuri",
+      "customArgs": "Argumen",
+      "programs": "Program",
+      "external": "Terminal eksternal",
+      "externalDesc": "Dibuka lewat \"Buka di terminal eksternal\", di menu proyek dan pada folder di penjelajah file.",
+      "profile": "Profil Windows Terminal",
+      "profilePlaceholder": "Profil bawaan",
+      "customCommand": "Perintah",
+      "customCommandHint": "{path} diganti dengan folder. Tanpanya, terminal dimulai di folder tersebut.",
+      "test": "Coba di folder pribadi saya",
+      "testOk": "Terminal dibuka.",
+      "testFailed": "Terminal tidak dapat dibuka.",
+      "errors": {
+        "notAFolder": "Folder ini tidak ada di mesin ini.",
+        "noCustomCommand": "Belum ada perintah terminal kustom. Atur di Pengaturan, Umum, Terminal eksternal.",
+        "notFound": "{name} tidak ditemukan di mesin ini. Pilih terminal lain di Pengaturan, Umum.",
+        "noneFound": "Tidak ada aplikasi terminal di mesin ini. Atur perintah kustom di Pengaturan, Umum.",
+        "unsafePath": "Path yang berisi \" atau % tidak dapat dibuka di terminal eksternal pada Windows.",
+        "launchFailed": "{name} tidak berjalan."
+      }
+    }
   },
   "ui": {
     "notifications": "Notifikasi",
@@ -5123,7 +5153,8 @@
       "projectMcpConfig": "Server MCP khusus proyek jarak jauh ada di pengaturannya di host dan tidak ditampilkan di sini.",
       "databaseDetect": "Deteksi basis data membaca file lokal proyek, jadi tidak tersedia untuk proyek jarak jauh. Tambahkan koneksi secara manual.",
       "mcpProjectTools": "Server MCP claude-terminal membaca disk lokal, jadi tidak dapat membaca file proyek jarak jauh.",
-      "costReport": "Biaya dibaca dari transkrip di mesin ini. Sesi proyek jarak jauh dicatat di host-nya, jadi biayanya tidak ditampilkan di sini."
+      "costReport": "Biaya dibaca dari transkrip di mesin ini. Sesi proyek jarak jauh dicatat di host-nya, jadi biayanya tidak ditampilkan di sini.",
+      "openExternalTerminal": "Proyek jarak jauh tidak punya folder lokal untuk membuka terminal. Buka tab terminal saja: tab itu berjalan di host."
     },
     "menu": {
       "section": "Host jarak jauh: {host}",

@@ -219,7 +219,7 @@ describe('TerminalService.create without Claude Code on the PATH', () => {
     const [file, args, options] = pty.spawn.mock.calls.at(-1);
     expect(file).toBe('cmd.exe');
     expect(args).toEqual(['/c', 'C:\\Users\\A B\\AppData\\Roaming\\npm\\claude.cmd']);
-    expect(options.env).toBe(process.env);
+    expect(options.env).toEqual(require('../../src/main/utils/inheritedEnv').shellEnv());
   });
 
   it('types the binary path, quoted, on POSIX', () => {
@@ -236,6 +236,50 @@ describe('TerminalService.create without Claude Code on the PATH', () => {
     mockClaudeLaunch.value = bundled;
     terminalService.create({ cwd: null, runClaude: false });
     const options = pty.spawn.mock.calls.at(-1)[2];
-    expect(options.env).toBe(process.env);
+    expect(options.env).toEqual(require('../../src/main/utils/inheritedEnv').shellEnv());
+  });
+});
+
+describe('TerminalService.create with the shell chosen in Settings (issue #255)', () => {
+  const pty = require('node-pty');
+  const lastSpawn = () => pty.spawn.mock.calls[pty.spawn.mock.calls.length - 1];
+  const GIT_BASH = { file: 'C:\Program Files\Git\bin\bash.exe', args: ['--login', '-i'], env: { CHERE_INVOKING: '1' } };
+
+  it('runs it in a plain shell tab, with its environment on top of the process one', () => {
+    terminalService.create({ cwd: null, shell: GIT_BASH });
+    const [file, args, options] = lastSpawn();
+    expect(file).toBe(GIT_BASH.file);
+    expect(args).toEqual(['--login', '-i']);
+    expect(options.env.CHERE_INVOKING).toBe('1');
+    expect(options.env.PATH || options.env.Path).toBe(process.env.PATH || process.env.Path);
+  });
+
+  it('adds nothing to the environment the app started with when the shell adds nothing', () => {
+    terminalService.create({ cwd: null, shell: { file: '/usr/bin/fish', args: [], env: null } });
+    expect(lastSpawn()[2].env).toEqual(require('../../src/main/utils/inheritedEnv').shellEnv());
+  });
+
+  it('never applies to a Claude tab or a main-chosen program', () => {
+    terminalService.create({ cwd: null, runClaude: true, shell: GIT_BASH });
+    expect(lastSpawn()[0]).not.toBe(GIT_BASH.file);
+    terminalService.create({ cwd: null, shell: GIT_BASH, command: { file: '/usr/bin/ssh', args: ['host'] } });
+    expect(lastSpawn()[0]).toBe('/usr/bin/ssh');
+  });
+
+  it('opens on the default shell and says why when the chosen one is missing', () => {
+    jest.useFakeTimers();
+    const sent = [];
+    terminalService.setMainWindow({ isDestroyed: () => false, webContents: { send: (ch, data) => sent.push({ ch, data }) } });
+    try {
+      const { id } = terminalService.create({ cwd: null, shell: { notice: 'The shell "zsh" chosen in Settings is not available.' } });
+      const [file] = lastSpawn();
+      expect(file).toBe(process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'));
+      jest.advanceTimersByTime(100);
+      const notice = sent.find((s) => s.ch === 'terminal-data' && s.data.id === id);
+      expect(notice.data.data).toContain('"zsh"');
+    } finally {
+      terminalService.setMainWindow(null);
+      jest.useRealTimers();
+    }
   });
 });

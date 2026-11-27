@@ -39,6 +39,12 @@ const KNOWN_SETTINGS = new Set([
 
   // Terminal & Chat
   'defaultTerminalMode',
+  'terminalShell',
+  'terminalShellCustomPath',
+  'terminalShellCustomArgs',
+  'externalTerminal',
+  'externalTerminalProfile',
+  'externalTerminalCustomCommand',
   'chatModel',
   'effortLevel',
   'enable1MContext',
@@ -122,6 +128,14 @@ const READONLY_SETTINGS = new Set([
   'mcpPermissionGrantsEnabled', // Security: lets an agent grant another tab's permissions
   'alwaysAllowBypassesSession', // Security: Always Allow turns off every later prompt of the session
   'chatBlockWritesOutsideCwd', // Security: an agent must not lift the write boundary it runs under
+  // Security: each names a program this app starts outside any permission
+  // check, so an agent writing one could run anything at the next terminal.
+  'terminalShell',
+  'terminalShellCustomPath',
+  'terminalShellCustomArgs',
+  'externalTerminal',
+  'externalTerminalProfile',
+  'externalTerminalCustomCommand',
   'cloudApiKey',            // Credentials
   'remotePersistentPinValue', // Auth PIN
   'telemetryEnabled',       // Privacy: user must opt-in via UI

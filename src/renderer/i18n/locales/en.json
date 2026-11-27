@@ -154,7 +154,8 @@
     "closeOthersTitle": "Close {count} other project(s)?",
     "closeOthersMessage": "Their tabs will be closed and {count} running session(s) ended.",
     "closeOthersMessageEmpty": "Their tabs will be closed. The projects themselves are not deleted.",
-    "moreActions": "More actions"
+    "moreActions": "More actions",
+    "openExternalTerminal": "Open in external terminal"
   },
   "terminals": {
     "noTerminals": "No terminal for this project",
@@ -1309,7 +1310,36 @@
     "backupMigrationResult": "{count} backups secured during the last check.",
     "backupRecovered": "Backup recovered to the selected file.",
     "back": "Back",
-    "backHint": "Back to the previous screen (Esc)"
+    "backHint": "Back to the previous screen (Esc)",
+    "shell": {
+      "title": "Shell and external terminal",
+      "shell": "Shell for terminal tabs",
+      "shellDesc": "What new shell tabs run. Claude tabs and remote projects keep theirs.",
+      "default": "Default ({name})",
+      "missing": "{name} (not found on this machine)",
+      "custom": "Custom...",
+      "customPath": "Program",
+      "browse": "Browse",
+      "customArgs": "Arguments",
+      "programs": "Programs",
+      "external": "External terminal",
+      "externalDesc": "Opened by \"Open in external terminal\", in a project's menu and on a folder of the file explorer.",
+      "profile": "Windows Terminal profile",
+      "profilePlaceholder": "Default profile",
+      "customCommand": "Command",
+      "customCommandHint": "{path} is replaced by the folder. Without it, the terminal starts in the folder.",
+      "test": "Try it on my home folder",
+      "testOk": "Terminal opened.",
+      "testFailed": "The terminal could not be opened.",
+      "errors": {
+        "notAFolder": "This folder does not exist on this machine.",
+        "noCustomCommand": "No custom terminal command is set. Set one in Settings, General, External terminal.",
+        "notFound": "{name} was not found on this machine. Choose another terminal in Settings, General.",
+        "noneFound": "No terminal application was found on this machine. Set a custom command in Settings, General.",
+        "unsafePath": "A path containing \" or % cannot be opened in an external terminal on Windows.",
+        "launchFailed": "{name} did not start."
+      }
+    }
   },
   "ui": {
     "notifications": "Notifications",
@@ -5123,7 +5153,8 @@
       "projectMcpConfig": "Project-scoped MCP servers of a remote project live in its settings on the host and are not listed here.",
       "databaseDetect": "Database detection reads the project's local files, so it is not available for a remote project. Add the connection by hand.",
       "mcpProjectTools": "The claude-terminal MCP server reads local disk, so it cannot read the files of a remote project.",
-      "costReport": "Cost is read from this machine's transcripts. The sessions of a remote project are recorded on its host, so their cost is not shown here."
+      "costReport": "Cost is read from this machine's transcripts. The sessions of a remote project are recorded on its host, so their cost is not shown here.",
+      "openExternalTerminal": "A remote project has no local folder to open a terminal in. Open a terminal tab instead: it runs on the host."
     },
     "menu": {
       "section": "Remote host: {host}",

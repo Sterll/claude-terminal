@@ -303,9 +303,10 @@ describe('the local path is unchanged', () => {
     expect({ file, args, options }).toEqual({
       file: process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash'),
       args: process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [],
-      options: { name: 'xterm-256color', cols: 120, rows: 30, cwd: expectedCwd, env: process.env },
+      // The environment the app started with (inheritedEnv.js), as a copy.
+      options: { name: 'xterm-256color', cols: 120, rows: 30, cwd: expectedCwd, env: require('../../src/main/utils/inheritedEnv').shellEnv() },
     });
-    expect(options.env).toBe(process.env);
+    expect(options.env).not.toBe(process.env);
   });
 
   test('an account overlay is merged over the environment, as before', () => {

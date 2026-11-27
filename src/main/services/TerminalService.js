@@ -11,6 +11,7 @@ const terminalCapture = require('./TerminalOutputCapture');
 const { terminalCommandArgv } = require('../../shared/terminal-commands');
 const sshCommand = require('../utils/sshCommand');
 const { resolveTerminalClaude } = require('../utils/claudeCode');
+const inheritedEnv = require('../utils/inheritedEnv');
 const {
   q,
   shC,
@@ -117,9 +118,14 @@ class TerminalService {
    *   (see `_createRemote`). Never taken from the renderer as-is.
    * @param {string} [options.claudeCommand] - A terminal-only slash command for
    *   the CLI to run on start (see src/shared/terminal-commands.js)
+   * @param {{file: string, args: string[], env?: object|null}|{notice: string}|null} [options.shell]
+   *   The shell a plain shell tab runs instead of the default, resolved in main
+   *   from the user's settings by `terminalShells.resolveShell()`; `{ notice }`
+   *   when the chosen one is missing here, printed in the tab over the default.
+   *   Ignored for Claude tabs, `command` and remote tabs.
    * @returns {Object} - { success: boolean, id?: number, error?: string }
    */
-  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null, remote = null, claudeCommand = null }) {
+  create({ cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, accountEnv = null, command = null, remote = null, claudeCommand = null, shell = null }) {
     // Validated again here rather than trusted from the renderer: these words
     // end up on a cmd.exe or shell command line, local or on a remote host.
     let commandArgv = [];
@@ -135,6 +141,18 @@ class TerminalService {
     if (remote) return this._createRemote(id, { cwd, runClaude, skipPermissions, resumeSessionId, projectId, projectPath, remote, commandArgv });
     let shellPath = process.platform === 'win32' ? 'powershell.exe' : (process.env.SHELL || '/bin/bash');
     let shellArgs = process.platform === 'win32' ? ['-NoLogo', '-NoProfile'] : [];
+    // The shell picked in Settings, for plain shell tabs only (see above).
+    let shellEnv = null;
+    let shellNotice = null;
+    if (shell && !runClaude && !command) {
+      if (typeof shell.file === 'string' && Array.isArray(shell.args)) {
+        shellPath = shell.file;
+        shellArgs = shell.args.map(String);
+        shellEnv = shell.env && typeof shell.env === 'object' ? shell.env : null;
+      } else if (typeof shell.notice === 'string') {
+        shellNotice = shell.notice;
+      }
+    }
 
     // Validate and resolve working directory
     let effectiveCwd = os.homedir();
@@ -195,9 +213,9 @@ class TerminalService {
         // A project pinned to an account gets that account's credential store;
         // everything else in ~/.claude stays shared. The SDK's binary also
         // gets its updater turned off (claudeLaunch.env).
-        env: (accountEnv || claudeLaunch?.env)
-          ? { ...process.env, ...(claudeLaunch?.env || {}), ...(accountEnv || {}) }
-          : process.env
+        // The environment the app started with, not the one the Agent SDK
+        // left in this process (inheritedEnv.js says why).
+        env: inheritedEnv.shellEnv({ ...(shellEnv || {}), ...(claudeLaunch?.env || {}), ...(accountEnv || {}) })
       });
 
       if (!ptyProcess) {
@@ -240,6 +258,14 @@ class TerminalService {
     this.terminals.set(id, ptyProcess);
 
     const dataDisposable = this._wireOutput(id, ptyProcess);
+
+    // Said in the tab itself, once the renderer has the id: the tab opened, on
+    // the default shell, and this is why it is not the one chosen.
+    if (shellNotice) {
+      setTimeout(() => {
+        this.sendToRenderer('terminal-data', { id, data: `\x1b[33m${shellNotice}\x1b[0m\r\n` });
+      }, 50);
+    }
 
     // Handle exit
     const exitDisposable = ptyProcess.onExit((evt) => {

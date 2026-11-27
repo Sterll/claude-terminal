@@ -645,6 +645,10 @@ class ProjectList extends BaseComponent {
       ${menuIcons.folderOpen}
       ${t('projects.openFolder')}
     </button>
+    <button class="more-actions-item btn-open-external-terminal${remoteDisabledClass(project, 'openExternalTerminal')}" data-project-id="${project.id}"${remoteDisabledAttrs(project, 'openExternalTerminal')}>
+      ${menuIcons.terminal}
+      ${t('projects.openExternalTerminal')}
+    </button>
     <button class="more-actions-item btn-open-editor${remoteDisabledClass(project, 'openInEditor')}" data-project-id="${project.id}"${remoteDisabledAttrs(project, 'openInEditor')}>
       ${menuIcons.code}
       ${t('projects.openInEditor', { editor: (EDITOR_OPTIONS.find(e => e.value === (getProjectEditor(project.id) || getSetting('editor'))) || EDITOR_OPTIONS[0]).label })}
@@ -1241,6 +1245,9 @@ class ProjectList extends BaseComponent {
     } else if (btn.classList.contains('btn-open-folder')) {
       const project = getProject(projectId);
       if (project) self._api.dialog.openInExplorer(project.path);
+    } else if (btn.classList.contains('btn-open-external-terminal')) {
+      const project = getProject(projectId);
+      if (project) require('../../utils/externalTerminal').openExternalTerminal(project.path);
     } else if (btn.classList.contains('btn-open-editor')) {
       const project = getProject(projectId);
       if (!project) return;

@@ -154,7 +154,8 @@
     "closeOthersTitle": "Fechar {count} outro(s) projeto(s)?",
     "closeOthersMessage": "As abas serão fechadas e {count} sessão(ões) em execução encerrada(s).",
     "closeOthersMessageEmpty": "As abas serão fechadas. Os projetos em si não são excluídos.",
-    "moreActions": "Mais ações"
+    "moreActions": "Mais ações",
+    "openExternalTerminal": "Abrir em um terminal externo"
   },
   "terminals": {
     "noTerminals": "Nenhum terminal para este projeto",
@@ -1309,7 +1310,36 @@
     "backupMigrationResult": "{count} backups protegidos na última verificação.",
     "backupRecovered": "Backup recuperado no arquivo selecionado.",
     "back": "Voltar",
-    "backHint": "Voltar à tela anterior (Esc)"
+    "backHint": "Voltar à tela anterior (Esc)",
+    "shell": {
+      "title": "Shell e terminal externo",
+      "shell": "Shell das abas de terminal",
+      "shellDesc": "O que as novas abas de shell executam. Abas do Claude e projetos remotos mantêm o seu.",
+      "default": "Padrão ({name})",
+      "missing": "{name} (não encontrado nesta máquina)",
+      "custom": "Personalizado...",
+      "customPath": "Programa",
+      "browse": "Procurar",
+      "customArgs": "Argumentos",
+      "programs": "Programas",
+      "external": "Terminal externo",
+      "externalDesc": "Aberto por \"Abrir em um terminal externo\", no menu de um projeto e em uma pasta do explorador de arquivos.",
+      "profile": "Perfil do Windows Terminal",
+      "profilePlaceholder": "Perfil padrão",
+      "customCommand": "Comando",
+      "customCommandHint": "{path} é substituído pela pasta. Sem ele, o terminal começa na pasta.",
+      "test": "Testar na minha pasta pessoal",
+      "testOk": "Terminal aberto.",
+      "testFailed": "Não foi possível abrir o terminal.",
+      "errors": {
+        "notAFolder": "Esta pasta não existe nesta máquina.",
+        "noCustomCommand": "Nenhum comando de terminal personalizado definido. Defina um em Configurações, Geral, Terminal externo.",
+        "notFound": "{name} não foi encontrado nesta máquina. Escolha outro terminal em Configurações, Geral.",
+        "noneFound": "Nenhum aplicativo de terminal encontrado nesta máquina. Defina um comando personalizado em Configurações, Geral.",
+        "unsafePath": "Um caminho com \" ou % não pode ser aberto em um terminal externo no Windows.",
+        "launchFailed": "{name} não iniciou."
+      }
+    }
   },
   "ui": {
     "notifications": "Notificações",
@@ -5123,7 +5153,8 @@
       "projectMcpConfig": "Os servidores MCP próprios de um projeto remoto ficam nas configurações dele no host e não são listados aqui.",
       "databaseDetect": "A detecção de bancos de dados lê os arquivos locais do projeto, então não está disponível para um projeto remoto. Adicione a conexão manualmente.",
       "mcpProjectTools": "O servidor MCP claude-terminal lê o disco local, então não consegue ler os arquivos de um projeto remoto.",
-      "costReport": "O custo é lido das transcrições desta máquina. As sessões de um projeto remoto ficam registradas no host dele, então o custo delas não aparece aqui."
+      "costReport": "O custo é lido das transcrições desta máquina. As sessões de um projeto remoto ficam registradas no host dele, então o custo delas não aparece aqui.",
+      "openExternalTerminal": "Um projeto remoto não tem uma pasta local onde abrir um terminal. Abra uma aba de terminal: ela roda no host."
     },
     "menu": {
       "section": "Host remoto: {host}",

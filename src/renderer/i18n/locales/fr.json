@@ -154,7 +154,8 @@
     "closeOthersTitle": "Fermer {count} autre(s) projet(s) ?",
     "closeOthersMessage": "Leurs onglets vont être fermés et {count} session(s) en cours terminée(s).",
     "closeOthersMessageEmpty": "Leurs onglets vont être fermés. Les projets eux-mêmes ne sont pas supprimés.",
-    "moreActions": "Plus d'actions"
+    "moreActions": "Plus d'actions",
+    "openExternalTerminal": "Ouvrir dans un terminal externe"
   },
   "terminals": {
     "noTerminals": "Aucun terminal pour ce projet",
@@ -1404,7 +1405,36 @@
     "backupMigrationResult": "{count} sauvegardes sécurisées lors de la dernière vérification.",
     "backupRecovered": "Sauvegarde récupérée dans le fichier choisi.",
     "back": "Retour",
-    "backHint": "Revenir à l'écran précédent (Échap)"
+    "backHint": "Revenir à l'écran précédent (Échap)",
+    "shell": {
+      "title": "Shell et terminal externe",
+      "shell": "Shell des onglets terminal",
+      "shellDesc": "Ce que lancent les nouveaux onglets shell. Les onglets Claude et les projets distants gardent le leur.",
+      "default": "Par défaut ({name})",
+      "missing": "{name} (introuvable sur cette machine)",
+      "custom": "Personnalisé...",
+      "customPath": "Programme",
+      "browse": "Parcourir",
+      "customArgs": "Arguments",
+      "programs": "Programmes",
+      "external": "Terminal externe",
+      "externalDesc": "Ouvert par « Ouvrir dans un terminal externe », dans le menu d'un projet et sur un dossier de l'explorateur de fichiers.",
+      "profile": "Profil Windows Terminal",
+      "profilePlaceholder": "Profil par défaut",
+      "customCommand": "Commande",
+      "customCommandHint": "{path} est remplacé par le dossier. Sans lui, le terminal démarre dans le dossier.",
+      "test": "Essayer sur mon dossier personnel",
+      "testOk": "Terminal ouvert.",
+      "testFailed": "Le terminal n'a pas pu être ouvert.",
+      "errors": {
+        "notAFolder": "Ce dossier n'existe pas sur cette machine.",
+        "noCustomCommand": "Aucune commande de terminal personnalisée n'est définie. Définissez-en une dans Paramètres, Général, Terminal externe.",
+        "notFound": "{name} est introuvable sur cette machine. Choisissez un autre terminal dans Paramètres, Général.",
+        "noneFound": "Aucune application de terminal trouvée sur cette machine. Définissez une commande personnalisée dans Paramètres, Général.",
+        "unsafePath": "Un chemin contenant \" ou % ne peut pas être ouvert dans un terminal externe sous Windows.",
+        "launchFailed": "{name} n'a pas démarré."
+      }
+    }
   },
   "ui": {
     "notifications": "Notifications",
@@ -5123,7 +5153,8 @@
       "projectMcpConfig": "Les serveurs MCP propres à un projet distant sont dans ses réglages sur l'hôte et ne sont pas listés ici.",
       "databaseDetect": "La détection de bases de données lit les fichiers locaux du projet : elle n'est pas disponible pour un projet distant. Ajoutez la connexion à la main.",
       "mcpProjectTools": "Le serveur MCP claude-terminal lit le disque local : il ne peut pas lire les fichiers d'un projet distant.",
-      "costReport": "Le coût est lu dans les transcriptions de cette machine. Les sessions d'un projet distant sont enregistrées sur son hôte, leur coût n'est donc pas affiché ici."
+      "costReport": "Le coût est lu dans les transcriptions de cette machine. Les sessions d'un projet distant sont enregistrées sur son hôte, leur coût n'est donc pas affiché ici.",
+      "openExternalTerminal": "Un projet distant n'a pas de dossier local où ouvrir un terminal. Ouvrez plutôt un onglet terminal : il tourne sur l'hôte."
     },
     "menu": {
       "section": "Hôte distant : {host}",

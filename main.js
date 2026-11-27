@@ -3,6 +3,9 @@
  * Minimal entry point that bootstraps the modular architecture
  */
 
+// First, before anything can load the Agent SDK: it changes process.env, and
+// the user's terminals must get the environment the app was started with.
+require('./src/main/utils/inheritedEnv');
 const { app, globalShortcut, session, ipcMain, powerMonitor } = require('electron');
 const rendererSecurity = require('./src/main/utils/rendererSecurity');
 rendererSecurity.install(ipcMain);

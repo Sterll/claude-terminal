@@ -154,7 +154,8 @@
     "closeOthersTitle": "¿Cerrar {count} proyecto(s) más?",
     "closeOthersMessage": "Se cerrarán sus pestañas y finalizarán {count} sesión(es) en curso.",
     "closeOthersMessageEmpty": "Se cerrarán sus pestañas. Los proyectos en sí no se eliminan.",
-    "moreActions": "Más acciones"
+    "moreActions": "Más acciones",
+    "openExternalTerminal": "Abrir en un terminal externo"
   },
   "terminals": {
     "noTerminals": "Sin terminal para este proyecto",
@@ -1306,7 +1307,36 @@
     "backupMigrationResult": "{count} copias protegidas en la última comprobación.",
     "backupRecovered": "Copia recuperada en el archivo seleccionado.",
     "back": "Volver",
-    "backHint": "Volver a la pantalla anterior (Esc)"
+    "backHint": "Volver a la pantalla anterior (Esc)",
+    "shell": {
+      "title": "Shell y terminal externo",
+      "shell": "Shell de las pestañas de terminal",
+      "shellDesc": "Lo que ejecutan las nuevas pestañas de shell. Las pestañas de Claude y los proyectos remotos conservan el suyo.",
+      "default": "Predeterminado ({name})",
+      "missing": "{name} (no se encuentra en esta máquina)",
+      "custom": "Personalizado...",
+      "customPath": "Programa",
+      "browse": "Examinar",
+      "customArgs": "Argumentos",
+      "programs": "Programas",
+      "external": "Terminal externo",
+      "externalDesc": "Se abre con \"Abrir en un terminal externo\", en el menú de un proyecto y en una carpeta del explorador de archivos.",
+      "profile": "Perfil de Windows Terminal",
+      "profilePlaceholder": "Perfil predeterminado",
+      "customCommand": "Comando",
+      "customCommandHint": "{path} se sustituye por la carpeta. Sin él, el terminal se inicia en la carpeta.",
+      "test": "Probar en mi carpeta personal",
+      "testOk": "Terminal abierto.",
+      "testFailed": "No se pudo abrir el terminal.",
+      "errors": {
+        "notAFolder": "Esta carpeta no existe en esta máquina.",
+        "noCustomCommand": "No hay ningún comando de terminal personalizado. Define uno en Ajustes, General, Terminal externo.",
+        "notFound": "No se encontró {name} en esta máquina. Elige otro terminal en Ajustes, General.",
+        "noneFound": "No se encontró ninguna aplicación de terminal en esta máquina. Define un comando personalizado en Ajustes, General.",
+        "unsafePath": "Una ruta que contiene \" o % no se puede abrir en un terminal externo en Windows.",
+        "launchFailed": "{name} no se inició."
+      }
+    }
   },
   "ui": {
     "notifications": "Notificaciones",
@@ -5123,7 +5153,8 @@
       "projectMcpConfig": "Los servidores MCP propios de un proyecto remoto están en su configuración en el host y no se listan aquí.",
       "databaseDetect": "La detección de bases de datos lee los archivos locales del proyecto, así que no está disponible para un proyecto remoto. Añade la conexión a mano.",
       "mcpProjectTools": "El servidor MCP claude-terminal lee el disco local, así que no puede leer los archivos de un proyecto remoto.",
-      "costReport": "El coste se lee de las transcripciones de esta máquina. Las sesiones de un proyecto remoto se registran en su host, así que su coste no se muestra aquí."
+      "costReport": "El coste se lee de las transcripciones de esta máquina. Las sesiones de un proyecto remoto se registran en su host, así que su coste no se muestra aquí.",
+      "openExternalTerminal": "Un proyecto remoto no tiene una carpeta local donde abrir un terminal. Abre una pestaña de terminal: se ejecuta en el host."
     },
     "menu": {
       "section": "Host remoto: {host}",
