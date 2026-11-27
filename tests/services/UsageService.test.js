@@ -1070,6 +1070,35 @@ describe('figures from the chat stream', () => {
     expect(stale).toBe(false);
   });
 
+  test('keeps the weekly bar when the first event names the session alone', () => {
+    // The CLI sends only the windows it has a live reading for. Before this,
+    // such an event on an account with nothing fetched left the titlebar with
+    // a single Session bar until a fetch landed.
+    const usage = load();
+    usage.applyRateLimitInfo(null, {
+      status: 'allowed',
+      unifiedWindows: { five_hour: { utilization: 0.11, resetsAt: SESSION_RESET } }
+    });
+    const { data } = usage.getUsageData(null);
+    expect(figures(data)).toEqual([['session', 11], ['weekly', null]]);
+    expect(data.buckets[1].resetsAt).toBeNull();
+
+    // A later event that names it fills it in place.
+    usage.applyRateLimitInfo(null, event(0.12, 0.54));
+    expect(figures(usage.getUsageData(null).data)).toEqual([['session', 12], ['weekly', 54]]);
+  });
+
+  test('never adds a bar to a list the endpoint sent', async () => {
+    const usage = load([200]);
+    await usage.fetchUsage('acc-team');
+    usage.applyRateLimitInfo('acc-team', {
+      status: 'allowed',
+      unifiedWindows: { five_hour: { utilization: 0.5, resetsAt: SESSION_RESET } }
+    });
+    expect(figures(usage.getUsageData('acc-team').data))
+      .toEqual([['session', 50], ['weekly', 29], ['scoped:Fable', 4]]);
+  });
+
   test('ignores an event that carries no window', () => {
     const usage = load();
     expect(usage.applyRateLimitInfo(null, { status: 'allowed' })).toBe(false);

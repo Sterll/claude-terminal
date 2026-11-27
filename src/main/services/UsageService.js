@@ -748,12 +748,23 @@ function applyRateLimitInfo(accountId, info) {
   }
   if (!observed.size) return false;
 
-  const buckets = (entry.usageData?.buckets || [])
+  const fetched = entry.usageData?.buckets || [];
+  const buckets = fetched
     .map(b => (observed.has(b.id) ? { ...b, ...observed.get(b.id) } : b));
-  // Before any fetch has landed there is nothing to update in place.
+  // Before any fetch has landed there is nothing to update in place, so the
+  // plan-wide bars are built here. Both of them, whichever the event named:
+  // the CLI sends only the windows it has a live reading for (an optional
+  // field each, and one whose reset has passed is dropped), so an event can
+  // carry the session alone. Built from that alone, the weekly bar vanished
+  // from the titlebar until a fetch landed, which on an account whose
+  // endpoint answers 429 is not soon. The window the event did not name is
+  // unknown, not zero: `null`, which the chip draws as "--".
+  // Only when nothing was fetched: a fetched list is the server's word on
+  // which limits the plan has, and is left as it is.
   const missing = Object.values(STREAM_WINDOWS)
-    .filter(bucket => observed.has(bucket.id) && !buckets.some(b => b.id === bucket.id))
-    .map(bucket => ({ ...bucket, ...observed.get(bucket.id) }));
+    .filter(bucket => !buckets.some(b => b.id === bucket.id))
+    .filter(bucket => observed.has(bucket.id) || !fetched.length)
+    .map(bucket => ({ ...bucket, utilization: null, resetsAt: null, ...observed.get(bucket.id) }));
   buckets.unshift(...missing);
 
   const now = new Date();
