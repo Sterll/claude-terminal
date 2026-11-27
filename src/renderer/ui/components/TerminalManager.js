@@ -2709,7 +2709,11 @@ class TerminalManager extends BaseComponent {
 
     const itemsHtml = templates.map(tmpl => `
     <button class="prompts-dropdown-item" data-prompt-id="${tmpl.id}" title="${escapeHtml(tmpl.description || '')}">
-      <span class="prompts-item-name">${escapeHtml(tmpl.name)}</span>
+      <span class="actions-item-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg></span>
+      <span class="menu-item-text">
+        <span class="menu-item-name prompts-item-name">${escapeHtml(tmpl.name)}</span>
+        ${tmpl.description ? `<span class="menu-item-meta">${escapeHtml(tmpl.description)}</span>` : ''}
+      </span>
       ${tmpl.scope === 'project' ? '<span class="prompts-item-badge">project</span>' : ''}
     </button>
   `).join('');

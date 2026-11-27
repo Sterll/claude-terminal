@@ -252,8 +252,11 @@ class QuickActions extends BaseComponent {
       const iconSvg = QUICK_ACTION_ICONS[action.icon] || QUICK_ACTION_ICONS.play;
       return `
         <button class="actions-dropdown-item${isRunning ? ' running' : ''}" data-action-id="${action.id}" title="${escapeHtml(action.command)}">
-          <span class="actions-item-icon">${isRunning ? QUICK_ACTION_ICONS.refresh : iconSvg}</span>
-          <span>${escapeHtml(action.name)}</span>
+          <span class="actions-item-icon">${isRunning ? '<span class="menu-spinner"></span>' : iconSvg}</span>
+          <span class="menu-item-text">
+            <span class="menu-item-name">${escapeHtml(action.name)}</span>
+            <span class="menu-item-meta mono">${escapeHtml(action.command)}</span>
+          </span>
         </button>
       `;
     }).join('');

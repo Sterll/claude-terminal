@@ -5842,11 +5842,12 @@ filterBtnBranch.onclick = async (e) => {
 
       // Local branches section
       if (local.length > 0) {
-        html += `<div class="branch-dropdown-section-title">${t('branches.localBranches')}</div>`;
+        html += `<div class="branch-dropdown-section-title">${t('branches.localBranches')}<span class="menu-count">${local.length}</span></div>`;
         html += local.map(branch => {
           const isCurrent = branch === currentBranch;
           return `
           <div class="branch-dropdown-item ${isCurrent ? 'current' : ''}" data-branch="${escapeHtml(branch)}">
+            ${isCurrent ? '<svg class="branch-item-glyph current" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : '<svg class="branch-item-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>'}
             <span class="branch-dropdown-item-name">${escapeHtml(branch)}</span>
             ${!isCurrent ? `<div class="branch-dropdown-actions">
               <button class="branch-action-btn branch-merge-btn" data-action="merge" data-branch="${escapeHtml(branch)}" title="${t('git.mergedInto', { source: escapeHtml(branch), target: escapeHtml(currentBranch) })}">
@@ -5862,7 +5863,7 @@ filterBtnBranch.onclick = async (e) => {
 
       // Remote branches section
       if (remote.length > 0) {
-        html += `<div class="branch-dropdown-section-title remote">${t('branches.remoteBranches')}</div>`;
+        html += `<div class="branch-dropdown-section-title remote">${t('branches.remoteBranches')}<span class="menu-count">${remote.length}</span></div>`;
         html += remote.map(branch => `
           <div class="branch-dropdown-item remote" data-branch="${escapeHtml(branch)}" data-remote="true">
             <svg class="branch-remote-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
