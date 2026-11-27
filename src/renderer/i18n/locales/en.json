@@ -474,7 +474,11 @@
     "remoteRemoved": "Remote \"{name}\" removed",
     "confirmRemoveRemote": "Remove remote \"{name}\"?",
     "popStash": "Pop (apply + drop)",
-    "stashPoppedSuccess": "Stash popped"
+    "stashPoppedSuccess": "Stash popped",
+    "githubConnectPRs": "Connect GitHub to see and create this repository's pull requests.",
+    "githubConnectIssues": "Connect GitHub to see and create this repository's issues.",
+    "githubExpired": "GitHub refused the saved login: it expired or was revoked.",
+    "githubConnectWrite": "GitHub is not connected."
   },
   "gitErrors": {
     "gitNotInstalled": "Git is not installed or not available on PATH. Install Git, then restart the app.",
@@ -516,7 +520,8 @@
         "success": "CI passing",
         "failure": "CI failing",
         "running": "CI running",
-        "none": "No CI"
+        "none": "No CI",
+        "notConnected": "GitHub not connected"
       },
       "resume": {
         "title": "Pick up where you left off",
@@ -532,7 +537,9 @@
         "ciRunning": "CI running: {name}",
         "unpushed": "{count} commit(s) to push",
         "behind": "{count} commit(s) to pull",
-        "todos": "{count} TODO / FIXME in the code"
+        "todos": "{count} TODO / FIXME in the code",
+        "githubConnect": "Connect GitHub to see CI and pull requests",
+        "githubExpired": "GitHub login expired: CI and pull requests are not shown"
       },
       "activity": {
         "title": "Activity, last {days} days",
@@ -1919,7 +1926,7 @@
     "initGit": "Initialize a Git repo",
     "cloning": "Cloning...",
     "githubConnected": "GitHub connected ({login})",
-    "githubPrivateUnavailable": "Private repos unavailable — connect GitHub",
+    "githubPrivateUnavailable": "Private repos unavailable",
     "destFolderPlaceholder": "C:\\path\\to\\destination",
     "parentFolderPlaceholder": "C:\\path\\to\\parent",
     "projectFolderPlaceholder": "C:\\path\\to\\project",
@@ -1968,7 +1975,8 @@
       "willCreateFolder": "This folder doesn't exist yet: it will be created",
       "targetExists": "{path} already exists, pick another name or location",
       "absolutePath": "Enter a full path, or pick a folder"
-    }
+    },
+    "githubExpired": "GitHub refused the saved login, private repos unavailable"
   },
   "plugins": {
     "title": "Plugins",
@@ -2295,7 +2303,9 @@
         "requestedFrom": "Requested from {users}",
         "noReview": "No review yet",
         "labels": "Labels"
-      }
+      },
+      "prLoginExpired": "GitHub refused the saved login (expired or revoked). Reconnect to see this branch's pull request.",
+      "noticeLoginExpired": "GitHub refused the saved login (expired or revoked). Reconnect to see this session's pull requests."
     },
     "filesChanged": "files changed",
     "fileChanged": "file changed",
@@ -4722,7 +4732,21 @@
     "workflowDispatched": "Workflow dispatched successfully",
     "noWorkflows": "No workflows found",
     "rateLimitWarning": "GitHub API: {remaining} calls remaining (resets in {minutes}min)",
-    "rateLimitExhausted": "GitHub API rate limit reached. Resets at {time}."
+    "rateLimitExhausted": "GitHub API rate limit reached. Resets at {time}.",
+    "connect": {
+      "connect": "Connect GitHub",
+      "reconnect": "Reconnect GitHub",
+      "intro": "Pull requests, CI checks and issues come from GitHub. Sign in to see them here.",
+      "reconnectIntro": "GitHub refused the saved login: it expired or was revoked. Sign in again to see pull requests, checks and issues.",
+      "starting": "Contacting GitHub...",
+      "codeLabel": "Enter this code on GitHub:",
+      "open": "Copy the code and open GitHub",
+      "waiting": "Waiting for you to authorize on GitHub...",
+      "useToken": "Use a personal access token instead",
+      "tokenIntro": "Paste a personal access token with the repo and workflow scopes. It is kept in your system's credential store.",
+      "success": "GitHub connected ({login})",
+      "failed": "GitHub sign-in failed."
+    }
   },
   "automation": {
     "tab": "Automations",

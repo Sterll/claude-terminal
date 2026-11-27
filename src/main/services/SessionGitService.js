@@ -208,7 +208,7 @@ async function findPullRequest(cwd, branch, remote, base, budget = progressBudge
   let blocked = null;
   for (const repo of repos) {
     const res = await github.getPullRequestsForBranch(repo.owner, repo.repo, pushRepo.owner, branch);
-    if (!res.authenticated) return { authenticated: false, createUrl };
+    if (!res.authenticated) return { authenticated: false, expired: !!res.expired, createUrl };
     const name = `${repo.owner}/${repo.repo}`;
     if (!blocked) {
       if (res.ssoRequired) blocked = { ssoRequired: { ...res.ssoRequired, repo: name } };
@@ -429,7 +429,7 @@ async function createdPullRequest(p, budget = progressBudget()) {
   const repo = `${p.owner}/${p.repo}`;
   const res = await github.getPullRequest(p.owner, p.repo, p.number);
   const base = { url: p.url, number: p.number, repo };
-  if (!res.authenticated) return { ...base, authenticated: false };
+  if (!res.authenticated) return { ...base, authenticated: false, expired: !!res.expired };
   if (!res.pullRequest) {
     if (res.ssoRequired) return { ...base, authenticated: true, pullRequest: null, ssoRequired: { ...res.ssoRequired, repo } };
     if (res.notFound) return { ...base, authenticated: true, pullRequest: null, unreachable: repo };

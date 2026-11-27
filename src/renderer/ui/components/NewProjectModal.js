@@ -324,11 +324,17 @@ async function openNewProjectModal(deps, opts = {}) {
         hint.innerHTML = `<span class="hint-success">✓ ${escapeHtml(t('newProject.githubConnected', { login: result.login }))}</span>`;
         if (!state.reposLoaded) loadRepos();
       } else {
-        hint.innerHTML = `<span class="hint-warning">${escapeHtml(t('newProject.githubPrivateUnavailable'))} · <a href="#" id="link-github-settings">${escapeHtml(t('settings.githubConnect'))}</a></span>`;
-        hint.querySelector('#link-github-settings')?.addEventListener('click', (e) => {
+        const { connectGitHub, connectLabel } = require('./GitHubConnectModal');
+        hint.innerHTML = `<span class="hint-warning">${escapeHtml(t(result.expired ? 'newProject.githubExpired' : 'newProject.githubPrivateUnavailable'))} · <a href="#" id="link-github-settings">${escapeHtml(connectLabel(!!result.expired))}</a></span>`;
+        // Signed in on the spot, over this dialog, which then lists the
+        // private repositories: leaving it for Settings lost what was typed.
+        hint.querySelector('#link-github-settings')?.addEventListener('click', async (e) => {
           e.preventDefault();
-          closeModal();
-          document.dispatchEvent(new CustomEvent('ct-open-settings', { detail: { tab: 'github' } }));
+          const status = await connectGitHub({ reconnect: !!result.expired });
+          if (status && document.getElementById('github-status-hint')) {
+            state.reposLoaded = false;
+            updateGitHubHint();
+          }
         });
       }
     } catch { hint.innerHTML = ''; }

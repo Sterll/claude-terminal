@@ -474,7 +474,11 @@
     "remoteRemoved": "Remoto \"{name}\" removido",
     "confirmRemoveRemote": "Remover o remoto \"{name}\"?",
     "popStash": "Pop (aplicar + descartar)",
-    "stashPoppedSuccess": "Pop do stash concluído"
+    "stashPoppedSuccess": "Pop do stash concluído",
+    "githubConnectPRs": "Conecte o GitHub para ver e criar as pull requests deste repositório.",
+    "githubConnectIssues": "Conecte o GitHub para ver e criar as issues deste repositório.",
+    "githubExpired": "O GitHub recusou o login salvo: ele expirou ou foi revogado.",
+    "githubConnectWrite": "O GitHub não está conectado."
   },
   "gitErrors": {
     "gitNotInstalled": "O Git não está instalado ou não está disponível no PATH. Instale o Git e reinicie o app.",
@@ -516,7 +520,8 @@
         "success": "CI ok",
         "failure": "CI falhando",
         "running": "CI em andamento",
-        "none": "Sem CI"
+        "none": "Sem CI",
+        "notConnected": "GitHub não conectado"
       },
       "resume": {
         "title": "Retomar",
@@ -532,7 +537,9 @@
         "ciRunning": "CI em andamento: {name}",
         "unpushed": "{count} commit(s) para enviar",
         "behind": "{count} commit(s) para puxar",
-        "todos": "{count} TODO / FIXME no código"
+        "todos": "{count} TODO / FIXME no código",
+        "githubConnect": "Conecte o GitHub para ver a CI e as pull requests",
+        "githubExpired": "Login do GitHub expirado: a CI e as pull requests não são exibidas"
       },
       "activity": {
         "title": "Atividade, últimos {days} dias",
@@ -1919,7 +1926,7 @@
     "initGit": "Inicializar um repositório Git",
     "cloning": "Clonando...",
     "githubConnected": "GitHub conectado ({login})",
-    "githubPrivateUnavailable": "Repositórios privados indisponíveis — conecte o GitHub",
+    "githubPrivateUnavailable": "Repositórios privados indisponíveis",
     "destFolderPlaceholder": "C:\\caminho\\para\\destino",
     "parentFolderPlaceholder": "C:\\caminho\\para\\pasta-pai",
     "projectFolderPlaceholder": "C:\\caminho\\para\\projeto",
@@ -1968,7 +1975,8 @@
       "willCreateFolder": "Esta pasta ainda não existe: ela será criada",
       "targetExists": "{path} já existe, escolha outro nome ou local",
       "absolutePath": "Digite um caminho completo ou escolha uma pasta"
-    }
+    },
+    "githubExpired": "O GitHub recusou o login salvo, repositórios privados indisponíveis"
   },
   "plugins": {
     "title": "Plugins",
@@ -2295,7 +2303,9 @@
         "requestedFrom": "Solicitada a {users}",
         "noReview": "Nenhuma revisão ainda",
         "labels": "Rótulos"
-      }
+      },
+      "prLoginExpired": "O GitHub recusou o login salvo (expirado ou revogado). Reconecte para ver a pull request deste branch.",
+      "noticeLoginExpired": "O GitHub recusou o login salvo (expirado ou revogado). Reconecte para ver as pull requests desta sessão."
     },
     "filesChanged": "arquivos alterados",
     "fileChanged": "arquivo alterado",
@@ -4722,7 +4732,21 @@
     "workflowDispatched": "Workflow disparado com sucesso",
     "noWorkflows": "Nenhum workflow encontrado",
     "rateLimitWarning": "API do GitHub: {remaining} chamadas restantes (reinicia em {minutes}min)",
-    "rateLimitExhausted": "Limite de requisições da API do GitHub atingido. Reinicia às {time}."
+    "rateLimitExhausted": "Limite de requisições da API do GitHub atingido. Reinicia às {time}.",
+    "connect": {
+      "connect": "Conectar GitHub",
+      "reconnect": "Reconectar GitHub",
+      "intro": "Pull requests, checks de CI e issues vêm do GitHub. Entre para vê-los aqui.",
+      "reconnectIntro": "O GitHub recusou o login salvo: ele expirou ou foi revogado. Entre novamente para ver pull requests, checks e issues.",
+      "starting": "Conectando ao GitHub...",
+      "codeLabel": "Digite este código no GitHub:",
+      "open": "Copiar o código e abrir o GitHub",
+      "waiting": "Aguardando sua autorização no GitHub...",
+      "useToken": "Usar um token de acesso pessoal",
+      "tokenIntro": "Cole um token de acesso pessoal com os escopos repo e workflow. Ele fica guardado no armazenamento de credenciais do sistema.",
+      "success": "GitHub conectado ({login})",
+      "failed": "Falha ao entrar no GitHub."
+    }
   },
   "automation": {
     "tab": "Automações",

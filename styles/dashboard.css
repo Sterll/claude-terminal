@@ -3224,6 +3224,12 @@
   white-space: nowrap;
 }
 
+/* The GitHub sign-in line: its button sits at the end of the row. */
+.dash-todo-action {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
 /* Activity */
 .dash-legend {
   display: flex;

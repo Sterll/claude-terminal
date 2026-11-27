@@ -569,7 +569,11 @@
     "remoteRemoved": "Remote \"{name}\" supprimé",
     "confirmRemoveRemote": "Supprimer le remote \"{name}\" ?",
     "popStash": "Pop (appliquer + supprimer)",
-    "stashPoppedSuccess": "Stash poppé"
+    "stashPoppedSuccess": "Stash poppé",
+    "githubConnectPRs": "Connectez GitHub pour voir et créer les pull requests de ce dépôt.",
+    "githubConnectIssues": "Connectez GitHub pour voir et créer les issues de ce dépôt.",
+    "githubExpired": "GitHub a refusé la connexion enregistrée : elle a expiré ou a été révoquée.",
+    "githubConnectWrite": "GitHub n'est pas connecté."
   },
   "gitErrors": {
     "gitNotInstalled": "Git n'est pas installé ou n'est pas accessible dans le PATH. Installez Git, puis redémarrez l'application.",
@@ -611,7 +615,8 @@
         "success": "CI OK",
         "failure": "CI en échec",
         "running": "CI en cours",
-        "none": "Pas de CI"
+        "none": "Pas de CI",
+        "notConnected": "GitHub non connecté"
       },
       "resume": {
         "title": "Reprendre",
@@ -627,7 +632,9 @@
         "ciRunning": "CI en cours : {name}",
         "unpushed": "{count} commit(s) à pousser",
         "behind": "{count} commit(s) à récupérer",
-        "todos": "{count} TODO / FIXME dans le code"
+        "todos": "{count} TODO / FIXME dans le code",
+        "githubConnect": "Connectez GitHub pour voir la CI et les pull requests",
+        "githubExpired": "Connexion GitHub expirée : la CI et les pull requests ne sont pas affichées"
       },
       "activity": {
         "title": "Activité, {days} derniers jours",
@@ -1919,7 +1926,7 @@
     "initGit": "Initialiser un repo Git",
     "cloning": "Clonage en cours...",
     "githubConnected": "GitHub connecté ({login})",
-    "githubPrivateUnavailable": "Repos privés inaccessibles — connecter GitHub",
+    "githubPrivateUnavailable": "Repos privés inaccessibles",
     "destFolderPlaceholder": "C:\\chemin\\destination",
     "parentFolderPlaceholder": "C:\\chemin\\parent",
     "projectFolderPlaceholder": "C:\\chemin\\projet",
@@ -1968,7 +1975,8 @@
       "willCreateFolder": "Ce dossier n'existe pas encore : il sera créé",
       "targetExists": "{path} existe déjà, choisissez un autre nom ou emplacement",
       "absolutePath": "Saisissez un chemin complet, ou choisissez un dossier"
-    }
+    },
+    "githubExpired": "GitHub a refusé la connexion enregistrée, repos privés inaccessibles"
   },
   "plugins": {
     "title": "Plugins",
@@ -2295,7 +2303,9 @@
         "requestedFrom": "Demandée à {users}",
         "noReview": "Pas encore de revue",
         "labels": "Étiquettes"
-      }
+      },
+      "prLoginExpired": "GitHub a refusé la connexion enregistrée (expirée ou révoquée). Reconnectez-vous pour voir la pull request de cette branche.",
+      "noticeLoginExpired": "GitHub a refusé la connexion enregistrée (expirée ou révoquée). Reconnectez-vous pour voir les pull requests de cette session."
     },
     "filesChanged": "fichiers modifiés",
     "fileChanged": "fichier modifié",
@@ -4722,7 +4732,21 @@
     "workflowDispatched": "Workflow lancé avec succès",
     "noWorkflows": "Aucun workflow trouvé",
     "rateLimitWarning": "API GitHub : {remaining} appels restants (reset dans {minutes}min)",
-    "rateLimitExhausted": "Limite API GitHub atteinte. Reset à {time}."
+    "rateLimitExhausted": "Limite API GitHub atteinte. Reset à {time}.",
+    "connect": {
+      "connect": "Connecter GitHub",
+      "reconnect": "Reconnecter GitHub",
+      "intro": "Les pull requests, les checks CI et les issues viennent de GitHub. Connectez-vous pour les voir ici.",
+      "reconnectIntro": "GitHub a refusé la connexion enregistrée : elle a expiré ou a été révoquée. Reconnectez-vous pour voir les pull requests, les checks et les issues.",
+      "starting": "Connexion à GitHub...",
+      "codeLabel": "Saisissez ce code sur GitHub :",
+      "open": "Copier le code et ouvrir GitHub",
+      "waiting": "En attente de votre autorisation sur GitHub...",
+      "useToken": "Utiliser plutôt un token d'accès personnel",
+      "tokenIntro": "Collez un token d'accès personnel avec les scopes repo et workflow. Il est rangé dans le trousseau de votre système.",
+      "success": "GitHub connecté ({login})",
+      "failed": "La connexion à GitHub a échoué."
+    }
   },
   "automation": {
     "tab": "Automatisations",

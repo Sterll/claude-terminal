@@ -474,7 +474,11 @@
     "remoteRemoved": "Remote \"{name}\" dihapus",
     "confirmRemoveRemote": "Hapus remote \"{name}\"?",
     "popStash": "Pop (terapkan + buang)",
-    "stashPoppedSuccess": "Stash di-pop"
+    "stashPoppedSuccess": "Stash di-pop",
+    "githubConnectPRs": "Hubungkan GitHub untuk melihat dan membuat pull request repositori ini.",
+    "githubConnectIssues": "Hubungkan GitHub untuk melihat dan membuat issue repositori ini.",
+    "githubExpired": "GitHub menolak login yang tersimpan: sudah kedaluwarsa atau dicabut.",
+    "githubConnectWrite": "GitHub belum terhubung."
   },
   "gitErrors": {
     "gitNotInstalled": "Git belum terpasang atau tidak tersedia di PATH. Pasang Git, lalu mulai ulang aplikasi.",
@@ -516,7 +520,8 @@
         "success": "CI lulus",
         "failure": "CI gagal",
         "running": "CI berjalan",
-        "none": "Tanpa CI"
+        "none": "Tanpa CI",
+        "notConnected": "GitHub belum terhubung"
       },
       "resume": {
         "title": "Lanjutkan",
@@ -532,7 +537,9 @@
         "ciRunning": "CI berjalan: {name}",
         "unpushed": "{count} commit belum di-push",
         "behind": "{count} commit untuk di-pull",
-        "todos": "{count} TODO / FIXME di kode"
+        "todos": "{count} TODO / FIXME di kode",
+        "githubConnect": "Hubungkan GitHub untuk melihat CI dan pull request",
+        "githubExpired": "Login GitHub kedaluwarsa: CI dan pull request tidak ditampilkan"
       },
       "activity": {
         "title": "Aktivitas, {days} hari terakhir",
@@ -1919,7 +1926,7 @@
     "initGit": "Inisialisasi repo Git",
     "cloning": "Mengklon...",
     "githubConnected": "GitHub terhubung ({login})",
-    "githubPrivateUnavailable": "Repo privat tidak tersedia — hubungkan GitHub",
+    "githubPrivateUnavailable": "Repo privat tidak tersedia",
     "destFolderPlaceholder": "C:\\path\\ke\\tujuan",
     "parentFolderPlaceholder": "C:\\path\\ke\\induk",
     "projectFolderPlaceholder": "C:\\path\\ke\\proyek",
@@ -1968,7 +1975,8 @@
       "willCreateFolder": "Folder ini belum ada: akan dibuat",
       "targetExists": "{path} sudah ada, pilih nama atau lokasi lain",
       "absolutePath": "Masukkan jalur lengkap, atau pilih folder"
-    }
+    },
+    "githubExpired": "GitHub menolak login yang tersimpan, repo privat tidak tersedia"
   },
   "plugins": {
     "title": "Plugin",
@@ -2295,7 +2303,9 @@
         "requestedFrom": "Diminta dari {users}",
         "noReview": "Belum ada review",
         "labels": "Label"
-      }
+      },
+      "prLoginExpired": "GitHub menolak login yang tersimpan (kedaluwarsa atau dicabut). Hubungkan ulang untuk melihat pull request cabang ini.",
+      "noticeLoginExpired": "GitHub menolak login yang tersimpan (kedaluwarsa atau dicabut). Hubungkan ulang untuk melihat pull request sesi ini."
     },
     "filesChanged": "file diubah",
     "fileChanged": "file diubah",
@@ -4722,7 +4732,21 @@
     "workflowDispatched": "Workflow berhasil dijalankan",
     "noWorkflows": "Tidak ada workflow ditemukan",
     "rateLimitWarning": "GitHub API: tersisa {remaining} pemanggilan (diatur ulang dalam {minutes} menit)",
-    "rateLimitExhausted": "Batas laju GitHub API tercapai. Diatur ulang pada {time}."
+    "rateLimitExhausted": "Batas laju GitHub API tercapai. Diatur ulang pada {time}.",
+    "connect": {
+      "connect": "Hubungkan GitHub",
+      "reconnect": "Hubungkan ulang GitHub",
+      "intro": "Pull request, pemeriksaan CI, dan issue berasal dari GitHub. Masuk untuk melihatnya di sini.",
+      "reconnectIntro": "GitHub menolak login yang tersimpan: sudah kedaluwarsa atau dicabut. Masuk lagi untuk melihat pull request, pemeriksaan, dan issue.",
+      "starting": "Menghubungi GitHub...",
+      "codeLabel": "Masukkan kode ini di GitHub:",
+      "open": "Salin kode dan buka GitHub",
+      "waiting": "Menunggu otorisasi Anda di GitHub...",
+      "useToken": "Gunakan token akses pribadi",
+      "tokenIntro": "Tempel token akses pribadi dengan cakupan repo dan workflow. Token disimpan di penyimpanan kredensial sistem Anda.",
+      "success": "GitHub terhubung ({login})",
+      "failed": "Gagal masuk ke GitHub."
+    }
   },
   "automation": {
     "tab": "Otomatisasi",

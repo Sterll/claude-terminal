@@ -172,7 +172,7 @@ function noticesOf(s) {
     notices.push(notice);
   };
   for (const entry of lookups) {
-    if (entry.authenticated === false) add('login', { kind: 'login' });
+    if (entry.authenticated === false) add('login', lookups.some((e) => e.authenticated === false && e.expired) ? { kind: 'login', expired: true } : { kind: 'login' });
     else if (entry.ssoRequired) add(`sso:${entry.ssoRequired.org || entry.ssoRequired.repo}`, { kind: 'sso', org: entry.ssoRequired.org || entry.ssoRequired.repo, url: entry.ssoRequired.url || '' });
     else if (entry.unreachable) add(`unreachable:${entry.unreachable}`, { kind: 'unreachable', repo: entry.unreachable });
     else if (entry.error) add(`error:${entry.repo || ''}:${entry.error}`, { kind: 'error', error: entry.error });

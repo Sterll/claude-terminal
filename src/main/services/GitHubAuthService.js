@@ -43,6 +43,36 @@ function getRateLimitState() {
   return { ...rateLimitState };
 }
 
+// A saved token GitHub refused: 401, which it answers to an expired or
+// revoked token, or one whose OAuth grant was removed. Remembered so every
+// view can offer "Reconnect GitHub" instead of an "API error: 401" or an
+// empty list, and dropped from the store so nothing keeps sending it (each
+// refused call still counts against the unauthenticated rate limit).
+// In memory only: after a restart it is simply "not connected".
+let tokenRejected = false;
+let rejections = 0;
+
+function bearerOf(headers) {
+  const value = headers && (headers.Authorization || headers.authorization);
+  const match = typeof value === 'string' && value.match(/^(?:Bearer|token)\s+(.+)$/i);
+  return match ? match[1] : null;
+}
+
+/** A request sent with `token` came back 401. */
+async function noteRejectedToken(token) {
+  rejections++;
+  tokenRejected = true;
+  try {
+    // Only the token that was refused: a reconnect may have stored a new one
+    // while this request was in flight.
+    if (token && (await getToken()) === token) await removeStoredToken();
+  } catch { /* the store is read again on the next call */ }
+}
+
+function isTokenRejected() {
+  return tokenRejected;
+}
+
 function configure(newConfig) {
   if (newConfig.githubApiUrl) {
     try {
@@ -110,6 +140,10 @@ function httpsRequest(options, postData = null, maxRedirects = 3) {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        if (res.statusCode === 401) {
+          const refused = bearerOf(options.headers);
+          if (refused) noteRejectedToken(refused);
+        }
         // Track rate limit from response headers
         const rlRemaining = res.headers['x-ratelimit-remaining'];
         const rlLimit = res.headers['x-ratelimit-limit'];
@@ -183,7 +217,28 @@ async function startDeviceFlow() {
     throw new Error(response.data.error_description || response.data.error || `GitHub API error: ${response.status}`);
   }
 
+  // A new sign-in supersedes any earlier one still being polled.
+  cancelDeviceFlow();
+  activeDevice = { code: response.data.device_code, wake: null };
   return response.data;
+}
+
+// The device code the user is being asked to authorize, and how to wake its
+// poll from its sleep. Cancelling, or starting another sign-in, stops the
+// poll of the previous one, which otherwise waits up to 10 minutes and would
+// store a token nobody is waiting for any more.
+let activeDevice = null;
+
+/** Stop polling for the current device code, if any. */
+function cancelDeviceFlow() {
+  const current = activeDevice;
+  activeDevice = null;
+  if (current && current.wake) current.wake();
+  return !!current;
+}
+
+function cancelledError() {
+  return Object.assign(new Error('Sign-in cancelled.'), { code: 'GITHUB_AUTH_CANCELLED' });
 }
 
 /**
@@ -196,14 +251,20 @@ async function pollForToken(deviceCode, interval = 5) {
   const postData = `client_id=${GITHUB_CLIENT_ID}&device_code=${deviceCode}&grant_type=urn:ietf:params:oauth:grant-type:device_code`;
   const MAX_DURATION_MS = 10 * 60 * 1000; // 10 minutes max
   const startTime = Date.now();
+  const isActive = () => !!activeDevice && activeDevice.code === deviceCode;
 
   while (true) {
+    if (!isActive()) throw cancelledError();
     // Timeout guard
     if (Date.now() - startTime > MAX_DURATION_MS) {
       throw new Error('Authentication expired (10 min). Please try again.');
     }
 
-    await new Promise(resolve => setTimeout(resolve, interval * 1000));
+    await new Promise(resolve => {
+      const timer = setTimeout(resolve, interval * 1000);
+      activeDevice.wake = () => { clearTimeout(timer); resolve(); };
+    });
+    if (!isActive()) throw cancelledError();
 
     let response;
     try {
@@ -227,6 +288,7 @@ async function pollForToken(deviceCode, interval = 5) {
     const data = response.data;
 
     if (data.access_token) {
+      if (isActive()) activeDevice = null;
       return data.access_token;
     }
 
@@ -276,6 +338,7 @@ async function getToken() {
 async function setToken(token) {
   try {
     await keytar.setPassword(SERVICE_NAME, ACCOUNT_NAME, token);
+    tokenRejected = false;
     return true;
   } catch (e) {
     if (process.platform === 'linux') {
@@ -287,9 +350,15 @@ async function setToken(token) {
 }
 
 /**
- * Delete the stored GitHub token
+ * Delete the stored GitHub token: the user disconnected, so what follows is
+ * "Connect", not "Reconnect".
  */
 async function deleteToken() {
+  tokenRejected = false;
+  return removeStoredToken();
+}
+
+async function removeStoredToken() {
   try {
     await keytar.deletePassword(SERVICE_NAME, ACCOUNT_NAME);
     return true;
@@ -331,9 +400,11 @@ async function getAuthStatus() {
       };
     }
 
-    // Token is invalid, delete it
-    await deleteToken();
-    return { authenticated: false };
+    // A 401 has already dropped the token (httpsRequest). Anything else, a
+    // rate limit or GitHub being down, says nothing about the token: it used
+    // to be deleted here all the same, signing the user out on an outage.
+    if (response.status === 401) return { authenticated: false, expired: true };
+    return { authenticated: false, error: `API error: ${response.status}` };
   } catch (e) {
     console.error('Error checking auth status:', e);
     return { authenticated: false };
@@ -1267,6 +1338,8 @@ async function listUserRepos(query, page = 1, perPage = 30) {
 module.exports = {
   startDeviceFlow,
   pollForToken,
+  cancelDeviceFlow,
+  isTokenRejected,
   getToken,
   setToken,
   deleteToken,
@@ -1302,3 +1375,56 @@ module.exports = {
   // New: Repo browser
   listUserRepos
 };
+
+/**
+ * What every caller is told about a missing or refused token, said the same
+ * way by every function rather than one by one:
+ * - a read (`{ authenticated, ... }`) that hit a 401 becomes
+ *   `{ authenticated: false, expired: true }` instead of an
+ *   `'API error: 401'` on an empty list, and one without a token carries
+ *   `expired: true` when the token it had was refused;
+ * - a write (`{ success: false, error }`) carries `code`:
+ *   `GITHUB_TOKEN_EXPIRED` after a 401 (whose message is GitHub's bare
+ *   "Bad credentials"), `GITHUB_NOT_CONNECTED` without a token.
+ * A 401 is counted in httpsRequest, so a call knows it met one when the count
+ * moved while it ran.
+ */
+function withAuthState(fn) {
+  return async (...args) => {
+    const before = rejections;
+    const res = await fn(...args);
+    if (!res || typeof res !== 'object') return res;
+    const refused = rejections !== before;
+    if ('authenticated' in res) {
+      // Only a call that failed: one that succeeded on a newly stored token
+      // while an older request was being refused stays as it is.
+      if (refused && (res.error || res.authenticated === false)) {
+        const { error, ...rest } = res;
+        return { ...rest, authenticated: false, expired: true };
+      }
+      if (res.authenticated === false && tokenRejected) return { ...res, expired: true };
+      return res;
+    }
+    if (res.success === false && !res.code) {
+      if (refused) return { ...res, code: 'GITHUB_TOKEN_EXPIRED', expired: true };
+      if (res.error === 'Not authenticated') {
+        return tokenRejected
+          ? { ...res, code: 'GITHUB_TOKEN_EXPIRED', expired: true }
+          : { ...res, code: 'GITHUB_NOT_CONNECTED' };
+      }
+    }
+    return res;
+  };
+}
+
+const AUTH_AWARE = [
+  'getAuthStatus', 'getWorkflowRuns', 'getWorkflowJobs', 'getWorkflowJob', 'getJobLogs',
+  'getPullRequests', 'getPullRequestsForBranch', 'getPullRequest', 'createPullRequest',
+  'getCheckRuns', 'mergePullRequest', 'getIssues', 'createIssue', 'closeIssue',
+  'getPullRequestReviews', 'createPullRequestReview', 'getPullRequestComments',
+  'getWorkflows', 'dispatchWorkflow', 'listUserRepos',
+];
+for (const name of AUTH_AWARE) {
+  if (typeof module.exports[name] !== 'function') throw new Error(`GitHubAuthService: no ${name} to wrap`);
+  module.exports[name] = withAuthState(module.exports[name]);
+}

@@ -2149,6 +2149,24 @@
   opacity: 0.5;
 }
 
+/* Pull requests and issues without a GitHub login: what is missing and the
+   button that fixes it, in place of a form that could only fail. */
+.git-github-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 32px;
+  text-align: center;
+}
+
+.git-github-connect p {
+  margin: 0;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 .git-clean-state svg {
   color: var(--success);
   opacity: 0.25;

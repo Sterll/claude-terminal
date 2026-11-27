@@ -474,7 +474,11 @@
     "remoteRemoved": "远程“{name}”已删除",
     "confirmRemoveRemote": "删除远程“{name}”？",
     "popStash": "弹出（应用+放下）",
-    "stashPoppedSuccess": "储藏已弹出"
+    "stashPoppedSuccess": "储藏已弹出",
+    "githubConnectPRs": "连接 GitHub 以查看和创建此仓库的 pull request。",
+    "githubConnectIssues": "连接 GitHub 以查看和创建此仓库的 issue。",
+    "githubExpired": "GitHub 拒绝了已保存的登录：它已过期或被撤销。",
+    "githubConnectWrite": "GitHub 未连接。"
   },
   "gitErrors": {
     "gitNotInstalled": "Git 未安装或在 PATH 上不可用。安装 Git，然后重新启动应用程序。",
@@ -516,7 +520,8 @@
         "success": "CI 通过",
         "failure": "CI 失败",
         "running": "CI 运行中",
-        "none": "无 CI"
+        "none": "无 CI",
+        "notConnected": "GitHub 未连接"
       },
       "resume": {
         "title": "继续工作",
@@ -532,7 +537,9 @@
         "ciRunning": "CI 运行中：{name}",
         "unpushed": "{count} 个提交待推送",
         "behind": "{count} 个提交待拉取",
-        "todos": "代码中有 {count} 个 TODO / FIXME"
+        "todos": "代码中有 {count} 个 TODO / FIXME",
+        "githubConnect": "连接 GitHub 以查看 CI 和 pull request",
+        "githubExpired": "GitHub 登录已过期：不显示 CI 和 pull request"
       },
       "activity": {
         "title": "最近 {days} 天的活动",
@@ -1919,7 +1926,7 @@
     "initGit": "初始化 Git 仓库",
     "cloning": "克隆...",
     "githubConnected": "GitHub 已连接 ({login})",
-    "githubPrivateUnavailable": "私人仓库不可用 — 连接 GitHub",
+    "githubPrivateUnavailable": "私人仓库不可用",
     "destFolderPlaceholder": "C:\\路径\\到\\目的地",
     "parentFolderPlaceholder": "C:\\路径\\到\\父级",
     "projectFolderPlaceholder": "C:\\路径\\到\\项目",
@@ -1968,7 +1975,8 @@
       "willCreateFolder": "此文件夹尚不存在：将会创建",
       "targetExists": "{path} 已存在，请换一个名称或位置",
       "absolutePath": "请输入完整路径，或选择一个文件夹"
-    }
+    },
+    "githubExpired": "GitHub 拒绝了已保存的登录，私人仓库不可用"
   },
   "plugins": {
     "title": "插件",
@@ -2295,7 +2303,9 @@
         "requestedFrom": "已请求 {users}",
         "noReview": "还没有审查",
         "labels": "标签"
-      }
+      },
+      "prLoginExpired": "GitHub 拒绝了已保存的登录（已过期或被撤销）。重新连接以查看此分支的 pull request。",
+      "noticeLoginExpired": "GitHub 拒绝了已保存的登录（已过期或被撤销）。重新连接以查看此会话的 pull request。"
     },
     "filesChanged": "文件已更改",
     "fileChanged": "文件已更改",
@@ -4722,7 +4732,21 @@
     "workflowDispatched": "工作流已成功触发",
     "noWorkflows": "未找到工作流",
     "rateLimitWarning": "GitHub API：{remaining} 剩余调用（在 {minutes}min 中重置）",
-    "rateLimitExhausted": "已达到 GitHub API 速率限制。复位于 {time}。"
+    "rateLimitExhausted": "已达到 GitHub API 速率限制。复位于 {time}。",
+    "connect": {
+      "connect": "连接 GitHub",
+      "reconnect": "重新连接 GitHub",
+      "intro": "Pull request、CI 检查和 issue 来自 GitHub。登录后即可在此查看。",
+      "reconnectIntro": "GitHub 拒绝了已保存的登录：它已过期或被撤销。请重新登录以查看 pull request、检查和 issue。",
+      "starting": "正在连接 GitHub...",
+      "codeLabel": "在 GitHub 上输入此代码：",
+      "open": "复制代码并打开 GitHub",
+      "waiting": "正在等待你在 GitHub 上授权...",
+      "useToken": "改用个人访问令牌",
+      "tokenIntro": "粘贴具有 repo 和 workflow 权限的个人访问令牌。它会保存在系统的凭据存储中。",
+      "success": "GitHub 已连接（{login}）",
+      "failed": "GitHub 登录失败。"
+    }
   },
   "automation": {
     "tab": "自动化",

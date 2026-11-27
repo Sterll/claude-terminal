@@ -18,6 +18,7 @@
 const { t, getCurrentLanguage } = require('../../i18n');
 const { escapeHtml } = require('../../utils');
 const { formatDuration } = require('../../utils/format');
+const { connectButtonHtml } = require('../../ui/components/GitHubConnectModal');
 
 const api = window.electron_api;
 
@@ -141,6 +142,18 @@ function ciState(workflowRuns) {
   return null;
 }
 
+/**
+ * Whether GitHub could not be asked for this project's CI and pull requests:
+ * not connected, or the saved login refused. Null when it answered, or when
+ * the project is not on GitHub at all.
+ * @returns {{ expired: boolean }|null}
+ */
+function githubSignIn(workflowRuns, pullRequests) {
+  const missing = [workflowRuns, pullRequests].filter(r => r && !r.notGitHub && r.authenticated === false);
+  if (!missing.length) return null;
+  return { expired: missing.some(r => r.expired) };
+}
+
 function openPullRequests(pullRequests) {
   return (pullRequests?.pullRequests || []).filter(pr => pr.state === 'open');
 }
@@ -154,6 +167,17 @@ function todoItems({ gitInfo = {}, workflowRuns, pullRequests, conflicts = [], t
   const items = [];
   if (conflicts.length) {
     items.push({ tone: 'danger', text: t('dashboard.brief.todo.conflicts', { count: conflicts.length }) });
+  }
+  // Without GitHub the CI and pull request lines below say nothing, which
+  // reads as "all clear": say what is missing instead, with the way to fix it.
+  const signIn = githubSignIn(workflowRuns, pullRequests);
+  if (signIn) {
+    items.push({
+      tone: 'warning',
+      text: t(signIn.expired ? 'dashboard.brief.todo.githubExpired' : 'dashboard.brief.todo.githubConnect'),
+      connectGitHub: true,
+      expired: signIn.expired,
+    });
   }
   const run = workflowRuns?.runs?.[0];
   const ci = ciState(workflowRuns);
@@ -197,6 +221,10 @@ function buildMetricsHtml(cards) {
 }
 
 function ciMetric(workflowRuns, pullRequests) {
+  // "No CI" and "0 open PRs" would be guesses: GitHub was not asked.
+  if (githubSignIn(workflowRuns, pullRequests)) {
+    return { key: 'ci', value: '-', label: t('dashboard.brief.ci.notConnected') };
+  }
   const ci = ciState(workflowRuns);
   const prs = openPullRequests(pullRequests).length;
   const value = ci === 'success' ? t('dashboard.brief.ci.success')
@@ -228,6 +256,7 @@ function buildTodoHtml(items, { withProject = false } = {}) {
           <span class="dash-dot tone-${item.tone}"></span>
           ${withProject && item.project ? `<span class="dash-todo-project">${escapeHtml(item.project)}</span>` : ''}
           <span class="dash-todo-text">${escapeHtml(item.text)}</span>
+          ${item.connectGitHub ? connectButtonHtml({ expired: !!item.expired, className: 'btn-sm btn-secondary dash-todo-action' }) : ''}
         </li>`).join('')}
     </ul>`;
 }
@@ -411,6 +440,7 @@ module.exports = {
   commitsByDay,
   ciState,
   ciMetric,
+  githubSignIn,
   openPullRequests,
   todoItems,
   buildMetricsHtml,

@@ -52,11 +52,19 @@ function registerGitHubHandlers() {
   ipcMain.handle('github-poll-token', async (event, { deviceCode, interval }) => {
     try {
       const token = await GitHubAuthService.pollForToken(deviceCode, interval);
-      await GitHubAuthService.setToken(token);
+      if (!(await GitHubAuthService.setToken(token))) {
+        return { success: false, error: 'Could not save the GitHub token in the system credential store.' };
+      }
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: e.message, code: e.code };
     }
+  });
+
+  // Stop polling for the device code being authorized (the user closed the
+  // sign-in), so its poll does not store a token nobody is waiting for.
+  ipcMain.handle('github-cancel-auth', async () => {
+    return { success: true, cancelled: GitHubAuthService.cancelDeviceFlow() };
   });
 
   // Get auth status

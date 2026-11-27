@@ -474,7 +474,11 @@
     "remoteRemoved": "Remoto \"{name}\" eliminado",
     "confirmRemoveRemote": "¿Eliminar el remoto \"{name}\"?",
     "popStash": "Pop (aplicar + eliminar)",
-    "stashPoppedSuccess": "Stash restaurado"
+    "stashPoppedSuccess": "Stash restaurado",
+    "githubConnectPRs": "Conecta GitHub para ver y crear las pull requests de este repositorio.",
+    "githubConnectIssues": "Conecta GitHub para ver y crear las issues de este repositorio.",
+    "githubExpired": "GitHub rechazó el inicio de sesión guardado: caducó o fue revocado.",
+    "githubConnectWrite": "GitHub no está conectado."
   },
   "gitErrors": {
     "gitNotInstalled": "Git no está instalado o no está disponible en el PATH. Instala Git y reinicia la aplicación.",
@@ -516,7 +520,8 @@
         "success": "CI correcta",
         "failure": "CI fallida",
         "running": "CI en curso",
-        "none": "Sin CI"
+        "none": "Sin CI",
+        "notConnected": "GitHub no conectado"
       },
       "resume": {
         "title": "Retomar",
@@ -532,7 +537,9 @@
         "ciRunning": "CI en curso: {name}",
         "unpushed": "{count} commit(s) por enviar",
         "behind": "{count} commit(s) por traer",
-        "todos": "{count} TODO / FIXME en el código"
+        "todos": "{count} TODO / FIXME en el código",
+        "githubConnect": "Conecta GitHub para ver la CI y las pull requests",
+        "githubExpired": "Sesión de GitHub caducada: no se muestran la CI ni las pull requests"
       },
       "activity": {
         "title": "Actividad, últimos {days} días",
@@ -1916,7 +1923,7 @@
     "initGit": "Inicializar un repositorio Git",
     "cloning": "Clonando...",
     "githubConnected": "GitHub conectado ({login})",
-    "githubPrivateUnavailable": "Repositorios privados no disponibles — conecta GitHub",
+    "githubPrivateUnavailable": "Repositorios privados no disponibles",
     "destFolderPlaceholder": "C:\\ruta\\al\\destino",
     "parentFolderPlaceholder": "C:\\ruta\\al\\padre",
     "projectFolderPlaceholder": "C:\\ruta\\al\\proyecto",
@@ -1965,7 +1972,8 @@
       "willCreateFolder": "Esta carpeta aún no existe: se creará",
       "targetExists": "{path} ya existe, elige otro nombre u otra ubicación",
       "absolutePath": "Escribe una ruta completa o elige una carpeta"
-    }
+    },
+    "githubExpired": "GitHub rechazó el inicio de sesión guardado, repositorios privados no disponibles"
   },
   "plugins": {
     "title": "Plugins",
@@ -2285,7 +2293,9 @@
         "requestedFrom": "Solicitada a {users}",
         "noReview": "Sin revisión todavía",
         "labels": "Etiquetas"
-      }
+      },
+      "prLoginExpired": "GitHub rechazó el inicio de sesión guardado (caducado o revocado). Reconecta para ver la pull request de esta rama.",
+      "noticeLoginExpired": "GitHub rechazó el inicio de sesión guardado (caducado o revocado). Reconecta para ver las pull requests de esta sesión."
     },
     "filesChanged": "archivos modificados",
     "fileChanged": "archivo modificado",
@@ -4722,7 +4732,21 @@
     "workflowDispatched": "Workflow ejecutado con éxito",
     "noWorkflows": "No se encontraron workflows",
     "rateLimitWarning": "API GitHub: {remaining} llamadas restantes (se reinicia en {minutes}min)",
-    "rateLimitExhausted": "Límite de API GitHub alcanzado. Se reinicia a las {time}."
+    "rateLimitExhausted": "Límite de API GitHub alcanzado. Se reinicia a las {time}.",
+    "connect": {
+      "connect": "Conectar GitHub",
+      "reconnect": "Reconectar GitHub",
+      "intro": "Las pull requests, los checks de CI y las issues vienen de GitHub. Inicia sesión para verlos aquí.",
+      "reconnectIntro": "GitHub rechazó el inicio de sesión guardado: caducó o fue revocado. Vuelve a iniciar sesión para ver pull requests, checks e issues.",
+      "starting": "Conectando con GitHub...",
+      "codeLabel": "Introduce este código en GitHub:",
+      "open": "Copiar el código y abrir GitHub",
+      "waiting": "Esperando tu autorización en GitHub...",
+      "useToken": "Usar un token de acceso personal",
+      "tokenIntro": "Pega un token de acceso personal con los permisos repo y workflow. Se guarda en el almacén de credenciales del sistema.",
+      "success": "GitHub conectado ({login})",
+      "failed": "No se pudo iniciar sesión en GitHub."
+    }
   },
   "automation": {
     "tab": "Automatizaciones",

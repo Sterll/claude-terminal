@@ -14,6 +14,7 @@ const { isRemoteProject } = require('../../shared/remote-capabilities');
 const remotePathLib = require('../../shared/remote-path');
 const nestedRepos = require('../utils/nestedRepos');
 const { mountEmptyState } = require('../ui/components/EmptyState');
+const { connectGitHub, connectButtonHtml, onGitHubAuthChanged } = require('../ui/components/GitHubConnectModal');
 
 // ========== GIT ERROR MAPPER ==========
 
@@ -401,23 +402,101 @@ async function loadAllData(project) {
   if (remoteUrl) {
     api.github.pullRequests({ remoteUrl }).then(result => {
       prsData = result;
-      const badge = document.getElementById('git-pr-badge');
-      if (badge && result?.pullRequests) {
-        const openCount = result.pullRequests.filter(pr => pr.state === 'open').length;
-        badge.textContent = openCount;
-        badge.style.display = openCount > 0 ? '' : 'none';
-      }
+      updateGitHubBadges();
     }).catch(() => {});
     // Load issues count
     api.github.issues({ remoteUrl }).then(result => {
       issuesData = result;
-      const badge = document.getElementById('git-issues-badge');
-      if (badge && result?.issues) {
-        badge.textContent = result.issues.length;
-        badge.style.display = result.issues.length > 0 ? '' : 'none';
-      }
+      updateGitHubBadges();
     }).catch(() => {});
   }
+}
+
+function updateGitHubBadges() {
+  const prBadge = document.getElementById('git-pr-badge');
+  if (prBadge) {
+    const openCount = (prsData?.pullRequests || []).filter(pr => pr.state === 'open').length;
+    prBadge.textContent = openCount;
+    prBadge.style.display = openCount > 0 ? '' : 'none';
+  }
+  const issuesBadge = document.getElementById('git-issues-badge');
+  if (issuesBadge) {
+    const count = (issuesData?.issues || []).length;
+    issuesBadge.textContent = count;
+    issuesBadge.style.display = count > 0 ? '' : 'none';
+  }
+}
+
+// ========== GITHUB SIGN-IN ==========
+
+/**
+ * The one line a Pull requests or Issues sub-tab shows instead of its form and
+ * an empty list when GitHub is not connected, or refused the saved login:
+ * "No pull requests" was a guess there, and creating one could only fail.
+ * @param {Object|null} result - a github-pull-requests / github-issues payload
+ * @param {'prs'|'issues'} kind
+ * @returns {string} empty when GitHub answered
+ */
+function githubConnectNoticeHtml(result, kind) {
+  if (!result || result.authenticated !== false) return '';
+  const expired = !!result.expired;
+  const key = expired ? 'gitTab.githubExpired' : (kind === 'issues' ? 'gitTab.githubConnectIssues' : 'gitTab.githubConnectPRs');
+  return '<div class="git-github-connect">'
+    + '<p>' + escapeHtml(t(key)) + '</p>'
+    + connectButtonHtml({ expired, className: 'btn btn-primary btn-sm' })
+    + '</div>';
+}
+
+/** Read pull requests and issues again, for the repository on screen. */
+async function reloadGitHubData() {
+  if (!remoteUrl) return;
+  const url = remoteUrl;
+  prPage = 1;
+  issuesPage = 1;
+  const [prs, issues] = await Promise.allSettled([
+    api.github.pullRequests({ remoteUrl: url }),
+    api.github.issues({ remoteUrl: url, state: issuesState }),
+  ]);
+  if (url !== remoteUrl) return; // another project was picked meanwhile
+  if (prs.status === 'fulfilled') prsData = prs.value;
+  if (issues.status === 'fulfilled') issuesData = issues.value;
+  updateGitHubBadges();
+  if (currentSubTab === 'pullrequests' || currentSubTab === 'issues') renderSubTabContent();
+}
+
+let githubConnecting = false;
+async function handleConnectGitHub(btn) {
+  githubConnecting = true;
+  if (btn) btn.disabled = true;
+  let status;
+  try {
+    status = await connectGitHub({ reconnect: btn?.dataset.expired === 'true' });
+  } finally {
+    githubConnecting = false;
+    if (btn) btn.disabled = false;
+  }
+  if (status) await reloadGitHubData();
+}
+
+/**
+ * A write GitHub refused for want of a login: one toast that says so, with
+ * the button that fixes it, instead of GitHub's bare "Bad credentials". The
+ * sub-tab is read again, so it shows the sign-in line from then on.
+ * @returns {boolean} whether the result was that
+ */
+function githubAuthFailure(result) {
+  const code = result?.code;
+  if (code !== 'GITHUB_TOKEN_EXPIRED' && code !== 'GITHUB_NOT_CONNECTED') return false;
+  const expired = code === 'GITHUB_TOKEN_EXPIRED';
+  Toast.showToast({
+    type: 'error',
+    title: t(expired ? 'gitTab.githubExpired' : 'gitTab.githubConnectWrite'),
+    action: t(expired ? 'github.connect.reconnect' : 'github.connect.connect'),
+    onAction: () => handleConnectGitHub(null),
+    duration: 8000,
+  });
+  reloadGitHubData().catch(() => {});
+  return true;
 }
 
 async function refreshChanges() {
@@ -2152,6 +2231,11 @@ function renderPullRequests(container) {
     container.innerHTML = `<div class="git-empty-state"><p>${t('git.noRemote')}</p></div>`;
     return;
   }
+  const signIn = githubConnectNoticeHtml(prsData, 'prs');
+  if (signIn) {
+    container.innerHTML = `<div class="git-pr-container">${signIn}</div>`;
+    return;
+  }
 
   let html = '<div class="git-pr-container">';
 
@@ -2234,6 +2318,11 @@ function renderPullRequests(container) {
 
 function bindPullRequestEvents(container) {
   container.onclick = (e) => {
+    const connectBtn = e.target.closest('[data-action="connect-github"]');
+    if (connectBtn) {
+      handleConnectGitHub(connectBtn);
+      return;
+    }
     if (e.target.closest('#git-pr-create-btn')) {
       handleCreatePR();
       return;
@@ -2352,6 +2441,8 @@ async function showPRReviewModal(pullNumber) {
       if (result.success) {
         closeModal(modal);
         showToast(t('gitTab.reviewSubmitted') || 'Review submitted', 'success');
+      } else if (githubAuthFailure(result)) {
+        closeModal(modal);
       } else {
         showToast(result.error || 'Review failed', 'error');
       }
@@ -3007,7 +3098,7 @@ async function handleCreatePR() {
       prPage = 1;
       prsData = await api.github.pullRequests({ remoteUrl });
       renderSubTabContent();
-    } else {
+    } else if (!githubAuthFailure(result)) {
       showToast(friendlyGitError(result.error), 'error');
     }
   });
@@ -3018,6 +3109,11 @@ async function handleCreatePR() {
 function renderIssues(container) {
   if (!remoteUrl) {
     container.innerHTML = `<div class="git-empty-state"><p>${t('git.noRemote')}</p></div>`;
+    return;
+  }
+  const signIn = githubConnectNoticeHtml(issuesData, 'issues');
+  if (signIn) {
+    container.innerHTML = `<div class="git-issues-container">${signIn}</div>`;
     return;
   }
 
@@ -3091,6 +3187,11 @@ function renderIssues(container) {
 
 function bindIssuesEvents(container) {
   container.onclick = (e) => {
+    const connectBtn = e.target.closest('[data-action="connect-github"]');
+    if (connectBtn) {
+      handleConnectGitHub(connectBtn);
+      return;
+    }
     if (e.target.closest('#git-issue-create-btn')) {
       handleCreateIssue();
       return;
@@ -3218,7 +3319,7 @@ async function handleMergePR(pullNumber) {
       prPage = 1;
       prsData = await api.github.pullRequests({ remoteUrl });
       renderSubTabContent();
-    } else {
+    } else if (!githubAuthFailure(result)) {
       showToast(friendlyGitError(result.error), 'error');
     }
   });
@@ -3250,7 +3351,7 @@ async function handleCreateIssue() {
       issuesPage = 1;
       issuesData = await api.github.issues({ remoteUrl, state: issuesState });
       renderSubTabContent();
-    } else {
+    } else if (!githubAuthFailure(result)) {
       showToast(friendlyGitError(result.error), 'error');
     }
   });
@@ -3268,7 +3369,7 @@ async function handleCloseIssue(issueNumber) {
       showToast(t('gitTab.issueClosed', { number: issueNumber }), 'success');
       issuesData = await api.github.issues({ remoteUrl, state: issuesState });
       renderSubTabContent();
-    } else {
+    } else if (!githubAuthFailure(result)) {
       showToast(friendlyGitError(result.error), 'error');
     }
   });
@@ -3379,7 +3480,15 @@ function showToast(message, type = 'info') {
 
 let _unsubscribeNestedRepos = null;
 
+let _unsubscribeGitHubAuth = null;
+
 function initGitTab() {
+  // GitHub connected from another view: the PR and issue lists here are stale.
+  if (!_unsubscribeGitHubAuth) {
+    _unsubscribeGitHubAuth = onGitHubAuthChanged(() => {
+      if (!githubConnecting) reloadGitHubData().catch(() => {});
+    });
+  }
   // Another surface (the Changes panel) picked a repository of this project.
   if (!_unsubscribeNestedRepos) {
     _unsubscribeNestedRepos = nestedRepos.onSelectionChange((projectId, repoPath) => {
@@ -3404,6 +3513,8 @@ function initGitTab() {
 
 module.exports = {
   initGitTab,
+  githubConnectNoticeHtml,
+  githubAuthFailure,
   selectProject: selectProjectById,
   renderGitTab,
   warnIfGitMissing,

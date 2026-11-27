@@ -39,6 +39,7 @@
 const { t, getCurrentLanguage } = require('../../../i18n');
 const { escapeHtml } = require('../../../utils');
 const { formatRelativeTimeIntl } = require('../../../utils/format');
+const { connectGitHub, connectButtonHtml, onGitHubAuthChanged } = require('../GitHubConnectModal');
 const {
   GROUPS, prVerdict, rowsOf, groupRows, attentionCount, noticesOf, repoLabeller, verdictText, groupLabel,
   conflictsPrompt, behindPrompt, reviewPrompt,
@@ -194,8 +195,8 @@ function prSectionHtml(s, decorateTitle) {
   if (!pr) return `<section class="session-git-section">${head}<p class="session-git-muted">${escapeHtml(t('chat.git.prNoGitHub'))}</p></section>`;
   if (!pr.authenticated) {
     return `<section class="session-git-section">${head}
-      <p class="session-git-muted">${escapeHtml(t('chat.git.prLoginNeeded'))}</p>
-      <div class="session-git-actions"><button type="button" class="btn-sm btn-secondary" data-action="connect-github">${escapeHtml(t('chat.git.prConnect'))}</button></div>
+      <p class="session-git-muted">${escapeHtml(t(pr.expired ? 'chat.git.prLoginExpired' : 'chat.git.prLoginNeeded'))}</p>
+      <div class="session-git-actions">${connectButtonHtml({ expired: !!pr.expired })}</div>
     </section>`;
   }
   if (!pr.pullRequest && pr.ssoRequired) {
@@ -443,7 +444,7 @@ function chipsHtml(groups, total, filter) {
 
 function noticeHtml(n) {
   switch (n.kind) {
-    case 'login': return `<div class="session-git-notice"><span>${escapeHtml(t('chat.git.noticeLogin'))}</span><button type="button" class="btn-sm btn-secondary" data-action="connect-github">${escapeHtml(t('chat.git.prConnect'))}</button></div>`;
+    case 'login': return `<div class="session-git-notice"><span>${escapeHtml(t(n.expired ? 'chat.git.noticeLoginExpired' : 'chat.git.noticeLogin'))}</span>${connectButtonHtml({ expired: !!n.expired })}</div>`;
     case 'sso': return `<div class="session-git-notice"><span>${escapeHtml(t('chat.git.prSsoBlocked', { org: n.org }))}</span><button type="button" class="btn-sm btn-secondary" data-action="authorize-sso" data-url="${escapeHtml(n.url)}">${escapeHtml(t('chat.git.prSsoAuthorize', { org: n.org }))}</button></div>`;
     case 'unreachable': return `<div class="session-git-notice"><span>${escapeHtml(t('chat.git.prUnreachable', { repo: n.repo }))}</span></div>`;
     default: return `<div class="session-git-notice"><span>${escapeHtml(t('chat.git.prLookupFailed', { error: n.error }))}</span></div>`;
@@ -507,7 +508,7 @@ function sessionHtml(o, { decoratePrTitle = null, view = defaultView() } = {}) {
  * @param {number} deps.sessionStartedAt commits after this are marked as this session's
  * @param {() => void} deps.onAvailable called once the folder turns out to be a repository
  * @param {() => void} deps.openGitScreen
- * @param {(subTab: string) => void} deps.openSettings
+ * @param {(opts: { reconnect: boolean }) => Promise<object|null>} [deps.connectGitHub] the GitHub sign-in, GitHubConnectModal.connectGitHub when left out
  * @param {(opts: object) => void} deps.showToast
  * @param {(title: string) => string} [deps.decoratePrTitle]
  * @param {(summary: object) => void} [deps.onSummary] every summary read: a hook for the features that read branches and PR titles
@@ -703,6 +704,30 @@ function createGitTab(deps) {
     await load();
   }
 
+  /** Sign GitHub in from here, then read again: the button is where the PRs were missing. */
+  let connecting = false;
+  async function connect(el) {
+    connecting = true;
+    el.disabled = true;
+    let status;
+    try {
+      status = await (deps.connectGitHub || connectGitHub)({ reconnect: el.dataset.expired === 'true' });
+    } finally {
+      connecting = false;
+      el.disabled = false;
+    }
+    if (status && !destroyed) await load();
+  }
+
+  // Connected from another view (Settings, another chat tab, the Git panel):
+  // what this tab says about GitHub is out of date. On screen, read now; else
+  // on the next show. The sign-in this tab started reads on its own.
+  const unsubscribeAuth = onGitHubAuthChanged(() => {
+    if (connecting || destroyed) return;
+    stale = true;
+    if (visible && onScreen()) load();
+  });
+
   function onClick(event) {
     const el = event.target.closest('[data-action]');
     if (!el || !summary) return;
@@ -734,7 +759,7 @@ function createGitTab(deps) {
         render();
         break;
       case 'open-git': deps.openGitScreen(); break;
-      case 'connect-github': deps.openSettings('github'); break;
+      case 'connect-github': connect(el); break;
       // Every link carries its own URL: the same handler serves every row.
       case 'create-pr':
       case 'authorize-sso':
@@ -823,6 +848,7 @@ function createGitTab(deps) {
       clearInterval(pollTimer);
       clearTimeout(staleTimer);
       panelEl.removeEventListener('click', onClick);
+      unsubscribeAuth();
     },
   };
 }

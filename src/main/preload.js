@@ -330,6 +330,7 @@ contextBridge.exposeInMainWorld('electron_api', {
     startAuth: () => ipcRenderer.invoke('github-start-auth'),
     openAuthUrl: (url) => ipcRenderer.invoke('github-open-auth-url', url),
     pollToken: (params) => ipcRenderer.invoke('github-poll-token', params),
+    cancelAuth: () => ipcRenderer.invoke('github-cancel-auth'),
     authStatus: () => ipcRenderer.invoke('github-auth-status'),
     logout: () => ipcRenderer.invoke('github-logout'),
     setToken: (token) => ipcRenderer.invoke('github-set-token', token),

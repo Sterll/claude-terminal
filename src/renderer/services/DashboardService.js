@@ -2114,6 +2114,13 @@ function wireBriefing(container, project, data, options, gitOps, isCurrent) {
       options.onTaskSessionOpen?.(project, resume.dataset.resume);
       return;
     }
+    const connect = e.target.closest('[data-action="connect-github"]');
+    if (connect) {
+      // Connecting announces itself (onGitHubAuthChanged), which repaints the
+      // dashboard from fresh data.
+      require('../ui/components/GitHubConnectModal').connectGitHub({ reconnect: connect.dataset.expired === 'true' });
+      return;
+    }
     const link = e.target.closest('.dash-todo-item[data-url]');
     if (link) api.dialog.openExternal(link.dataset.url);
   });
@@ -2792,6 +2799,7 @@ function buildOverviewTopHtml(projects, dataMap, timesMap) {
   let timeTotal = 0;
   let active = 0;
   const items = [];
+  let githubItem = null;
   projects.forEach((project) => {
     const time = Brief.timeSince(getProjectSessions(project.id), timesMap[project.id] || getProjectTimes(project.id), week);
     timeTotal += time;
@@ -2800,9 +2808,16 @@ function buildOverviewTopHtml(projects, dataMap, timesMap) {
     if (!data) return;
     const projectIndex = projectsState.get().projects.findIndex(p => p.id === project.id);
     for (const item of Brief.todoItems({ gitInfo: data.gitInfo || {}, workflowRuns: data.workflowRuns, pullRequests: data.pullRequests })) {
+      // GitHub's login is the machine's, not a project's: one line for all of
+      // them, not one per project on GitHub.
+      if (item.connectGitHub) {
+        githubItem = githubItem && githubItem.expired ? githubItem : item;
+        continue;
+      }
       items.push({ ...item, project: project.name, projectIndex, url: undefined });
     }
   });
+  if (githubItem) items.push({ ...githubItem, url: undefined });
   items.sort((a, b) => (TONE_ORDER[a.tone] ?? 9) - (TONE_ORDER[b.tone] ?? 9));
   const shown = items.slice(0, 8);
   const more = items.length - shown.length;
@@ -2951,6 +2966,11 @@ function renderOverview(container, projects, options = {}) {
 
   container.querySelectorAll('.dash-todo-item[data-project-index]').forEach(item => {
     item.addEventListener('click', () => onCardClick?.(parseInt(item.dataset.projectIndex, 10)));
+  });
+  container.querySelectorAll('.dash-overview [data-action="connect-github"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      require('../ui/components/GitHubConnectModal').connectGitHub({ reconnect: btn.dataset.expired === 'true' });
+    });
   });
 
   // Costs come from the transcripts and land after the first paint.

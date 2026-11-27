@@ -535,6 +535,13 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     isFreshProfile: (projectsState.get().projects || []).length === 0,
   }).catch((err) => console.warn('[renderer] account onboarding failed:', err?.message));
 
+  // GitHub connected or reconnected from any view (GitHubConnectModal): the
+  // dashboard's CI and pull requests were read without it.
+  require('./src/renderer/ui/components/GitHubConnectModal').onGitHubAuthChanged(() => {
+    DashboardService.clearAllCache();
+    if (document.body.dataset.activeTab === 'dashboard') renderDashboardForScope();
+  });
+
   // Two things that break silently until they are needed: git missing from
   // the machine, and a saved account whose login was lost. Said once at
   // startup, after the first paint, so neither competes with the boot.

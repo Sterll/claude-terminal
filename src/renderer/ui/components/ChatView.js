@@ -520,7 +520,6 @@ class ChatView extends BaseComponent {
       tabbarEl.hidden = false;
     },
     openGitScreen: () => document.querySelector('.nav-tab[data-tab="git"]')?.click(),
-    openSettings: (tab) => document.dispatchEvent(new CustomEvent('ct-open-settings', { detail: { tab } })),
     showToast: (opts) => require('./Toast').showToast(opts),
     onCiStatus: (ci) => {
       gitTabCiEl.hidden = !ci;
