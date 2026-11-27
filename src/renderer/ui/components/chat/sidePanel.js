@@ -88,6 +88,19 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
   const ticketsSignal = railEl.querySelector('.chat-side-rail-tickets');
   const tasksSignal = railEl.querySelector('.chat-side-rail-tasks');
   const headOf = (section) => sideEl.querySelector(`.chat-side-section[data-section="${section}"] .chat-side-section-head`);
+  const signals = { brief: briefSignal, git: gitSignal, tickets: ticketsSignal, tasks: tasksSignal };
+  const sectionName = {
+    brief: () => t('chat.side.brief'),
+    git: () => t('chat.side.branches'),
+    tickets: () => t('chat.side.tickets'),
+    tasks: () => t('tasks.navTitle'),
+  };
+  // Each icon on the strip names its section, then what it is signalling.
+  const titleSignal = (section, detail) => {
+    const el = signals[section];
+    if (el) el.title = detail ? `${sectionName[section]()} · ${detail}` : sectionName[section]();
+  };
+  for (const section of SECTIONS) titleSignal(section, '');
 
   for (const section of SECTIONS) headOf(section)?.setAttribute('aria-expanded', String(!isFolded(section)));
 
@@ -108,7 +121,16 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
     e.preventDefault();
     toggleFold(head);
   };
-  const onRailClick = () => setCollapsed(false);
+  // A click on an icon opens the column on that section: unfolded, scrolled
+  // to. Anywhere else on the strip just opens the column.
+  const onRailClick = (e) => {
+    const section = SECTIONS.find((name) => signals[name]?.contains(e.target));
+    setCollapsed(false);
+    if (!section) return;
+    if (isFolded(section)) setFolded(section, false);
+    const target = sideEl.querySelector(`.chat-side-section[data-section="${section}"]`);
+    if (target?.scrollIntoView) requestAnimationFrame(() => target.scrollIntoView({ block: 'start' }));
+  };
   const onToggled = (e) => {
     const { section, folded, collapsed } = e.detail || {};
     if (section ? !folded : !collapsed) onExpand();
@@ -133,6 +155,7 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
     setBriefBehind(behind) {
       briefSignal.classList.toggle('behind', !!behind);
       headOf('brief')?.classList.toggle('behind', !!behind);
+      titleSignal('brief', behind ? t('chat.side.briefBehind') : '');
     },
     /** The session's branches: a count, and a red dot while one needs the user. */
     setGit({ count, attention }) {
@@ -141,7 +164,7 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
       gitSignal.classList.toggle('attention', attention > 0);
       headOf('git')?.classList.toggle('attention', attention > 0);
       const label = attention > 0 ? t('chat.git.attention', { count: attention }) : '';
-      gitSignal.title = label;
+      titleSignal('git', label);
       headOf('git')?.setAttribute('title', label);
     },
     /** The session's tickets: shown once a tracker is connected, a dot while a detected one waits. */
@@ -151,7 +174,7 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
       ticketsSignal.classList.toggle('behind', suggested > 0);
       headOf('tickets')?.classList.toggle('behind', suggested > 0);
       const label = suggested > 0 ? t('chat.side.suggested', { count: suggested }) : '';
-      ticketsSignal.title = label;
+      titleSignal('tickets', label);
       headOf('tickets')?.setAttribute('title', label);
     },
     /** This tab's tasks: the strip's icon only once it has some, pulsing while one runs. */
@@ -159,6 +182,7 @@ function createSidePanel({ sideEl, railEl, onExpand = () => {} }) {
       tasksSignal.hidden = !count;
       tasksSignal.classList.toggle('running', running > 0);
       headOf('tasks')?.classList.toggle('running', running > 0);
+      titleSignal('tasks', running > 0 ? `${t('tasks.running')} ${running}` : '');
     },
     destroy() {
       sideEl.removeEventListener('click', onSideClick);

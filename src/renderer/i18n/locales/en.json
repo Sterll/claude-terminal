@@ -2099,6 +2099,7 @@
     "side": {
       "title": "Session",
       "brief": "Brief",
+      "briefBehind": "New messages since the brief",
       "collapse": "Collapse",
       "expand": "Show the session column",
       "branches": "Branches",
@@ -4404,6 +4405,8 @@
     "finished": "Finished",
     "noneRunning": "Nothing running.",
     "clearFinished": "Clear finished tasks",
+    "showMore": "Show {count} more",
+    "showLess": "Show less",
     "empty": "No background tasks yet.",
     "clear": "Clear",
     "typeAgent": "Agent",

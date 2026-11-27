@@ -2099,6 +2099,7 @@
     "side": {
       "title": "Session",
       "brief": "Brief",
+      "briefBehind": "Nouveaux messages depuis le brief",
       "collapse": "Réduire",
       "expand": "Afficher la colonne de session",
       "branches": "Branches",
@@ -4404,6 +4405,8 @@
     "finished": "Terminé",
     "noneRunning": "Rien en cours.",
     "clearFinished": "Effacer les tâches terminées",
+    "showMore": "Afficher {count} de plus",
+    "showLess": "Afficher moins",
     "empty": "Aucune tâche de fond pour l'instant.",
     "clear": "Effacer",
     "typeAgent": "Agent",

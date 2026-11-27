@@ -342,29 +342,33 @@ class ChatView extends BaseComponent {
           <div class="chat-side-scroll">
             <section class="chat-side-section chat-side-brief" data-section="brief">
               <div class="chat-side-section-head" role="button" tabindex="0">
-                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <svg class="chat-side-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
                 <span class="chat-side-section-title">${escapeHtml(t('chat.side.brief'))}</span>
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </div>
               <div class="chat-brief-body"></div>
             </section>
             <section class="chat-side-section chat-side-git" data-section="git" hidden>
               <div class="chat-side-section-head" role="button" tabindex="0">
-                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <svg class="chat-side-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 5-6 4-11.5 8.5"/></svg>
                 <span class="chat-side-section-title">${escapeHtml(t('chat.side.branches'))}<span class="chat-side-count"></span></span>
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </div>
               <div class="chat-side-git-body"></div>
             </section>
             <section class="chat-side-section chat-side-tickets" data-section="tickets" hidden>
               <div class="chat-side-section-head" role="button" tabindex="0">
-                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <svg class="chat-side-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg>
                 <span class="chat-side-section-title">${escapeHtml(t('chat.side.tickets'))}<span class="chat-side-count"></span></span>
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
               </div>
               <div class="chat-side-tickets-body"></div>
             </section>
             <section class="chat-side-section chat-side-tasks" data-section="tasks" hidden>
               <div class="chat-side-section-head" role="button" tabindex="0">
-                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                <svg class="chat-side-section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg>
                 <span class="chat-side-section-title">${escapeHtml(t('tasks.navTitle') || 'Background tasks')}</span>
+                <svg class="chat-side-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
                 <button class="chat-tasks-clear" title="${escapeHtml(t('tasks.clearFinished') || 'Clear finished tasks')}" hidden>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6"/></svg>
                 </button>
@@ -375,10 +379,11 @@ class ChatView extends BaseComponent {
         </aside>
         <button class="chat-side-rail" title="${escapeHtml(t('chat.side.expand'))}">
           <svg class="chat-side-rail-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+          <span class="chat-side-rail-sep" aria-hidden="true"></span>
           <span class="chat-side-rail-brief"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></span>
           <span class="chat-side-rail-git" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 7v10M18 9c0 5-6 4-11.5 8.5"/></svg></span>
           <span class="chat-side-rail-tickets" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2M13 17v2M13 11v2"/></svg></span>
-          <span class="chat-side-rail-tasks" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
+          <span class="chat-side-rail-tasks" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5M12 19h8"/></svg></span>
         </button>
       </div>
       <div class="chat-changes-panel" hidden></div>
@@ -8986,9 +8991,15 @@ class ChatView extends BaseComponent {
     return listTasksForOwner(taskOwnerKey);
   }
 
+  // The CLI reports a shell task as `shell` from some feeds and `local_bash`
+  // from others; both are a command line, drawn in monospace.
+  function isShellTask(task) {
+    return task.type === 'shell' || /bash|shell/i.test(task.type || '');
+  }
+
   function taskTypeLabel(task) {
     if (task.type === 'subagent') return task.agentType || t('tasks.typeAgent') || 'Agent';
-    if (task.type === 'shell') return t('tasks.typeShell') || 'Bash';
+    if (isShellTask(task)) return t('tasks.typeShell') || 'Bash';
     if (task.type === 'workflow') return task.workflowName || t('tasks.typeWorkflow') || 'Workflow';
     if (task.type === 'monitor') return t('tasks.typeMonitor') || 'Monitor';
     return task.type || t('tasks.typeTask') || 'Task';
@@ -8999,6 +9010,16 @@ class ChatView extends BaseComponent {
     if (typeof total !== 'number') return '';
     return total >= 1000 ? `${(total / 1000).toFixed(1)}k` : String(total);
   }
+
+  const TASKS_FINISHED_PREVIEW = 6;
+  let tasksShowAll = false;
+  const TASK_STATUS_GLYPHS = {
+    running: '<span class="chat-task-row-spinner"></span>',
+    completed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+    failed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+    stopped: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>',
+    ended: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="3.5"/></svg>',
+  };
 
   function renderTasks() {
     const tasks = tabTasks();
@@ -9029,34 +9050,43 @@ class ChatView extends BaseComponent {
       // export from utils/format counts milliseconds and reads these as "0m".
       const secs = Math.max(0, Math.round((end - task.startedAt) / 1000));
       const tokens = taskTokens(task.usage);
+      const desc = task.description || taskTypeLabel(task);
       return `
         <div class="chat-task-row ${escapeHtml(task.status)}" data-task-id="${escapeHtml(task.taskId)}">
+          <span class="chat-task-row-status" aria-hidden="true">${TASK_STATUS_GLYPHS[task.status] || TASK_STATUS_GLYPHS.ended}</span>
           <div class="chat-task-row-main">
-            <div class="chat-task-row-desc">${escapeHtml(task.description || taskTypeLabel(task))}</div>
+            <div class="chat-task-row-desc${isShellTask(task) ? ' mono' : ''}" title="${escapeHtml(desc)}">${escapeHtml(desc)}</div>
             <div class="chat-task-row-meta">
               <span class="chat-task-row-type">${escapeHtml(taskTypeLabel(task))}</span>
-              <span class="chat-task-row-time">${escapeHtml(fmtDur(secs))}</span>
               ${tokens ? `<span class="chat-task-row-tokens">${escapeHtml(tokens)}</span>` : ''}
+              <span class="chat-task-row-time">${escapeHtml(fmtDur(secs))}</span>
             </div>
           </div>
           ${live ? `<button class="chat-task-row-stop" data-task-id="${escapeHtml(task.taskId)}" title="${escapeHtml(t('chat.stopTask') || 'Stop task')}">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
           </button>` : ''}
         </div>`;
     };
 
+    // Running work first and only when there is some: an empty "Running 0"
+    // group above thirty finished rows said nothing. The finished list keeps
+    // its first few rows; the rest are one click away.
     const finished = tasks.filter(task => task.status !== 'running');
-    tasksBodyEl.innerHTML = `
+    const shownFinished = tasksShowAll ? finished : finished.slice(0, TASKS_FINISHED_PREVIEW);
+    const hiddenCount = finished.length - shownFinished.length;
+    const group = (title, count, rows) => `
       <div class="chat-tasks-group">
-        <div class="chat-tasks-group-title">${escapeHtml(t('tasks.running') || 'Running')} <span>${running.length}</span></div>
-        ${running.length ? running.map(row).join('')
-          : `<div class="chat-tasks-empty">${escapeHtml(t('tasks.noneRunning') || 'Nothing running.')}</div>`}
-      </div>
-      ${finished.length ? `
-      <div class="chat-tasks-group">
-        <div class="chat-tasks-group-title">${escapeHtml(t('tasks.finished') || 'Finished')} <span>${finished.length}</span></div>
-        ${finished.map(row).join('')}
-      </div>` : ''}`;
+        <div class="chat-tasks-group-title">${escapeHtml(title)}<span class="chat-tasks-group-count">${count}</span></div>
+        <div class="chat-tasks-list">${rows}</div>
+      </div>`;
+    tasksBodyEl.innerHTML = [
+      running.length ? group(t('tasks.running') || 'Running', running.length, running.map(row).join('')) : '',
+      finished.length ? group(t('tasks.finished') || 'Finished', finished.length, shownFinished.map(row).join('')) : '',
+      hiddenCount > 0
+        ? `<button class="chat-tasks-more">${escapeHtml(t('tasks.showMore', { count: hiddenCount }))}</button>`
+        : (tasksShowAll && finished.length > TASKS_FINISHED_PREVIEW
+          ? `<button class="chat-tasks-more">${escapeHtml(t('tasks.showLess'))}</button>` : ''),
+    ].join('');
   }
 
   // Clearing forgets this tab's finished tasks only: another conversation's
@@ -9103,6 +9133,11 @@ class ChatView extends BaseComponent {
   }
 
   tasksBodyEl.addEventListener('click', (e) => {
+    if (e.target.closest('.chat-tasks-more')) {
+      tasksShowAll = !tasksShowAll;
+      renderTasks();
+      return;
+    }
     const stop = e.target.closest('.chat-task-row-stop');
     if (stop) {
       const task = getStoredTask(stop.dataset.taskId);

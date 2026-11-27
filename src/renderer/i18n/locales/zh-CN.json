@@ -2099,6 +2099,7 @@
     "side": {
       "title": "会话",
       "brief": "简报",
+      "briefBehind": "简报之后有新消息",
       "collapse": "收起",
       "expand": "显示会话侧栏",
       "branches": "分支",
@@ -4404,6 +4405,8 @@
     "finished": "已完成",
     "noneRunning": "没有正在运行的任务。",
     "clearFinished": "清除已完成的任务",
+    "showMore": "再显示 {count} 项",
+    "showLess": "收起",
     "empty": "暂无后台任务。",
     "clear": "清除",
     "typeAgent": "代理",

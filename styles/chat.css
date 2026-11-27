@@ -5588,25 +5588,24 @@ input.chat-elicit-input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  min-height: 40px;
+  padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--border-color);
 }
 
 .chat-side-title {
   flex: 1;
-  font-size: var(--font-2xs);
+  font-size: var(--font-sm);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .chat-side-collapse {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -5643,34 +5642,52 @@ input.chat-elicit-input[type="checkbox"] {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--border-color);
+  gap: 8px;
+  min-height: 38px;
+  padding: 0 10px 0 14px;
   background: var(--bg-secondary);
   cursor: pointer;
   user-select: none;
 }
 
-.chat-side-section-head:hover { background: var(--bg-tertiary); }
 .chat-side-section-head:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 
-.chat-side-chevron {
-  width: 12px;
-  height: 12px;
+.chat-side-section-icon {
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: transform 0.15s;
+  transition: color 0.15s;
 }
+
+.chat-side-section-head:hover .chat-side-section-icon { color: var(--accent); }
+
+/* Right-aligned, and only there when it has something to say: on hover, on
+   keyboard focus, or while the section is folded. */
+.chat-side-chevron {
+  order: 3;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: transform 0.15s, opacity 0.15s;
+}
+
+.chat-side-section-head:hover .chat-side-chevron,
+.chat-side-section-head:focus-visible .chat-side-chevron,
+.chat-side-section-head[aria-expanded="false"] .chat-side-chevron { opacity: 1; }
 
 .chat-side-section-title {
   flex: 1;
-  font-size: var(--font-2xs);
+  min-width: 0;
+  font-size: var(--font-xs);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-secondary);
+  transition: color 0.15s;
 }
+
+.chat-side-section-head:hover .chat-side-section-title { color: var(--text-primary); }
 
 body.chat-side-brief-folded .chat-side-brief .chat-side-chevron,
 body.chat-side-git-folded .chat-side-git .chat-side-chevron,
@@ -5706,10 +5723,8 @@ body.chat-side-tasks-folded .chat-tasks-body { display: none; }
 
 /* How many branches, how many tickets: beside the title, quieter than it. */
 .chat-side-count {
-  margin-left: 5px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
+  margin-left: 6px;
+  font-weight: 500;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -5719,10 +5734,10 @@ body.chat-side-tasks-folded .chat-tasks-body { display: none; }
   display: none;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  width: 32px;
+  gap: 4px;
+  width: 40px;
   flex-shrink: 0;
-  padding: 10px 0;
+  padding: 8px 0;
   border: none;
   border-left: 1px solid var(--border-color);
   background: var(--bg-secondary);
@@ -5734,8 +5749,27 @@ body.chat-side-tasks-folded .chat-tasks-body { display: none; }
 body.chat-side-collapsed .chat-side { display: none; }
 body.chat-side-collapsed .chat-side-rail { display: flex; }
 
-.chat-side-rail:hover { background: var(--bg-tertiary); color: var(--text-primary); }
-.chat-side-rail svg { width: 14px; height: 14px; }
+/* The strip's empty length still opens the column, so it answers a hover;
+   each icon answers louder, since it opens on its own section. */
+.chat-side-rail:hover { background: color-mix(in srgb, var(--bg-tertiary) 55%, var(--bg-secondary)); }
+.chat-side-rail svg { width: 15px; height: 15px; }
+
+.chat-side-rail .chat-side-rail-chevron {
+  width: 28px;
+  height: 28px;
+  padding: 7px;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.chat-side-rail:hover .chat-side-rail-chevron { color: var(--text-primary); }
+
+.chat-side-rail-sep {
+  width: 16px;
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border-color);
+}
 
 .chat-side-rail-brief,
 .chat-side-rail-git,
@@ -5743,7 +5777,18 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 .chat-side-rail-tasks {
   position: relative;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s, color 0.15s;
 }
+
+.chat-side-rail-brief:hover,
+.chat-side-rail-git:hover,
+.chat-side-rail-tickets:hover,
+.chat-side-rail-tasks:hover { background: var(--bg-hover); color: var(--accent); }
 
 .chat-side-rail-git[hidden],
 .chat-side-rail-tickets[hidden],
@@ -5756,12 +5801,14 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 .chat-side-rail-git.attention::after {
   content: '';
   position: absolute;
-  top: -3px;
-  right: -4px;
+  top: 4px;
+  right: 4px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--accent);
+  /* A ring in the strip's colour, so the dot reads apart from the glyph. */
+  box-shadow: 0 0 0 2px var(--bg-secondary);
 }
 
 /* Live work pulses the icon rather than stacking a counter on top of it: a
@@ -5770,6 +5817,7 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 
 .chat-side-rail-tasks.running {
   color: var(--accent);
+  background: var(--accent-dim);
   animation: chat-tasks-pulse 1.6s ease-in-out infinite;
 }
 
@@ -5792,11 +5840,12 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 .chat-view.brief-off:not(.has-tasks):not(.has-git):not(.has-tickets) .chat-side-rail { display: none; }
 
 .chat-tasks-clear {
+  order: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
@@ -5811,63 +5860,107 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 .chat-tasks-clear:hover { background: var(--bg-hover); color: var(--danger); }
 .chat-tasks-clear svg { width: 13px; height: 13px; }
 
-.chat-tasks-body { padding: 8px; }
+.chat-tasks-body { padding: 0 8px 6px; }
 
-.chat-tasks-group + .chat-tasks-group { margin-top: 14px; }
+.chat-tasks-group + .chat-tasks-group { margin-top: 10px; }
 
 .chat-tasks-group-title {
   display: flex;
+  align-items: center;
   gap: 6px;
-  padding: 2px 4px 6px;
+  padding: 2px 6px 4px;
   font-size: var(--font-2xs);
+  font-weight: 600;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
 }
 
-.chat-tasks-group-title span { font-variant-numeric: tabular-nums; }
+.chat-tasks-group-count {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
 
-.chat-tasks-empty {
-  padding: 6px 4px;
-  font-size: var(--font-2xs);
-  color: var(--text-muted);
+.chat-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
 }
 
 .chat-task-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 7px 6px;
   border-radius: var(--radius-sm);
-  border-left: 2px solid transparent;
+  transition: background-color 0.12s;
 }
 
 .chat-task-row:hover { background: var(--bg-tertiary); }
-.chat-task-row.running { border-left-color: var(--accent); }
-.chat-task-row.completed { border-left-color: var(--success); }
-.chat-task-row.failed { border-left-color: var(--danger); }
-.chat-task-row.stopped { border-left-color: var(--warning); }
-/* Settled by the live set with no bookend: over, outcome unknown. */
-.chat-task-row.ended { border-left-color: var(--text-muted); }
-.chat-task-row:not(.running) { opacity: 0.72; }
+
+/* The outcome as a glyph in a fixed slot rather than a coloured bar on every
+   row: thirty green bars read as one green wall. */
+.chat-task-row-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.chat-task-row-status svg { width: 12px; height: 12px; }
+.chat-task-row.running .chat-task-row-status { color: var(--accent); }
+.chat-task-row.completed .chat-task-row-status { color: var(--success); }
+.chat-task-row.failed .chat-task-row-status { color: var(--danger); }
+.chat-task-row.stopped .chat-task-row-status { color: var(--warning); }
+/* `ended`: settled by the live set with no bookend, outcome unknown. Muted dot. */
+
+.chat-task-row-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--accent-dim);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
 
 .chat-task-row-main { flex: 1; min-width: 0; }
 
 .chat-task-row-desc {
-  font-size: var(--font-2xs);
+  font-size: var(--font-xs);
+  line-height: 16px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* A shell task's description is its command line. */
+.chat-task-row-desc.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-2xs);
+}
+
+.chat-task-row:not(.running) .chat-task-row-desc { color: var(--text-secondary); }
+.chat-task-row:not(.running):hover .chat-task-row-desc { color: var(--text-primary); }
+
 .chat-task-row-meta {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   margin-top: 2px;
   font-size: var(--font-2xs);
   color: var(--text-muted);
 }
+
+.chat-task-row-tokens::before { content: '·'; margin-right: 6px; }
+.chat-task-row-time { margin-left: auto; }
 
 .chat-task-row-time,
 .chat-task-row-tokens { font-variant-numeric: tabular-nums; }
@@ -5877,23 +5970,42 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.chat-task-row-stop:hover:not(:disabled) { border-color: var(--danger); background: var(--danger); color: var(--text-primary); }
+.chat-task-row-stop:disabled { opacity: 0.4; cursor: default; }
+
+/* The finished list keeps its first rows; the rest are one click away.
+   Indented to line up with the descriptions, past the status slot. */
+.chat-tasks-more {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 6px 6px 6px 31px;
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--bg-active);
-  color: var(--text-secondary);
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--font-2xs);
+  text-align: left;
   cursor: pointer;
 }
 
-.chat-task-row-stop:hover:not(:disabled) { background: var(--danger); color: #fff; }
-.chat-task-row-stop:disabled { opacity: 0.4; cursor: default; }
+.chat-tasks-more:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 
 /* ── Session brief, the side column's upper part ── */
 
 .chat-brief-body {
-  padding: 12px 14px;
+  padding: 2px 14px 14px;
   font-size: var(--font-sm);
   line-height: 1.5;
   color: var(--text-primary);
@@ -5905,8 +6017,6 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
   margin: 0 0 4px;
   font-size: var(--font-2xs);
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--text-muted);
 }
 
@@ -5937,14 +6047,22 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
 
 .chat-brief-update,
 .chat-brief-generate {
-  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-sm);
   background: var(--accent-dim);
   color: var(--text-primary);
-  font-size: var(--font-2xs);
+  font-size: var(--font-xs);
+  font-weight: 500;
   cursor: pointer;
+  transition: background-color 0.15s;
 }
+
+.chat-brief-generate svg { width: 13px; height: 13px; color: var(--accent); }
+.chat-brief-generate:hover svg { color: currentColor; }
 
 .chat-brief-update { margin-left: auto; }
 .chat-brief-update:hover:not(:disabled),
@@ -5956,16 +6074,24 @@ body.chat-side-collapsed .chat-side-rail { display: flex; }
   cursor: default;
 }
 
+/* Nothing written yet: a card that says what the brief is for, its button,
+   and what it costs, set apart from the column rather than loose in it. */
 .chat-brief-empty {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius);
+  background: var(--bg-tertiary);
+  font-size: var(--font-xs);
+  line-height: 1.55;
   color: var(--text-secondary);
 }
 
 .chat-brief-empty p { margin: 0; }
-.chat-brief-hint { font-size: var(--font-2xs); color: var(--text-muted); }
+.chat-brief-hint { font-size: var(--font-2xs); line-height: 1.45; color: var(--text-muted); }
 .chat-brief-error { color: var(--danger); }
 
 .chat-brief-loading {

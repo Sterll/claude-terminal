@@ -2096,6 +2096,7 @@
     "side": {
       "title": "Sesión",
       "brief": "Resumen",
+      "briefBehind": "Mensajes nuevos desde el brief",
       "collapse": "Contraer",
       "expand": "Mostrar la columna de la sesión",
       "branches": "Ramas",
@@ -4401,6 +4402,8 @@
     "finished": "Terminadas",
     "noneRunning": "Nada en curso.",
     "clearFinished": "Borrar las tareas terminadas",
+    "showMore": "Mostrar {count} más",
+    "showLess": "Mostrar menos",
     "empty": "Aún no hay tareas en segundo plano.",
     "clear": "Borrar",
     "typeAgent": "Agente",

@@ -2099,6 +2099,7 @@
     "side": {
       "title": "Sesi",
       "brief": "Ringkasan",
+      "briefBehind": "Pesan baru sejak brief",
       "collapse": "Ciutkan",
       "expand": "Tampilkan kolom sesi",
       "branches": "Branch",
@@ -4404,6 +4405,8 @@
     "finished": "Selesai",
     "noneRunning": "Tidak ada yang berjalan.",
     "clearFinished": "Hapus tugas yang selesai",
+    "showMore": "Tampilkan {count} lagi",
+    "showLess": "Tampilkan lebih sedikit",
     "empty": "Belum ada tugas latar belakang.",
     "clear": "Hapus",
     "typeAgent": "Agen",

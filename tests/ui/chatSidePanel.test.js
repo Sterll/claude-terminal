@@ -129,6 +129,36 @@ describe('chat side column', () => {
     expect(tickets.hidden).toBe(true);
   });
 
+  test('an icon on the strip opens the column on its own section, unfolded', () => {
+    const els = markup();
+    const panel = createSidePanel(els);
+    els.sideEl.querySelector('.chat-side-collapse').click();
+    els.railEl.click();
+    els.sideEl.querySelector('[data-section="git"] .chat-side-section-head').click();
+    els.sideEl.querySelector('.chat-side-collapse').click();
+    expect(panel.isOpen('git')).toBe(false);
+
+    const git = els.railEl.querySelector('.chat-side-rail-git');
+    git.hidden = false;
+    git.click();
+    expect(panel.isCollapsed()).toBe(false);
+    expect(panel.isOpen('git')).toBe(true);
+    expect(localStorage.getItem('chat-side-folded-git')).toBe('false');
+  });
+
+  test('each icon on the strip names its section, then what it signals', () => {
+    const { t } = require('../../src/renderer/i18n');
+    const els = markup();
+    const panel = createSidePanel(els);
+    const tasks = els.railEl.querySelector('.chat-side-rail-tasks');
+    expect(els.railEl.querySelector('.chat-side-rail-brief').title).toBe(t('chat.side.brief'));
+    expect(tasks.title).toBe(t('tasks.navTitle'));
+    panel.setTasks({ count: 3, running: 2 });
+    expect(tasks.title).toBe(`${t('tasks.navTitle')} · ${t('tasks.running')} 2`);
+    panel.setTasks({ count: 3, running: 0 });
+    expect(tasks.title).toBe(t('tasks.navTitle'));
+  });
+
   test('a section is open when the column is and the section is not folded', () => {
     const els = markup();
     const panel = createSidePanel(els);

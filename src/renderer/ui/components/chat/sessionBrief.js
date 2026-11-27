@@ -59,6 +59,9 @@ function inlineHtml(text) {
   return escapeHtml(text).replace(/`([^`\n]+)`/g, '<code class="chat-inline-code">$1</code>');
 }
 
+// The generate button's glyph: a brief is written by a model, and says so.
+const SPARKLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+
 function sectionHtml(title, body) {
   return `<section class="chat-brief-section"><h4>${escapeHtml(title)}</h4>${body}</section>`;
 }
@@ -156,7 +159,7 @@ function createSessionBrief({ api, bodyEl, getSessionId, getProjectPath, getProj
       bodyEl.innerHTML = `
         <div class="chat-brief-empty">
           <p>${escapeHtml(t('chat.brief.intro'))}</p>
-          <button class="chat-brief-generate">${escapeHtml(t('chat.brief.generate'))}</button>
+          <button class="chat-brief-generate">${SPARKLE_SVG}${escapeHtml(t('chat.brief.generate'))}</button>
           <p class="chat-brief-hint">${escapeHtml(t('chat.brief.cost'))}</p>
         </div>`;
     }

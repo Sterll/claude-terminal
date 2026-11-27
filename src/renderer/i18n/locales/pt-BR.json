@@ -2099,6 +2099,7 @@
     "side": {
       "title": "Sessão",
       "brief": "Resumo",
+      "briefBehind": "Novas mensagens desde o brief",
       "collapse": "Recolher",
       "expand": "Mostrar a coluna da sessão",
       "branches": "Branches",
@@ -4404,6 +4405,8 @@
     "finished": "Finalizadas",
     "noneRunning": "Nada em execução.",
     "clearFinished": "Limpar tarefas finalizadas",
+    "showMore": "Mostrar mais {count}",
+    "showLess": "Mostrar menos",
     "empty": "Nenhuma tarefa em segundo plano ainda.",
     "clear": "Limpar",
     "typeAgent": "Agente",
