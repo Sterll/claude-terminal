@@ -13,7 +13,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/downloads/Sterll/claude-terminal/total?color=d97706&label=downloads" alt="Downloads" />
-  <img src="https://img.shields.io/badge/version-1.3.9-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.4.0-orange" alt="Version" />
   <img src="https://img.shields.io/badge/platform-Windows%20|%20macOS%20|%20Linux-blue" alt="Platform" />
   <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License" />
   <img src="https://img.shields.io/badge/electron-43-purple" alt="Electron" />
@@ -216,6 +216,8 @@ npm install
 - Filter terminals by project
 - Adaptive ready detection with spinner status
 - Captured terminal output, so the terminal read tools and MCP tools can actually return what ran
+- Choose the shell plain tabs run (PowerShell 7, cmd, Git Bash, WSL, or a custom program) and the terminal application "Open in external terminal" starts, in Settings > General
+- File paths printed in the terminal (absolute, relative, with a `:line` suffix, or OSC 8 links) open in the Files screen; Alt+Left / Alt+Right or the mouse back and forward buttons go back to the terminal and forward to the file
 
 ### Navigation
 - Choose how you browse projects: a project tab bar across the top, or a classic projects column on the side
@@ -230,6 +232,7 @@ npm install
 - Bind a separate Claude account to each project, with its own isolated credential store
 - Switch projects without switching accounts by hand, and without one project's login affecting another's
 - Per-account usage shown in Settings, and a usage-limit switch that carries the conversation over
+- A fresh profile is offered, once, a Claude sign-in and the folders Claude Code was already used in on this machine, so a first launch starts with the projects you already have
 - **Connect an account** signs a new account in through the CLI's own `claude auth login`, without replacing the login your machine already uses; saved accounts are recognised by their Claude profile, so none is saved twice
 - Each automation can run as a chosen account, be skipped above a usage threshold, and has its own cost in the Cost tab
 
@@ -277,6 +280,7 @@ npm install
 
 ### GitHub Integration
 - OAuth Device Flow authentication (secure, no token copy-paste)
+- **Connect where it is missing**: a view that needs GitHub (the chat Git tab, pull requests, issues, the dashboard, the clone wizard) offers the sign-in on the spot, by Device Flow or a personal access token, and says "Reconnect GitHub" when a stored token expires
 - **GitHub Enterprise support**: connect to self-hosted GitHub Enterprise instances
 - **Repository search in clone wizard**: search GitHub repos by name without leaving the app
 - **Session CI**: each chat session's Git tab follows the checks of its own pull requests, with the step each running job is on and a dot on the tab button. Fix it puts a failed job's log in that session's composer
@@ -405,6 +409,8 @@ npm install
 - Desktop notification preferences
 - Close behavior (ask, minimize to tray, or quit)
 - Launch at startup toggle
+- **Feature suggestions**: a small toast names a feature at the moment it helps, at most once a day and never while a turn runs; turn it off in Settings
+- **Guided empty screens**: a screen with nothing to show says what it is for and offers one click to start, with examples that only pre-fill a form
 - Auto-updates with background download and install banner, followed by a **What's new** panel on the next start that leads with anything that moved and then gives the full release notes
 - **Discord Rich Presence**: show the project you're working on in your Discord status (VSCode-style), with an option to hide the project name for privacy; toggle on/off in Settings
 - **Telemetry is opt-in and off by default**: nothing anonymous or otherwise is collected unless you turn it on in Settings

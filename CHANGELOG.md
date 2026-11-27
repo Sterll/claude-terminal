@@ -2,6 +2,38 @@
 
 All notable changes to Claude Terminal are documented in this file.
 
+## [1.4.0] - 2026-11-27
+
+### Added
+- **Terminal**: choose the shell plain tabs run (PowerShell 7, cmd, Git Bash, WSL, a shell from `/etc/shells` or a custom program) and the terminal application "Open in external terminal" starts, in Settings > General (#255)
+- **Terminal**: file paths printed in the terminal, and OSC 8 file links, open in the Files screen and reveal in the tree. Alt+Left / Alt+Right or the mouse back and forward buttons return to the terminal and reopen the file (#264)
+- **GitHub**: connect where it is missing. The chat Git tab, pull requests, issues, the dashboard and the clone wizard offer the sign-in on the spot, by Device Flow or a personal access token, and say "Reconnect GitHub" when a stored token has expired
+- **Projects**: a first launch offers the folders Claude Code was already used in on this machine, most recent first, all ticked
+- **Accounts**: a first launch on a machine with no Claude login opens the sign-in once, and the account it connects becomes the default, so a plain `claude` in a terminal tab is signed in too
+- **Accounts**: a chat that dies of a refused login shows a Reconnect button that signs the account back in and picks the turn up again, a signed-out account says so in Settings, and a startup toast names the ones something runs on
+- **Git**: a warning with an Install Git action when git is missing from the machine
+- **Discovery**: a small toast names a feature at the moment it helps (split view, automations, the commit message generator, context handoff, the database screen, tickets, a second account), at most once a day and never during a turn. It can be turned off in Settings
+- **Empty screens**: Database, Workflows, Parallel tasks, Control Tower, Plugins, Dashboard, Files and the Git tab of a folder that is not a repository say what they are for and offer one click to start
+- **Themes**: app themes with animated scenes, a focus layout, a one-screen New project dialog, a notes vault with MCP tools and an optional pixel Claude companion (#263)
+- **Models**: Fable 5.2 is added and Fable 5.1 moves to the legacy tier. Mythos 5.2 and 5.1 are offered only to the accounts that can use them (#262)
+
+### Changed
+- **Chat**: the conversation uses the full width of the window by default. Comfortable and narrow stay available in Settings > Themes
+- **Chat**: the session side column and its collapsed strip are restyled, with an icon per section, a calmer task list and a Show more on long histories
+- **Settings**: the page uses the full width, and group titles and sidebar headings are in sentence case
+- **Toolbar**: the actions, prompts and branch menus are restyled
+- Bundled Claude Code updated (Agent SDK 0.3.322)
+
+### Fixed
+- **Usage**: the weekly bar stays visible when a rate-limit event only names the session window
+- **Chat**: one listener per channel is shared by all chat tabs, which ends the MaxListenersExceededWarning past ten tabs
+- **Files**: a missing file is no longer reported as a failure, since the error code now reaches the renderer through the preload bridge
+- **Git**: the changes panel keeps its content inside its frame, and its close, Generate PR and Commit buttons are no longer pushed past the right edge
+- **Git**: the Install Git button in the Git tab answers clicks again
+- **Chrome**: chat sessions start with `--chrome`, so the browser tools load again (#258)
+- **Navigation**: Escape is no longer swallowed in sidebar mode, so terminals and dialogs receive it (#243, #261)
+- **Terminal**: the close dialog remembers a "Quit" choice
+
 ## [1.3.9] - 2026-11-03
 
 ### Added
