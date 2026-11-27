@@ -5789,5 +5789,14 @@
     "files": {
       "purpose": "浏览项目的文件并预览，还能在代码旁边看到每个 Claude 会话具体改了什么。"
     }
+  },
+  "projectImport": {
+    "title": "接续你的 Claude Code 项目",
+    "introOne": "你已在这台电脑的 1 个文件夹中使用过 Claude。要将它添加到项目吗？",
+    "introMany": "你已在这台电脑的 {count} 个文件夹中使用过 Claude。要将它们添加到项目吗？取消勾选你不需要的。",
+    "lastSession": "上次会话：{when}",
+    "add": "添加 ({count})",
+    "skip": "暂不",
+    "added": "已添加项目：{count}"
   }
 }

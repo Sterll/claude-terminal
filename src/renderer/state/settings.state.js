@@ -133,6 +133,7 @@ const defaultSettings = {
   // a fresh install — see WhatsNew.shouldShow.
   lastSeenVersion: null,
   accountOnboardingDone: false, // First-launch "connect your Claude account" prompt, asked once (AccountLoginModal.maybeShowAccountOnboarding)
+  projectImportDone: false, // First-launch "add the folders Claude Code was already used in" prompt, asked once (ProjectImportModal.maybeShowProjectImport)
   openProjectIds: [], // Projects with a tab in the project bar, in tab order (restored on restart)
   navigationMode: null, // 'tabs' | 'sidebar' | null = never chosen, ask once on next launch
   tabsOrder: null, // null = canonical order, otherwise array of all tabIds in custom order

@@ -504,7 +504,9 @@ contextBridge.exposeInMainWorld('electron_api', {
     exportSession: (params) => ipcRenderer.invoke('claude-export-session', params),
     moveSession: (params) => ipcRenderer.invoke('claude-move-session', params),
     sessionBrief: (params) => ipcRenderer.invoke('claude-session-brief', params),
-    generateSessionBrief: (params) => ipcRenderer.invoke('claude-session-brief-generate', params)
+    generateSessionBrief: (params) => ipcRenderer.invoke('claude-session-brief-generate', params),
+    // Folders Claude Code was already used in here: { success, folders: [{ path, name, lastActivity, sessionCount }] }
+    discoverProjects: (exclude) => ipcRenderer.invoke('claude-discover-projects', { exclude })
   },
 
   // ==================== ACCOUNTS (multi Claude OAuth) ====================

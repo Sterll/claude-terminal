@@ -117,6 +117,12 @@ function makeProfile() {
       restoreTerminalSessions: false,
       globalShortcutsEnabled: false,
       notificationsEnabled: false,
+      // The first-launch prompts, for the same reason as navigationMode: this
+      // profile has no projects and no Claude login, so "Connect your Claude
+      // account" opened over the app and took every click. The import has
+      // nothing to offer from an empty home, but it is asked once all the same.
+      accountOnboardingDone: true,
+      projectImportDone: true,
     }, null, 2)
   );
 

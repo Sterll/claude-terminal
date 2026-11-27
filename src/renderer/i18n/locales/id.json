@@ -5789,5 +5789,14 @@
     "files": {
       "purpose": "Jelajahi file proyek, pratinjau isinya, dan lihat persis apa yang diubah setiap sesi Claude, berdampingan dengan kodenya."
     }
+  },
+  "projectImport": {
+    "title": "Lanjutkan proyek Claude Code Anda",
+    "introOne": "Anda sudah pernah memakai Claude di 1 folder pada mesin ini. Tambahkan ke proyek Anda?",
+    "introMany": "Anda sudah pernah memakai Claude di {count} folder pada mesin ini. Tambahkan ke proyek Anda? Hapus centang yang tidak Anda inginkan.",
+    "lastSession": "sesi terakhir {when}",
+    "add": "Tambahkan ({count})",
+    "skip": "Nanti saja",
+    "added": "Proyek ditambahkan: {count}"
   }
 }

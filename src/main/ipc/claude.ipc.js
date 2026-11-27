@@ -2285,6 +2285,19 @@ function registerClaudeHandlers() {
       return { success: false, error: err.message, ...remoteFailure(err) };
     }
   });
+
+  // The folders this machine already ran Claude Code in, for the first-launch
+  // import. Local only: the real path comes from each transcript's `cwd`.
+  ipcMain.handle('claude-discover-projects', async (event, { exclude } = {}) => {
+    try {
+      const { discoverClaudeProjectFolders } = require('../utils/claudeProjectDiscovery');
+      const folders = await discoverClaudeProjectFolders({ exclude: Array.isArray(exclude) ? exclude : [] });
+      return { success: true, folders };
+    } catch (err) {
+      console.error('[claude-discover-projects] Error:', err.message);
+      return { success: false, error: err.message };
+    }
+  });
 }
 
 module.exports = {

@@ -528,19 +528,40 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   // connect an account right away rather than letting the first terminal or
   // chat fail with "Not logged in". Never stacks on What's new, which a fresh
   // profile (no projects) does not get.
-  require('./src/renderer/ui/components/AccountLoginModal').maybeShowAccountOnboarding({
-    accountsState: require('./src/renderer/state').accountsState,
-    getSetting,
-    setSetting,
-    isFreshProfile: (projectsState.get().projects || []).length === 0,
-  }).catch((err) => console.warn('[renderer] account onboarding failed:', err?.message));
-
   // GitHub connected or reconnected from any view (GitHubConnectModal): the
   // dashboard's CI and pull requests were read without it.
   require('./src/renderer/ui/components/GitHubConnectModal').onGitHubAuthChanged(() => {
     DashboardService.clearAllCache();
     if (document.body.dataset.activeTab === 'dashboard') renderDashboardForScope();
   });
+
+  // Then, once that modal is settled (never both at once), offer to add the
+  // folders Claude Code was already used in on this machine.
+  const isFreshProfile = (projectsState.get().projects || []).length === 0;
+  (async () => {
+    try {
+      await require('./src/renderer/ui/components/AccountLoginModal').maybeShowAccountOnboarding({
+        accountsState: require('./src/renderer/state').accountsState,
+        getSetting,
+        setSetting,
+        isFreshProfile,
+      });
+    } catch (err) {
+      console.warn('[renderer] account onboarding failed:', err?.message);
+    }
+    try {
+      await require('./src/renderer/ui/components/ProjectImportModal').maybeShowProjectImport({
+        getSetting,
+        setSetting,
+        isFreshProfile,
+        getProjects: () => projectsState.get().projects || [],
+        addProject: require('./src/renderer/state').addProject,
+        onAdded: (added) => added.forEach(p => checkProjectGitStatus(p)),
+      });
+    } catch (err) {
+      console.warn('[renderer] project import failed:', err?.message);
+    }
+  })();
 
   // Two things that break silently until they are needed: git missing from
   // the machine, and a saved account whose login was lost. Said once at

@@ -5789,5 +5789,14 @@
     "files": {
       "purpose": "Explora los archivos de un proyecto, previsualízalos y mira exactamente qué cambió cada sesión de Claude, junto al código."
     }
+  },
+  "projectImport": {
+    "title": "Recupera tus proyectos de Claude Code",
+    "introOne": "Ya has usado Claude en 1 carpeta de este equipo. ¿Añadirla a tus proyectos?",
+    "introMany": "Ya has usado Claude en {count} carpetas de este equipo. ¿Añadirlas a tus proyectos? Desmarca las que no quieras.",
+    "lastSession": "última sesión {when}",
+    "add": "Añadir ({count})",
+    "skip": "Ahora no",
+    "added": "Proyectos añadidos: {count}"
   }
 }
