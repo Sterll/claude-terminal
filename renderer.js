@@ -467,6 +467,15 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
     _applySidebarTooltips(true);
   }
 
+  // Dashboard disk caches, before the tab restore below rather than after.
+  // Restoring the dashboard tab renders the overview, which preloads whatever
+  // it finds missing; loaded afterwards, every cache was still missing at that
+  // moment and booting onto the dashboard swept all projects for data that was
+  // already on disk. A handful of small JSON reads, so this is awaited.
+  await DashboardService.loadAllDiskCaches().catch(e => {
+    console.error('Error loading disk caches:', e);
+  });
+
   // Restore last active tab from settings
   const savedActiveTab = settingsState.get().activeTab;
   if (savedActiveTab && savedActiveTab !== 'claude') {
@@ -720,13 +729,20 @@ const { loadSessionData, clearProjectSessions, saveTerminalSessions } = require(
   require('./src/renderer/services/ProjectTypeExtensionLoader')
     .loadExtensions({ mergeTranslations });
 
-  // Preload dashboard data in background at startup
-  DashboardService.loadAllDiskCaches().then(() => {
-    setTimeout(() => DashboardService.preloadAllProjects(), 1000);
-  }).catch(e => {
-    console.error('Error loading disk caches:', e);
-    setTimeout(() => DashboardService.preloadAllProjects(), 1000);
-  });
+  // The full dashboard sweep is deliberately NOT run at startup; the disk
+  // caches loaded above are. preloadAllProjects() loads every project's
+  // dashboard: ~10 git spawns each, every tracked source file read for the line
+  // count, and the GitHub calls. Measured over 22 projects that is ~4 s of
+  // main-process work at every launch, for dashboards nobody is looking at yet,
+  // and it competes for the IPC the renderer needs to finish booting. A git
+  // spawn costs ~40 ms on Windows, so the cost is the number of projects, which
+  // is exactly what made launching slow as the list grew.
+  //
+  // Both consumers ask for the data themselves, so nothing is left unfilled:
+  // renderOverviewDashboard() preloads what it is missing when the overview is
+  // shown, and renderProjectDashboard() loads one project when it is opened.
+  // checkAllProjectsGitStatus() still runs the light sweep the project list
+  // badges need.
   updateStaticTranslations(); // Apply translations to static HTML elements
   applyAccentColor(settingsState.get().accentColor || '#d97706');
   if (settingsState.get().compactProjects !== false) {
@@ -5320,7 +5336,13 @@ function renderOverviewDashboard() {
   for (const project of projects) {
     const cached = DashboardService.getCachedData(project.id);
     if (cached) dataMap[project.id] = cached;
-    else hasMissing = true;
+    // Stale counts as missing, not just absent. A disk cache written at a past
+    // launch is displayed immediately but is past its TTL, and since the full
+    // sweep no longer runs at startup this render is what revalidates it; asking
+    // only for absent entries would leave the overview on yesterday's figures.
+    // preloadAllProjects() skips whatever is still fresh, so this costs nothing
+    // when the data has just been read.
+    if (!cached || !DashboardService.isCacheValid(project.id)) hasMissing = true;
     timesMap[project.id] = getProjectTimes(project.id);
   }
 

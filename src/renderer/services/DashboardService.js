@@ -3200,6 +3200,7 @@ module.exports = {
   setupRateLimitListener,
   // Cache management
   getCachedData,
+  isCacheValid,
   invalidateCache,
   clearAllCache,
   loadAllDiskCaches,
