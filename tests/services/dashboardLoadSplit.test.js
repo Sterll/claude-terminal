@@ -402,3 +402,100 @@ describe('dashboard navigation and first paint', () => {
     await flushPromises();
   });
 });
+
+/**
+ * A line count is the one dashboard figure that is expensive and that cannot
+ * change without a commit: counting it reads every tracked source file of the
+ * project. The 30 s cache TTL expires between two launches, so before this the
+ * count was redone from scratch at every launch for every project (measured on
+ * this machine: 7 333 files, 92 MB, ~1.8 s over 22 projects). It is now keyed on
+ * the commit it was taken at.
+ */
+describe('line counts are reused while HEAD has not moved', () => {
+  const PROJECT = { id: 'p1', name: 'P', path: '/tmp/p', type: 'general' };
+  const SHA = '1111111111111111111111111111111111111111';
+
+  /** A disk cache written at a past launch, so its 30 s TTL has long expired. */
+  function seedDiskCache({ stats, statsSha }) {
+    const { projectsState } = require('../../src/renderer/state');
+    projectsState.get.mockReturnValue({ projects: [PROJECT], openedProjectId: null });
+    window.electron_nodeModules.fs.existsSync.mockReturnValue(true);
+    window.electron_nodeModules.fs.promises.readFile = jest.fn(async (filePath) => {
+      if (String(filePath).includes('.claude-terminal')) {
+        return JSON.stringify({
+          _version: 1,
+          _updatedAt: new Date(Date.now() - 86400000).toISOString(),
+          dashboard: { gitInfo: { isGitRepo: true }, projectType: 'node', stats, statsSha },
+        });
+      }
+      return '{}';
+    });
+  }
+
+  function headIs(sha) {
+    window.electron_api.git.infoFull = jest.fn(async () => {
+      callLog.push('git.infoFull');
+      return { isGitRepo: true, branch: 'main', remoteUrl: null, commit: { fullHash: sha } };
+    });
+  }
+
+  beforeEach(() => {
+    DashboardService.clearAllCache();
+  });
+
+  test('the same HEAD reads no source file at all', async () => {
+    seedDiskCache({ stats: { files: 7, lines: 42, byExtension: {} }, statsSha: SHA });
+    headIs(SHA);
+
+    await DashboardService.loadAllDiskCaches();
+    await DashboardService.preloadAllProjects();
+
+    expect(callLog).toContain('git.infoFull');
+    expect(callLog).not.toContain('project.stats');
+    // And the figures are still the ones the dashboard shows.
+    expect(DashboardService.getCachedData('p1').stats).toEqual({ files: 7, lines: 42, byExtension: {} });
+  });
+
+  test('a HEAD that moved counts again', async () => {
+    seedDiskCache({ stats: { files: 7, lines: 42, byExtension: {} }, statsSha: SHA });
+    headIs('2222222222222222222222222222222222222222');
+
+    await DashboardService.loadAllDiskCaches();
+    await DashboardService.preloadAllProjects();
+
+    expect(callLog).toContain('project.stats');
+  });
+
+  test('a cache from before this existed carries no sha, so it counts again', async () => {
+    seedDiskCache({ stats: { files: 7, lines: 42, byExtension: {} }, statsSha: undefined });
+    headIs(SHA);
+
+    await DashboardService.loadAllDiskCaches();
+    await DashboardService.preloadAllProjects();
+
+    expect(callLog).toContain('project.stats');
+  });
+
+  test('a project with no commit to date the count from counts again', async () => {
+    // A repository with an unborn branch, or no repository at all: headSha() is
+    // null on both sides, and null must never compare equal to a stored sha.
+    seedDiskCache({ stats: { files: 7, lines: 42, byExtension: {} }, statsSha: null });
+    window.electron_api.git.infoFull = jest.fn(async () => ({ isGitRepo: false }));
+
+    await DashboardService.loadAllDiskCaches();
+    await DashboardService.preloadAllProjects();
+
+    expect(callLog).toContain('project.stats');
+  });
+
+  test('a fresh count is filed under the commit the git read reported', async () => {
+    seedDiskCache({ stats: undefined, statsSha: undefined });
+    headIs(SHA);
+
+    await DashboardService.loadAllDiskCaches();
+    await DashboardService.preloadAllProjects();
+
+    // Stamped from load.git, not from whatever gitInfo held while the count ran.
+    expect(DashboardService.getCachedData('p1').statsSha).toBe(SHA);
+  });
+});

@@ -58,6 +58,19 @@ function invalidateTimeline(projectId) {
   _timelineCache.delete(projectId);
 }
 
+/**
+ * The commit a dashboard's git read was taken at, or null when there is none to
+ * compare: no repository, an unborn branch, or a host that dropped mid-read.
+ * Null is never equal to a stored sha, so anything keyed on it recomputes
+ * rather than trusting a figure it cannot date.
+ * @param {Object} gitInfo
+ * @returns {string|null}
+ */
+function headSha(gitInfo) {
+  const sha = gitInfo && gitInfo.commit && gitInfo.commit.fullHash;
+  return typeof sha === 'string' && sha ? sha : null;
+}
+
 const DISK_CACHE_FILE = '.claude-terminal';
 
 /**
@@ -652,7 +665,7 @@ function loadProjectDashboard(project) {
     return data;
   });
   // Counting lines reads every source file; it must not hold up the Git panel.
-  load.stats = getProjectStats(project.path).then(stats => {
+  const countLines = () => getProjectStats(project.path).then(stats => {
     if (remote) {
       // Same rule as git: a failed remote count keeps the last known figures.
       if (stats && stats.reason && data.stats) return data;
@@ -662,10 +675,28 @@ function loadProjectDashboard(project) {
     data.stats = stats;
     return data;
   });
+  // A line count is a property of the committed tree, so it is reused when HEAD
+  // has not moved since the cached one was taken. That is what makes the disk
+  // cache worth having across restarts: the 30 s TTL expires between two
+  // launches, and recounting meant reading every tracked file of every project
+  // again (measured: 7 333 files, 92 MB, ~1.8 s over 22 projects) for a figure
+  // that cannot have changed. Only taken when there is a cached count *and* a
+  // sha to compare, so a first load still starts counting immediately rather
+  // than waiting on git.
+  const cachedStats = data.stats;
+  const cachedStatsSha = data.statsSha;
+  load.stats = (cachedStats && cachedStatsSha)
+    ? load.git.then(() => (headSha(data.gitInfo) === cachedStatsSha ? data : countLines()))
+    : countLines();
   const github = load.git.then(async () => {
     Object.assign(data, await loadRemoteDashboardData(data.gitInfo));
   });
   load.complete = Promise.all([load.git, load.stats, github]).then(() => {
+    // Stamped here, not in countLines(): the count runs concurrently with the
+    // git read, so inside countLines() `data.gitInfo` is still the previous
+    // load's, and stamping there would file a fresh count under a stale commit.
+    // Dating it from the git read of this same load is as accurate as the pair.
+    data.statsSha = headSha(data.gitInfo);
     if (isCurrent()) setCacheData(project.id, data);
     return data;
   }).finally(() => {
